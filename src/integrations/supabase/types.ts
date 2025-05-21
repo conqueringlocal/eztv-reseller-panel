@@ -9,16 +9,168 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      credit_logs: {
+        Row: {
+          action: Database["public"]["Enums"]["credit_action"]
+          credits_used: number
+          customer_id: string | null
+          customer_name: string | null
+          date: string
+          id: string
+          notes: string | null
+          reseller_id: string
+        }
+        Insert: {
+          action: Database["public"]["Enums"]["credit_action"]
+          credits_used: number
+          customer_id?: string | null
+          customer_name?: string | null
+          date?: string
+          id?: string
+          notes?: string | null
+          reseller_id: string
+        }
+        Update: {
+          action?: Database["public"]["Enums"]["credit_action"]
+          credits_used?: number
+          customer_id?: string | null
+          customer_name?: string | null
+          date?: string
+          id?: string
+          notes?: string | null
+          reseller_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_logs_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_logs_reseller_id_fkey"
+            columns: ["reseller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customers: {
+        Row: {
+          created_at: string
+          device_type: string
+          email: string
+          expiration_date: string
+          id: string
+          mac_address: string
+          name: string
+          password: string | null
+          plan_duration: number
+          reseller_id: string
+          start_date: string
+          username: string | null
+        }
+        Insert: {
+          created_at?: string
+          device_type: string
+          email: string
+          expiration_date: string
+          id?: string
+          mac_address: string
+          name: string
+          password?: string | null
+          plan_duration: number
+          reseller_id: string
+          start_date: string
+          username?: string | null
+        }
+        Update: {
+          created_at?: string
+          device_type?: string
+          email?: string
+          expiration_date?: string
+          id?: string
+          mac_address?: string
+          name?: string
+          password?: string | null
+          plan_duration?: number
+          reseller_id?: string
+          start_date?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customers_reseller_id_fkey"
+            columns: ["reseller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          credits: number
+          email: string
+          id: string
+          name: string
+          role: Database["public"]["Enums"]["user_role"]
+        }
+        Insert: {
+          created_at?: string
+          credits?: number
+          email: string
+          id: string
+          name: string
+          role?: Database["public"]["Enums"]["user_role"]
+        }
+        Update: {
+          created_at?: string
+          credits?: number
+          email?: string
+          id?: string
+          name?: string
+          role?: Database["public"]["Enums"]["user_role"]
+        }
+        Relationships: []
+      }
+      system_settings: {
+        Row: {
+          description: string | null
+          id: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          description?: string | null
+          id: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_admin: {
+        Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      credit_action: "deduction" | "addition" | "account_creation"
+      user_role: "admin" | "reseller"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -133,6 +285,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      credit_action: ["deduction", "addition", "account_creation"],
+      user_role: ["admin", "reseller"],
+    },
   },
 } as const

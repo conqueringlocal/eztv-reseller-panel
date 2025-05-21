@@ -1,5 +1,6 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from "sonner";
 
 // Define types for our context
@@ -30,24 +31,23 @@ const AuthContext = createContext<AuthContextType>({
   isAuthenticated: false,
 });
 
-// Mock users for demonstration
-const MOCK_USERS = [
-  {
-    id: '1',
-    email: 'admin@eztv.club',
-    password: 'admin123',
-    name: 'Admin User',
-    role: 'admin' as UserRole,
-  },
-  {
-    id: '2',
-    email: 'reseller@eztv.club',
-    password: 'reseller123',
-    name: 'Demo Reseller',
-    role: 'reseller' as UserRole,
-    credits: 100,
-  }
-];
+// Clean up auth state to prevent issues
+const cleanupAuthState = () => {
+  // Remove standard auth tokens
+  localStorage.removeItem('supabase.auth.token');
+  // Remove all Supabase auth keys from localStorage
+  Object.keys(localStorage).forEach((key) => {
+    if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+      localStorage.removeItem(key);
+    }
+  });
+  // Remove from sessionStorage if in use
+  Object.keys(sessionStorage || {}).forEach((key) => {
+    if (key.startsWith('supabase.auth.') || key.includes('sb-')) {
+      sessionStorage.removeItem(key);
+    }
+  });
+};
 
 export const useAuth = () => useContext(AuthContext);
 
@@ -55,49 +55,136 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Check for stored authentication on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem('eztvUser');
-    
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-      } catch (error) {
-        console.error('Failed to parse stored user:', error);
-        localStorage.removeItem('eztvUser');
+  // Fetch user profile data
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user profile:', error);
+        return;
       }
+
+      if (data) {
+        setUser({
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          credits: data.credits
+        });
+      }
+    } catch (error) {
+      console.error('Error in fetchUserProfile:', error);
     }
-    
-    setIsLoading(false);
+  };
+
+  // Check for user session on mount
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        // Defer data fetching to prevent deadlocks
+        setTimeout(() => {
+          fetchUserProfile(session.user.id);
+        }, 0);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+      }
+    });
+
+    // THEN check for existing session
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user) {
+          await fetchUserProfile(session.user.id);
+        }
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+        setIsLoading(false);
+      }
+    };
+
+    initializeAuth();
+
+    // Cleanup subscription when component unmounts
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    // In a real app, this would be an API call
-    const foundUser = MOCK_USERS.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
+    try {
+      // Clean up existing state
+      cleanupAuthState();
+      
+      // Attempt global sign out
+      try {
+        await supabase.auth.signOut({ scope: 'global' });
+      } catch (err) {
+        // Continue even if this fails
+        console.error('Error during global sign out:', err);
+      }
+      
+      // Sign in with email/password
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
 
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('eztvUser', JSON.stringify(userWithoutPassword));
-      toast.success(`Welcome back, ${foundUser.name}!`);
-      return true;
+      if (data.user) {
+        // User data will be set by the auth state change event
+        toast.success(`Welcome back!`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Login error:', error);
+      toast.error('An unexpected error occurred');
+      return false;
     }
-
-    toast.error('Invalid email or password');
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('eztvUser');
-    toast.info('You have been logged out');
+  const logout = async () => {
+    try {
+      // Clean up auth state
+      cleanupAuthState();
+      
+      // Attempt global sign out
+      await supabase.auth.signOut({ scope: 'global' });
+      
+      // Clear user state
+      setUser(null);
+      
+      toast.info('You have been logged out');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Error during logout');
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isLoading, 
+      login, 
+      logout, 
+      isAuthenticated: !!user 
+    }}>
       {children}
     </AuthContext.Provider>
   );
