@@ -136,6 +136,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error during global sign out:', err);
       }
       
+      // Convert role to string to ensure it's stored properly in metadata
+      const roleStr = String(role);
+      
+      console.log('Registering with role:', roleStr);
+      
       // Sign up with email/password and explicitly set metadata
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -143,7 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         options: {
           data: {
             name,
-            role
+            role: roleStr
           },
         },
       });

@@ -78,6 +78,8 @@ export default function AdminSetup() {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     try {
+      console.log('Creating admin with data:', { ...data, role: 'admin' });
+      
       const success = await register(
         data.email,
         data.password,
