@@ -40,6 +40,11 @@ const formSchema = z.object({
     .int()
     .min(1, { message: 'Plan duration must be at least 1 month.' })
     .max(12, { message: 'Plan duration cannot exceed 12 months.' }),
+  connections: z.coerce
+    .number()
+    .int()
+    .min(1, { message: 'Must have at least 1 connection.' })
+    .max(3, { message: 'Cannot exceed 3 connections.' }),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -61,8 +66,14 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       macAddress: '',
       deviceType: 'Smart TV',
       planDuration: 1,
+      connections: 1,
     },
   });
+
+  // Calculate total credits needed
+  const watchPlanDuration = form.watch('planDuration');
+  const watchConnections = form.watch('connections');
+  const totalCreditsNeeded = watchPlanDuration * watchConnections;
 
   // Handle form submission
   const onSubmit = async (data: FormData) => {
@@ -83,6 +94,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         macAddress: data.macAddress,
         deviceType: data.deviceType,
         planDuration: data.planDuration,
+        connections: data.connections,
       });
       
       if (success) {
@@ -173,22 +185,49 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
           )}
         />
         
-        <FormField
-          control={form.control}
-          name="planDuration"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Plan Duration (Months)</FormLabel>
-              <FormControl>
-                <Input type="number" min="1" max="12" {...field} />
-              </FormControl>
-              <FormDescription>
-                This will consume {field.value || 0} credit{field.value !== 1 ? 's' : ''}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="planDuration"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Plan Duration (Months)</FormLabel>
+                <FormControl>
+                  <Input type="number" min="1" max="12" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          
+          <FormField
+            control={form.control}
+            name="connections"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Number of Connections</FormLabel>
+                <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value.toString()}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select connections" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="1">1 Connection</SelectItem>
+                    <SelectItem value="2">2 Connections</SelectItem>
+                    <SelectItem value="3">3 Connections</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+        
+        <FormDescription className="text-amber-600 font-medium">
+          This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
+          ({watchPlanDuration} month{watchPlanDuration !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})
+        </FormDescription>
         
         <Button type="submit" className="w-full">Add Customer</Button>
       </form>

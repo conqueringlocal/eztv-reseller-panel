@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -15,6 +16,13 @@ export interface Customer {
   startDate: string;
   expirationDate: string;
   createdAt: string;
+  connectionNumber?: number;
+  totalConnections?: number;
+  customerGroupId?: string;
+  status?: 'active' | 'expiring_soon' | 'expired';
+  isDeactivated?: boolean;
+  username?: string;
+  password?: string;
 }
 
 export interface CreditLog {
@@ -33,18 +41,32 @@ export interface Reseller {
   name: string;
   email: string;
   credits: number;
+  logoUrl?: string;
+  accentColor?: string;
+}
+
+interface AddCustomerData {
+  resellerId: string;
+  name: string;
+  email: string;
+  macAddress: string;
+  deviceType: string;
+  planDuration: number;
+  connections: number;
 }
 
 interface AppContextType {
   customers: Customer[];
   creditLogs: CreditLog[];
   resellers: Reseller[];
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'startDate' | 'expirationDate'>) => Promise<boolean>;
+  addCustomer: (customer: AddCustomerData) => Promise<boolean>;
   updateCustomer: (customer: Customer) => Promise<boolean>;
   deleteCustomer: (customerId: string) => Promise<boolean>;
   renewCustomer: (customerId: string, planDuration: number) => Promise<boolean>;
   addCredits: (resellerId: string, amount: number, notes?: string) => Promise<boolean>;
   removeCredits: (resellerId: string, amount: number, notes?: string) => Promise<boolean>;
+  deactivateCustomer: (customerId: string) => Promise<boolean>;
+  updateResellerBranding: (resellerId: string, logoUrl?: string, accentColor?: string) => Promise<boolean>;
   isLoading: boolean;
   getReseller: (id: string) => Reseller | undefined;
   refreshData: () => Promise<void>;
@@ -61,6 +83,8 @@ const AppContext = createContext<AppContextType>({
   renewCustomer: async () => false,
   addCredits: async () => false,
   removeCredits: async () => false,
+  deactivateCustomer: async () => false,
+  updateResellerBranding: async () => false,
   isLoading: true,
   getReseller: () => undefined,
   refreshData: async () => {},
@@ -78,18 +102,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isLoading, setIsLoading] = useState(true);
 
   // Convert database objects to our frontend format
-  const mapCustomer = (dbCustomer: any): Customer => ({
-    id: dbCustomer.id,
-    resellerId: dbCustomer.reseller_id,
-    name: dbCustomer.name,
-    email: dbCustomer.email,
-    macAddress: dbCustomer.mac_address,
-    deviceType: dbCustomer.device_type,
-    planDuration: dbCustomer.plan_duration,
-    startDate: dbCustomer.start_date,
-    expirationDate: dbCustomer.expiration_date,
-    createdAt: dbCustomer.created_at,
-  });
+  const mapCustomer = (dbCustomer: any): Customer => {
+    // Calculate status based on expiration date
+    const today = new Date();
+    const expiryDate = new Date(dbCustomer.expiration_date);
+    const threeDaysFromNow = new Date();
+    threeDaysFromNow.setDate(today.getDate() + 3);
+    
+    let status: 'active' | 'expiring_soon' | 'expired';
+    if (expiryDate < today) {
+      status = 'expired';
+    } else if (expiryDate <= threeDaysFromNow) {
+      status = 'expiring_soon';
+    } else {
+      status = 'active';
+    }
+    
+    return {
+      id: dbCustomer.id,
+      resellerId: dbCustomer.reseller_id,
+      name: dbCustomer.name,
+      email: dbCustomer.email,
+      macAddress: dbCustomer.mac_address,
+      deviceType: dbCustomer.device_type,
+      planDuration: dbCustomer.plan_duration,
+      startDate: dbCustomer.start_date,
+      expirationDate: dbCustomer.expiration_date,
+      createdAt: dbCustomer.created_at,
+      connectionNumber: dbCustomer.connection_number || 1,
+      totalConnections: dbCustomer.total_connections || 1,
+      customerGroupId: dbCustomer.customer_group_id,
+      status,
+      isDeactivated: dbCustomer.is_deactivated || false,
+      username: dbCustomer.username,
+      password: dbCustomer.password,
+    };
+  };
 
   const mapCreditLog = (dbLog: any): CreditLog => ({
     id: dbLog.id,
@@ -107,6 +155,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name: dbReseller.name,
     email: dbReseller.email,
     credits: dbReseller.credits,
+    logoUrl: dbReseller.logo_url,
+    accentColor: dbReseller.accent_color,
   });
 
   // Fetch data based on user role
@@ -137,6 +187,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCreditLogs(logsData?.map(mapCreditLog) || []);
       } else {
         // Resellers can only see their own data
+        const { data: resellerData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+          
         const { data: customersData } = await supabase
           .from('customers')
           .select('*')
@@ -148,6 +204,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           .eq('reseller_id', user.id)
           .order('date', { ascending: false });
 
+        setResellers(resellerData ? [mapReseller(resellerData)] : []);
         setCustomers(customersData?.map(mapCustomer) || []);
         setCreditLogs(logsData?.map(mapCreditLog) || []);
       }
@@ -172,11 +229,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Helper to get current timestamp
   const getCurrentISOString = () => new Date().toISOString();
+  
+  // Helper for generating usernames based on customer name and connection number
+  const generateUsername = (name: string, connectionNumber: number): string => {
+    // Remove spaces, special chars and convert to lowercase
+    const baseName = name
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toLowerCase()
+      .substring(0, 10);
+      
+    return `${baseName}${connectionNumber}`;
+  };
+  
+  // Helper for generating random passwords
+  const generatePassword = (): string => {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let password = "";
+    for (let i = 0; i < 8; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  };
+  
+  // Create customer connection
+  const createCustomerConnection = async (
+    customerData: AddCustomerData,
+    customerGroupId: string,
+    connectionNumber: number,
+    totalConnections: number
+  ): Promise<string | null> => {
+    // Generate dates
+    const today = new Date();
+    const startDate = today.toISOString().split('T')[0];
+    
+    const expiryDate = new Date();
+    expiryDate.setMonth(expiryDate.getMonth() + customerData.planDuration);
+    const expirationDate = expiryDate.toISOString().split('T')[0];
+    
+    // Generate credentials
+    const username = generateUsername(customerData.name, connectionNumber);
+    const password = generatePassword();
+    
+    // Insert customer
+    const { data: newCustomer, error: customerError } = await supabase
+      .from('customers')
+      .insert({
+        reseller_id: customerData.resellerId,
+        name: customerData.name,
+        email: customerData.email,
+        mac_address: customerData.macAddress,
+        device_type: customerData.deviceType,
+        plan_duration: customerData.planDuration,
+        start_date: startDate,
+        expiration_date: expirationDate,
+        username: username,
+        password: password,
+        customer_group_id: customerGroupId,
+        connection_number: connectionNumber,
+        total_connections: totalConnections,
+        is_deactivated: false
+      })
+      .select()
+      .single();
+    
+    if (customerError) {
+      console.error(`Failed to create customer connection ${connectionNumber}:`, customerError);
+      return null;
+    }
+    
+    return newCustomer.id;
+  };
 
-  // Add new customer
-  const addCustomer = async (
-    customerData: Omit<Customer, 'id' | 'createdAt' | 'startDate' | 'expirationDate'>
-  ): Promise<boolean> => {
+  // Add new customer with multiple connections
+  const addCustomer = async (customerData: AddCustomerData): Promise<boolean> => {
     if (!user) return false;
     
     try {
@@ -192,50 +317,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return false;
       }
       
-      if (reseller.credits < customerData.planDuration) {
-        toast.error('Insufficient credits');
+      // Calculate total credits needed (connections * plan duration)
+      const totalCreditsNeeded = customerData.connections * customerData.planDuration;
+      
+      if (reseller.credits < totalCreditsNeeded) {
+        toast.error(`Insufficient credits. You need ${totalCreditsNeeded} credits but have ${reseller.credits}.`);
         return false;
       }
       
-      // Generate IPTV credentials
-      const username = Math.random().toString(36).substring(2, 10);
-      const password = Math.random().toString(36).substring(2, 10);
+      // Generate a customer group ID
+      const customerGroupId = `group-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       
-      // Calculate dates
-      const today = new Date();
-      const startDate = today.toISOString().split('T')[0];
+      // Create multiple connections
+      const customerIds: string[] = [];
+      for (let i = 1; i <= customerData.connections; i++) {
+        const customerId = await createCustomerConnection(
+          customerData,
+          customerGroupId,
+          i,
+          customerData.connections
+        );
+        
+        if (customerId) {
+          customerIds.push(customerId);
+        }
+      }
       
-      const expiryDate = new Date();
-      expiryDate.setMonth(expiryDate.getMonth() + customerData.planDuration);
-      const expirationDate = expiryDate.toISOString().split('T')[0];
-      
-      // Insert customer
-      const { data: newCustomer, error: customerError } = await supabase
-        .from('customers')
-        .insert({
-          reseller_id: customerData.resellerId,
-          name: customerData.name,
-          email: customerData.email,
-          mac_address: customerData.macAddress,
-          device_type: customerData.deviceType,
-          plan_duration: customerData.planDuration,
-          start_date: startDate,
-          expiration_date: expirationDate,
-          username: username,
-          password: password
-        })
-        .select()
-        .single();
-      
-      if (customerError) {
-        toast.error(`Failed to create customer: ${customerError.message}`);
+      if (customerIds.length === 0) {
+        toast.error('Failed to create any customer connections');
         return false;
       }
       
       // Update reseller credits
       const { error: creditError } = await supabase
         .from('profiles')
-        .update({ credits: reseller.credits - customerData.planDuration })
+        .update({ credits: reseller.credits - totalCreditsNeeded })
         .eq('id', customerData.resellerId);
       
       if (creditError) {
@@ -249,10 +365,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .insert({
           reseller_id: customerData.resellerId,
           action: 'account_creation',
-          credits_used: customerData.planDuration,
-          customer_id: newCustomer.id,
+          credits_used: totalCreditsNeeded,
+          customer_id: customerIds[0],  // Reference first connection
           customer_name: customerData.name,
-          notes: `${customerData.planDuration} month subscription`
+          notes: `${customerData.planDuration} month subscription with ${customerData.connections} connections`
         });
       
       if (logError) {
@@ -262,7 +378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Refresh data
       await refreshData();
       
-      toast.success('Customer added successfully');
+      toast.success(`Customer added successfully with ${customerData.connections} connections`);
       return true;
     } catch (error) {
       console.error('Error adding customer:', error);
@@ -328,6 +444,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Deactivate a customer
+  const deactivateCustomer = async (customerId: string): Promise<boolean> => {
+    if (!user) return false;
+    
+    try {
+      // Get the customer to deactivate
+      const customer = customers.find(c => c.id === customerId);
+      if (!customer) {
+        toast.error('Customer not found');
+        return false;
+      }
+
+      // In a real implementation, this would call the IPTV API to deactivate the account
+      console.log(`[DEMO] Calling IPTV API to deactivate account for user: ${customer.username}`);
+      
+      // Update the customer status in supabase
+      const { error } = await supabase
+        .from('customers')
+        .update({
+          is_deactivated: true
+        })
+        .eq('id', customerId);
+      
+      if (error) {
+        toast.error(`Failed to update customer status: ${error.message}`);
+        return false;
+      }
+      
+      // Refresh data
+      await refreshData();
+      
+      toast.success('Customer account deactivated successfully');
+      return true;
+    } catch (error) {
+      console.error('Error deactivating customer:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
   // Renew a customer subscription
   const renewCustomer = async (customerId: string, planDuration: number): Promise<boolean> => {
     if (!user) return false;
@@ -375,7 +531,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { error: updateError } = await supabase
         .from('customers')
         .update({
-          expiration_date: expirationDate
+          expiration_date: expirationDate,
+          is_deactivated: false // Re-activate if it was deactivated
         })
         .eq('id', customerId);
       
@@ -533,6 +690,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Update reseller branding (logo and accent color)
+  const updateResellerBranding = async (resellerId: string, logoUrl?: string, accentColor?: string): Promise<boolean> => {
+    if (!user) return false;
+    
+    try {
+      // Prepare update data
+      const updateData: { logo_url?: string; accent_color?: string } = {};
+      if (logoUrl) updateData.logo_url = logoUrl;
+      if (accentColor) updateData.accent_color = accentColor;
+      
+      // Update reseller profile
+      const { error } = await supabase
+        .from('profiles')
+        .update(updateData)
+        .eq('id', resellerId);
+      
+      if (error) {
+        toast.error(`Failed to update branding: ${error.message}`);
+        return false;
+      }
+      
+      // Refresh data
+      await refreshData();
+      
+      toast.success('Branding updated successfully');
+      return true;
+    } catch (error) {
+      console.error('Error updating reseller branding:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
   // Get a reseller by ID
   const getReseller = (id: string): Reseller | undefined => {
     return resellers.find(r => r.id === id);
@@ -550,6 +740,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         renewCustomer,
         addCredits,
         removeCredits,
+        deactivateCustomer,
+        updateResellerBranding,
         isLoading,
         getReseller,
         refreshData

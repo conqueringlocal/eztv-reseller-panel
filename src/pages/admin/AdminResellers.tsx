@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -41,6 +42,16 @@ export default function AdminResellers() {
   const getCustomerCount = (resellerId: string) => {
     return customers.filter(c => c.resellerId === resellerId).length;
   };
+  
+  // Get active connections per reseller
+  const getActiveConnectionsCount = (resellerId: string) => {
+    return customers.filter(c => c.resellerId === resellerId && c.status === 'active' && !c.isDeactivated).length;
+  };
+
+  // Check if reseller has low credits (< 10)
+  const hasLowCredits = (credits: number) => {
+    return credits < 10;
+  };
 
   // Handle manage credits click
   const handleManageCredits = (resellerId: string) => {
@@ -67,7 +78,7 @@ export default function AdminResellers() {
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-sm"
             />
-            {/* We'll implement add reseller functionality in Phase 3 */}
+            {/* We'll implement add reseller functionality in Phase 4 */}
           </div>
           
           <div className="border rounded-md overflow-hidden">
@@ -77,14 +88,15 @@ export default function AdminResellers() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Credits</TableHead>
-                  <TableHead>Customers</TableHead>
+                  <TableHead>Connections</TableHead>
+                  <TableHead>Branding</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredResellers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-6 text-gray-500">
+                    <TableCell colSpan={6} className="text-center py-6 text-gray-500">
                       No resellers found matching your search.
                     </TableCell>
                   </TableRow>
@@ -94,10 +106,41 @@ export default function AdminResellers() {
                       <TableCell className="font-medium">{reseller.name}</TableCell>
                       <TableCell>{reseller.email}</TableCell>
                       <TableCell>
-                        <CreditsBadge credits={reseller.credits} />
+                        {hasLowCredits(reseller.credits) ? (
+                          <div className="flex items-center">
+                            <CreditsBadge credits={reseller.credits} />
+                            <span className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded">Low</span>
+                          </div>
+                        ) : (
+                          <CreditsBadge credits={reseller.credits} />
+                        )}
                       </TableCell>
                       <TableCell>
-                        {getCustomerCount(reseller.id)}
+                        <div>
+                          <span className="font-medium">{getActiveConnectionsCount(reseller.id)}</span>
+                          <span className="text-gray-500 text-xs ml-1">
+                            of {getCustomerCount(reseller.id)} total
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          {reseller.logoUrl && (
+                            <div className="h-6 w-6 bg-gray-100 rounded overflow-hidden">
+                              <img 
+                                src={reseller.logoUrl} 
+                                alt="Logo" 
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                          )}
+                          {reseller.accentColor && (
+                            <div 
+                              className="h-4 w-4 rounded-full border"
+                              style={{ backgroundColor: reseller.accentColor }}
+                            ></div>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-x-2">
