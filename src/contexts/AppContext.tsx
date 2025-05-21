@@ -1,6 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 // Types
 export interface Customer {
@@ -43,6 +45,7 @@ interface AppContextType {
   removeCredits: (resellerId: string, amount: number, notes?: string) => Promise<boolean>;
   isLoading: boolean;
   getReseller: (id: string) => Reseller | undefined;
+  refreshData: () => Promise<void>;
 }
 
 // Create the context
@@ -55,87 +58,8 @@ const AppContext = createContext<AppContextType>({
   removeCredits: async () => false,
   isLoading: true,
   getReseller: () => undefined,
+  refreshData: async () => {},
 });
-
-// Mock data
-const MOCK_RESELLERS: Reseller[] = [
-  {
-    id: '2',
-    name: 'Demo Reseller',
-    email: 'reseller@eztv.club',
-    credits: 100
-  },
-  {
-    id: '3',
-    name: 'Jane Smith',
-    email: 'jane@example.com',
-    credits: 50
-  },
-  {
-    id: '4',
-    name: 'Bob Johnson',
-    email: 'bob@example.com',
-    credits: 75
-  },
-];
-
-const MOCK_CUSTOMERS: Customer[] = [
-  {
-    id: '1',
-    resellerId: '2',
-    name: 'Alice Cooper',
-    email: 'alice@example.com',
-    macAddress: '00:1A:2B:3C:4D:5E',
-    deviceType: 'Smart TV',
-    planDuration: 3,
-    startDate: '2023-12-01',
-    expirationDate: '2024-03-01',
-    createdAt: '2023-12-01T10:30:00Z'
-  },
-  {
-    id: '2',
-    resellerId: '2',
-    name: 'Bob Dylan',
-    email: 'bob.dylan@example.com',
-    macAddress: '11:2A:3B:4C:5D:6E',
-    deviceType: 'Android Box',
-    planDuration: 1,
-    startDate: '2023-12-15',
-    expirationDate: '2024-01-15',
-    createdAt: '2023-12-15T14:45:00Z'
-  },
-];
-
-const MOCK_CREDIT_LOGS: CreditLog[] = [
-  {
-    id: '1',
-    resellerId: '2',
-    date: '2023-12-01T10:30:00Z',
-    action: 'deduction',
-    creditsUsed: 3,
-    customerId: '1',
-    customerName: 'Alice Cooper',
-    notes: 'Initial subscription'
-  },
-  {
-    id: '2',
-    resellerId: '2',
-    date: '2023-12-15T14:45:00Z',
-    action: 'deduction',
-    creditsUsed: 1,
-    customerId: '2',
-    customerName: 'Bob Dylan',
-    notes: 'Monthly subscription'
-  },
-  {
-    id: '3',
-    resellerId: '2',
-    date: '2023-11-30T09:00:00Z',
-    action: 'addition',
-    creditsUsed: 50,
-    notes: 'Initial credit allocation'
-  }
-];
 
 // Create the custom hook
 export const useApp = () => useContext(AppContext);
@@ -143,25 +67,106 @@ export const useApp = () => useContext(AppContext);
 // Create the provider
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>(MOCK_CUSTOMERS);
-  const [creditLogs, setCreditLogs] = useState<CreditLog[]>(MOCK_CREDIT_LOGS);
-  const [resellers, setResellers] = useState<Reseller[]>(MOCK_RESELLERS);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
+  const [resellers, setResellers] = useState<Reseller[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Convert database objects to our frontend format
+  const mapCustomer = (dbCustomer: any): Customer => ({
+    id: dbCustomer.id,
+    resellerId: dbCustomer.reseller_id,
+    name: dbCustomer.name,
+    email: dbCustomer.email,
+    macAddress: dbCustomer.mac_address,
+    deviceType: dbCustomer.device_type,
+    planDuration: dbCustomer.plan_duration,
+    startDate: dbCustomer.start_date,
+    expirationDate: dbCustomer.expiration_date,
+    createdAt: dbCustomer.created_at,
+  });
+
+  const mapCreditLog = (dbLog: any): CreditLog => ({
+    id: dbLog.id,
+    resellerId: dbLog.reseller_id,
+    date: dbLog.date,
+    action: dbLog.action,
+    creditsUsed: dbLog.credits_used,
+    customerId: dbLog.customer_id,
+    customerName: dbLog.customer_name,
+    notes: dbLog.notes,
+  });
+
+  const mapReseller = (dbReseller: any): Reseller => ({
+    id: dbReseller.id,
+    name: dbReseller.name,
+    email: dbReseller.email,
+    credits: dbReseller.credits,
+  });
+
+  // Fetch data based on user role
+  const refreshData = async () => {
+    if (!user) return;
+
+    setIsLoading(true);
+    try {
+      // Fetch data based on user role
+      if (user.role === 'admin') {
+        // Admin can see all data
+        const { data: resellersData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('role', 'reseller');
+
+        const { data: customersData } = await supabase
+          .from('customers')
+          .select('*');
+
+        const { data: logsData } = await supabase
+          .from('credit_logs')
+          .select('*')
+          .order('date', { ascending: false });
+
+        setResellers(resellersData?.map(mapReseller) || []);
+        setCustomers(customersData?.map(mapCustomer) || []);
+        setCreditLogs(logsData?.map(mapCreditLog) || []);
+      } else {
+        // Resellers can only see their own data
+        const { data: customersData } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('reseller_id', user.id);
+
+        const { data: logsData } = await supabase
+          .from('credit_logs')
+          .select('*')
+          .eq('reseller_id', user.id)
+          .order('date', { ascending: false });
+
+        setCustomers(customersData?.map(mapCustomer) || []);
+        setCreditLogs(logsData?.map(mapCreditLog) || []);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      toast.error('Failed to load data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    // In a real app, we'd fetch data from API based on user role
-    setIsLoading(false);
+    if (user) {
+      refreshData();
+    } else {
+      // Reset state when user logs out
+      setCustomers([]);
+      setCreditLogs([]);
+      setResellers([]);
+    }
   }, [user]);
 
   // Helper to get current timestamp
   const getCurrentISOString = () => new Date().toISOString();
-
-  // Helper to generate expiration date
-  const getExpirationDate = (months: number): string => {
-    const date = new Date();
-    date.setMonth(date.getMonth() + months);
-    return date.toISOString().split('T')[0];
-  };
 
   // Add new customer
   const addCustomer = async (
@@ -169,109 +174,207 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ): Promise<boolean> => {
     if (!user) return false;
     
-    // Check if reseller has enough credits
-    const reseller = resellers.find(r => r.id === customerData.resellerId);
-    if (!reseller) return false;
-    
-    if (reseller.credits < customerData.planDuration) {
+    try {
+      // Check if reseller has enough credits
+      const { data: reseller, error: resellerError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', customerData.resellerId)
+        .single();
+      
+      if (resellerError || !reseller) {
+        toast.error('Reseller not found');
+        return false;
+      }
+      
+      if (reseller.credits < customerData.planDuration) {
+        toast.error('Insufficient credits');
+        return false;
+      }
+      
+      // Generate IPTV credentials
+      const username = Math.random().toString(36).substring(2, 10);
+      const password = Math.random().toString(36).substring(2, 10);
+      
+      // Calculate dates
+      const today = new Date();
+      const startDate = today.toISOString().split('T')[0];
+      
+      const expiryDate = new Date();
+      expiryDate.setMonth(expiryDate.getMonth() + customerData.planDuration);
+      const expirationDate = expiryDate.toISOString().split('T')[0];
+      
+      // Insert customer
+      const { data: newCustomer, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          reseller_id: customerData.resellerId,
+          name: customerData.name,
+          email: customerData.email,
+          mac_address: customerData.macAddress,
+          device_type: customerData.deviceType,
+          plan_duration: customerData.planDuration,
+          start_date: startDate,
+          expiration_date: expirationDate,
+          username: username,
+          password: password
+        })
+        .select()
+        .single();
+      
+      if (customerError) {
+        toast.error(`Failed to create customer: ${customerError.message}`);
+        return false;
+      }
+      
+      // Update reseller credits
+      const { error: creditError } = await supabase
+        .from('profiles')
+        .update({ credits: reseller.credits - customerData.planDuration })
+        .eq('id', customerData.resellerId);
+      
+      if (creditError) {
+        toast.error(`Failed to update credits: ${creditError.message}`);
+        return false;
+      }
+      
+      // Log the transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: customerData.resellerId,
+          action: 'account_creation',
+          credits_used: customerData.planDuration,
+          customer_id: newCustomer.id,
+          customer_name: customerData.name,
+          notes: `${customerData.planDuration} month subscription`
+        });
+      
+      if (logError) {
+        console.error(`Failed to log transaction: ${logError.message}`);
+      }
+      
+      // Refresh data
+      await refreshData();
+      
+      toast.success('Customer added successfully');
+      return true;
+    } catch (error) {
+      console.error('Error adding customer:', error);
+      toast.error('An unexpected error occurred');
       return false;
     }
-    
-    // Create a new customer
-    const newCustomer: Customer = {
-      ...customerData,
-      id: `cust_${Math.floor(Math.random() * 10000)}`,
-      createdAt: getCurrentISOString(),
-      startDate: new Date().toISOString().split('T')[0],
-      expirationDate: getExpirationDate(customerData.planDuration),
-    };
-    
-    // Call IPTV API - in a real app this would be a server call
-    // For now, we'll simulate success
-    
-    // Update state
-    setCustomers(prev => [...prev, newCustomer]);
-    
-    // Deduct credits
-    const updatedResellers = resellers.map(r => {
-      if (r.id === customerData.resellerId) {
-        return { ...r, credits: r.credits - customerData.planDuration };
-      }
-      return r;
-    });
-    
-    setResellers(updatedResellers);
-    
-    // Log the credit usage
-    const newLog: CreditLog = {
-      id: `log_${Math.floor(Math.random() * 10000)}`,
-      resellerId: customerData.resellerId,
-      date: getCurrentISOString(),
-      action: 'account_creation',
-      creditsUsed: customerData.planDuration,
-      customerId: newCustomer.id,
-      customerName: customerData.name,
-      notes: `${customerData.planDuration} month subscription`
-    };
-    
-    setCreditLogs(prev => [...prev, newLog]);
-    
-    return true;
   };
 
   // Add credits to a reseller
   const addCredits = async (resellerId: string, amount: number, notes?: string): Promise<boolean> => {
-    if (amount <= 0) return false;
+    if (!user || amount <= 0) return false;
     
-    setResellers(prev => prev.map(reseller => {
-      if (reseller.id === resellerId) {
-        return { ...reseller, credits: reseller.credits + amount };
+    try {
+      const { data: reseller, error: resellerError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', resellerId)
+        .single();
+      
+      if (resellerError || !reseller) {
+        toast.error('Reseller not found');
+        return false;
       }
-      return reseller;
-    }));
-    
-    const newLog: CreditLog = {
-      id: `log_${Math.floor(Math.random() * 10000)}`,
-      resellerId,
-      date: getCurrentISOString(),
-      action: 'addition',
-      creditsUsed: amount,
-      notes: notes || 'Manual credit addition'
-    };
-    
-    setCreditLogs(prev => [...prev, newLog]);
-    
-    return true;
+      
+      // Update reseller credits
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ credits: reseller.credits + amount })
+        .eq('id', resellerId);
+      
+      if (updateError) {
+        toast.error(`Failed to update credits: ${updateError.message}`);
+        return false;
+      }
+      
+      // Log the transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'addition',
+          credits_used: amount,
+          notes: notes || 'Manual credit addition'
+        });
+      
+      if (logError) {
+        console.error(`Failed to log transaction: ${logError.message}`);
+      }
+      
+      // Refresh data
+      await refreshData();
+      
+      toast.success(`Added ${amount} credits successfully`);
+      return true;
+    } catch (error) {
+      console.error('Error adding credits:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
   };
 
   // Remove credits from a reseller
   const removeCredits = async (resellerId: string, amount: number, notes?: string): Promise<boolean> => {
-    if (amount <= 0) return false;
+    if (!user || amount <= 0) return false;
     
-    const reseller = resellers.find(r => r.id === resellerId);
-    if (!reseller) return false;
-    
-    if (reseller.credits < amount) return false;
-    
-    setResellers(prev => prev.map(r => {
-      if (r.id === resellerId) {
-        return { ...r, credits: r.credits - amount };
+    try {
+      const { data: reseller, error: resellerError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', resellerId)
+        .single();
+      
+      if (resellerError || !reseller) {
+        toast.error('Reseller not found');
+        return false;
       }
-      return r;
-    }));
-    
-    const newLog: CreditLog = {
-      id: `log_${Math.floor(Math.random() * 10000)}`,
-      resellerId,
-      date: getCurrentISOString(),
-      action: 'deduction',
-      creditsUsed: amount,
-      notes: notes || 'Manual credit deduction'
-    };
-    
-    setCreditLogs(prev => [...prev, newLog]);
-    
-    return true;
+      
+      if (reseller.credits < amount) {
+        toast.error('Insufficient credits');
+        return false;
+      }
+      
+      // Update reseller credits
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ credits: reseller.credits - amount })
+        .eq('id', resellerId);
+      
+      if (updateError) {
+        toast.error(`Failed to update credits: ${updateError.message}`);
+        return false;
+      }
+      
+      // Log the transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'deduction',
+          credits_used: amount,
+          notes: notes || 'Manual credit deduction'
+        });
+      
+      if (logError) {
+        console.error(`Failed to log transaction: ${logError.message}`);
+      }
+      
+      // Refresh data
+      await refreshData();
+      
+      toast.success(`Removed ${amount} credits successfully`);
+      return true;
+    } catch (error) {
+      console.error('Error removing credits:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
   };
 
   // Get a reseller by ID
@@ -289,7 +392,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCredits,
         removeCredits,
         isLoading,
-        getReseller
+        getReseller,
+        refreshData
       }}
     >
       {children}

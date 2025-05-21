@@ -20,6 +20,7 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import ResellerDashboard from "./pages/reseller/ResellerDashboard";
 import ResellerCustomers from "./pages/reseller/ResellerCustomers";
 import ResellerCredits from "./pages/reseller/ResellerCredits";
+import ResellerCreditPurchase from "./pages/reseller/ResellerCreditPurchase";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
 import Webhook from "./pages/Webhook";
 
@@ -113,6 +114,14 @@ const App = () => (
                 element={
                   <ProtectedRoute allowedRoles={["reseller"]}>
                     <ResellerCredits />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reseller/credits/purchase"
+                element={
+                  <ProtectedRoute allowedRoles={["reseller"]}>
+                    <ResellerCreditPurchase />
                   </ProtectedRoute>
                 }
               />

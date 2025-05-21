@@ -1,43 +1,81 @@
 
 import { Customer } from "../contexts/AppContext";
+import { supabase } from "@/integrations/supabase/client";
 import { createUser, generateUsername, generatePassword, dateToUnixTimestamp, IPTVUserParams } from "./iptvApi";
 
-// Define webhook payload structure
+// Define webhook payload structure to match HighLevel format
 export interface WebhookPayload {
   resellerId: string;
-  customerName: string;
-  customerEmail: string;
-  macAddress: string;
-  deviceType: string;
-  planDuration: number;
+  customer?: {
+    name: string;
+    email: string;
+    mac: string;
+    device_type: string;
+    plan_duration_months: number;
+  };
+  // Support for older format for backwards compatibility
+  customerName?: string;
+  customerEmail?: string;
+  macAddress?: string;
+  deviceType?: string;
+  planDuration?: number;
 }
 
 // Process incoming webhook
-export const processWebhook = async (
-  payload: WebhookPayload, 
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'startDate' | 'expirationDate'>) => Promise<boolean>
-): Promise<{
+export const processWebhook = async (payload: WebhookPayload): Promise<{
   success: boolean;
   message: string;
-  customer?: Omit<Customer, 'id' | 'createdAt' | 'startDate' | 'expirationDate'>;
+  customer?: Omit<Customer, 'id' | 'createdAt'>;
 }> => {
   try {
+    // Extract data - supporting both new and old formats
+    const resellerId = payload.resellerId;
+    const customerName = payload.customer?.name || payload.customerName;
+    const customerEmail = payload.customer?.email || payload.customerEmail;
+    const macAddress = payload.customer?.mac || payload.macAddress;
+    const deviceType = payload.customer?.device_type || payload.deviceType || 'Smart TV';
+    const planDuration = payload.customer?.plan_duration_months || payload.planDuration;
+    
     // Validate payload
-    if (!payload.resellerId || !payload.customerName || !payload.customerEmail || 
-        !payload.macAddress || !payload.planDuration) {
+    if (!resellerId || !customerName || !customerEmail || !macAddress || !planDuration) {
       return {
         success: false,
         message: "Missing required fields in webhook payload"
       };
     }
 
+    // Check if reseller exists and has enough credits
+    const { data: reseller, error: resellerError } = await supabase
+      .from('profiles')
+      .select('credits, name')
+      .eq('id', resellerId)
+      .single();
+
+    if (resellerError || !reseller) {
+      return {
+        success: false,
+        message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
+      };
+    }
+
+    if (reseller.credits < planDuration) {
+      return {
+        success: false,
+        message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${planDuration} are required`
+      };
+    }
+
     // Generate IPTV credentials
-    const username = generateUsername(payload.customerName);
+    const username = generateUsername(customerName);
     const password = generatePassword();
 
-    // Calculate expiration date
+    // Calculate dates
+    const today = new Date();
+    const startDate = today.toISOString().split('T')[0];
+    
     const expiryDate = new Date();
-    expiryDate.setMonth(expiryDate.getMonth() + payload.planDuration);
+    expiryDate.setMonth(expiryDate.getMonth() + planDuration);
+    const expirationDate = expiryDate.toISOString().split('T')[0];
 
     // Create IPTV API params
     const iptvParams: IPTVUserParams = {
@@ -49,7 +87,7 @@ export const processWebhook = async (
       output: "ts"
     };
 
-    // Call IPTV API (in a real app, this would be a server-side call)
+    // Call IPTV API
     const userCreated = await createUser(iptvParams);
     
     if (!userCreated) {
@@ -59,30 +97,76 @@ export const processWebhook = async (
       };
     }
 
-    // Create customer record
-    const customer = {
-      resellerId: payload.resellerId,
-      name: payload.customerName,
-      email: payload.customerEmail,
-      macAddress: payload.macAddress,
-      deviceType: payload.deviceType || "Unknown",
-      planDuration: payload.planDuration
+    // Create customer record in database
+    const customerData = {
+      reseller_id: resellerId,
+      name: customerName,
+      email: customerEmail,
+      mac_address: macAddress,
+      device_type: deviceType,
+      plan_duration: planDuration,
+      start_date: startDate,
+      expiration_date: expirationDate,
+      username,
+      password
     };
 
-    // Add customer to system
-    const success = await addCustomer(customer);
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .insert(customerData)
+      .select()
+      .single();
 
-    if (!success) {
+    if (customerError) {
       return {
         success: false,
-        message: "Failed to add customer to system"
+        message: `Failed to add customer to database: ${customerError.message}`
       };
     }
 
+    // Deduct credits from reseller
+    const { error: creditError } = await supabase
+      .from('profiles')
+      .update({ credits: reseller.credits - planDuration })
+      .eq('id', resellerId);
+
+    if (creditError) {
+      return {
+        success: false,
+        message: `Failed to deduct credits: ${creditError.message}`
+      };
+    }
+
+    // Log the transaction
+    const { error: logError } = await supabase
+      .from('credit_logs')
+      .insert({
+        reseller_id: resellerId,
+        action: 'account_creation',
+        credits_used: planDuration,
+        customer_id: customer.id,
+        customer_name: customerName,
+        notes: `${planDuration} month subscription via webhook`
+      });
+
+    if (logError) {
+      console.error("Failed to log transaction:", logError);
+    }
+
+    // Return success with customer data
     return {
       success: true,
       message: "Customer provisioned successfully",
-      customer
+      customer: {
+        resellerId,
+        name: customerName,
+        email: customerEmail,
+        macAddress,
+        deviceType,
+        planDuration,
+        startDate,
+        expirationDate
+      }
     };
   } catch (error) {
     console.error("Error processing webhook:", error);
