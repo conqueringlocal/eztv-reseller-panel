@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
   Table,
@@ -108,7 +107,7 @@ export function CustomerTable({
       );
     } else if (isExpiringSoon(expirationDate)) {
       return (
-        <Badge variant="warning" className="bg-yellow-100 text-yellow-800 border-yellow-200 flex items-center space-x-1">
+        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200 flex items-center space-x-1">
           <Clock size={12} />
           <span>Expiring Soon</span>
         </Badge>

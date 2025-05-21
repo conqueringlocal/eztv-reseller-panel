@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -138,6 +137,7 @@ export default function AdminResellers() {
             </DialogHeader>
             <CreditManageForm 
               resellerId={selectedResellerId} 
+              type="add"
               onSuccess={() => {
                 setIsCreditModalOpen(false);
                 setSelectedResellerId(null);

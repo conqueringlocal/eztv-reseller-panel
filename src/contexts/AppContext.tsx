@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -41,6 +40,9 @@ interface AppContextType {
   creditLogs: CreditLog[];
   resellers: Reseller[];
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'startDate' | 'expirationDate'>) => Promise<boolean>;
+  updateCustomer: (customer: Customer) => Promise<boolean>;
+  deleteCustomer: (customerId: string) => Promise<boolean>;
+  renewCustomer: (customerId: string, planDuration: number) => Promise<boolean>;
   addCredits: (resellerId: string, amount: number, notes?: string) => Promise<boolean>;
   removeCredits: (resellerId: string, amount: number, notes?: string) => Promise<boolean>;
   isLoading: boolean;
@@ -54,6 +56,9 @@ const AppContext = createContext<AppContextType>({
   creditLogs: [],
   resellers: [],
   addCustomer: async () => false,
+  updateCustomer: async () => false,
+  deleteCustomer: async () => false,
+  renewCustomer: async () => false,
   addCredits: async () => false,
   removeCredits: async () => false,
   isLoading: true,
@@ -266,6 +271,157 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Update an existing customer
+  const updateCustomer = async (updatedCustomer: Customer): Promise<boolean> => {
+    if (!user) return false;
+    
+    try {
+      // Update the customer in supabase
+      const { error } = await supabase
+        .from('customers')
+        .update({
+          name: updatedCustomer.name,
+          email: updatedCustomer.email,
+          mac_address: updatedCustomer.macAddress,
+          device_type: updatedCustomer.deviceType
+        })
+        .eq('id', updatedCustomer.id);
+      
+      if (error) {
+        toast.error(`Failed to update customer: ${error.message}`);
+        return false;
+      }
+      
+      // Refresh data
+      await refreshData();
+      return true;
+    } catch (error) {
+      console.error('Error updating customer:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
+  // Delete customer
+  const deleteCustomer = async (customerId: string): Promise<boolean> => {
+    if (!user) return false;
+    
+    try {
+      // Delete the customer from supabase
+      const { error } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerId);
+      
+      if (error) {
+        toast.error(`Failed to delete customer: ${error.message}`);
+        return false;
+      }
+      
+      // Refresh data
+      await refreshData();
+      return true;
+    } catch (error) {
+      console.error('Error deleting customer:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
+  // Renew a customer subscription
+  const renewCustomer = async (customerId: string, planDuration: number): Promise<boolean> => {
+    if (!user) return false;
+    
+    try {
+      // Get the customer to renew
+      const customer = customers.find(c => c.id === customerId);
+      if (!customer) {
+        toast.error('Customer not found');
+        return false;
+      }
+      
+      // Check if reseller has enough credits
+      const { data: reseller, error: resellerError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', customer.resellerId)
+        .single();
+      
+      if (resellerError || !reseller) {
+        toast.error('Reseller not found');
+        return false;
+      }
+      
+      if (reseller.credits < planDuration) {
+        toast.error('Insufficient credits');
+        return false;
+      }
+      
+      // Calculate new expiration date
+      const expiryDate = new Date();
+      // If the subscription is already expired, start from today
+      // Otherwise, extend from the current expiration date
+      const currentExpiryDate = new Date(customer.expirationDate);
+      if (currentExpiryDate < new Date()) {
+        expiryDate.setMonth(expiryDate.getMonth() + planDuration);
+      } else {
+        expiryDate.setTime(currentExpiryDate.getTime());
+        expiryDate.setMonth(expiryDate.getMonth() + planDuration);
+      }
+      
+      const expirationDate = expiryDate.toISOString().split('T')[0];
+      
+      // Update the customer in supabase
+      const { error: updateError } = await supabase
+        .from('customers')
+        .update({
+          expiration_date: expirationDate
+        })
+        .eq('id', customerId);
+      
+      if (updateError) {
+        toast.error(`Failed to update customer: ${updateError.message}`);
+        return false;
+      }
+      
+      // Update reseller credits
+      const { error: creditError } = await supabase
+        .from('profiles')
+        .update({ credits: reseller.credits - planDuration })
+        .eq('id', customer.resellerId);
+      
+      if (creditError) {
+        toast.error(`Failed to update credits: ${creditError.message}`);
+        return false;
+      }
+      
+      // Log the transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: customer.resellerId,
+          action: 'deduction',
+          credits_used: planDuration,
+          customer_id: customer.id,
+          customer_name: customer.name,
+          notes: `${planDuration} month subscription renewal`
+        });
+      
+      if (logError) {
+        console.error(`Failed to log transaction: ${logError.message}`);
+      }
+      
+      // Refresh data
+      await refreshData();
+      
+      return true;
+    } catch (error) {
+      console.error('Error renewing customer:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
   // Add credits to a reseller
   const addCredits = async (resellerId: string, amount: number, notes?: string): Promise<boolean> => {
     if (!user || amount <= 0) return false;
@@ -389,6 +545,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         creditLogs,
         resellers,
         addCustomer,
+        updateCustomer,
+        deleteCustomer,
+        renewCustomer,
         addCredits,
         removeCredits,
         isLoading,
