@@ -8,6 +8,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const STRIPE_PUBLIC_KEY = "pk_live_51NNaY9DUqLxD4hMqy5XCJLUoNsBt0P5SQc6t363vcrsuEKqTAb9G4EZitEFvkBA0GFEW8AHp7ANJ8zL5LlrX0o57008rl6V5A6";
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {

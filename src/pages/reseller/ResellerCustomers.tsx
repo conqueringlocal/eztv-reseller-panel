@@ -14,14 +14,50 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { AddCustomerForm } from '@/components/customers/AddCustomerForm';
+import { Customer } from '@/contexts/AppContext';
+import { toast } from 'sonner';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
 
 export default function ResellerCustomers() {
   const { user } = useAuth();
-  const { customers } = useApp();
+  const { customers, deleteCustomer } = useApp();
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
+  const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
+  const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
   
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
+
+  // Handle customer delete
+  const handleDeleteCustomer = async (customerId: string) => {
+    try {
+      const success = await deleteCustomer(customerId);
+      if (success) {
+        toast.success('Customer deleted successfully');
+      } else {
+        toast.error('Failed to delete customer');
+      }
+    } catch (error) {
+      toast.error('An error occurred while deleting the customer');
+      console.error(error);
+    }
+  };
+
+  // Handle customer renew
+  const handleRenewCustomer = (customer: Customer) => {
+    setCustomerToRenew(customer);
+    setIsRenewCustomerOpen(true);
+  };
   
   return (
     <DashboardLayout>
@@ -45,6 +81,8 @@ export default function ResellerCustomers() {
         <CustomerTable 
           customers={resellerCustomers}
           onAddClick={() => setIsAddCustomerOpen(true)}
+          onDelete={handleDeleteCustomer}
+          onRenew={handleRenewCustomer}
         />
       </DashboardCard>
       
@@ -60,6 +98,27 @@ export default function ResellerCustomers() {
           <AddCustomerForm onSuccess={() => setIsAddCustomerOpen(false)} />
         </DialogContent>
       </Dialog>
+
+      {/* Renew Customer Dialog */}
+      {customerToRenew && (
+        <Dialog open={isRenewCustomerOpen} onOpenChange={setIsRenewCustomerOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Renew Subscription</DialogTitle>
+              <DialogDescription>
+                Extend {customerToRenew.name}'s IPTV subscription. This will consume credits.
+              </DialogDescription>
+            </DialogHeader>
+            <RenewCustomerForm 
+              customer={customerToRenew} 
+              onSuccess={() => {
+                setIsRenewCustomerOpen(false);
+                setCustomerToRenew(null);
+              }} 
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 }

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { useApp } from '@/contexts/AppContext';
@@ -8,14 +8,47 @@ import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { Button } from '@/components/ui/button';
 import { CreditCard, RefreshCw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function ResellerCredits() {
   const { user } = useAuth();
   const { creditLogs, refreshData, isLoading } = useApp();
+  const [searchParams] = useSearchParams();
   
   // Filter logs for this reseller
   const resellerLogs = creditLogs.filter(log => log.resellerId === user?.id);
+  
+  // Handle successful credit purchase
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const sessionId = searchParams.get('session_id');
+    const credits = searchParams.get('credits');
+    
+    if (success === 'true' && sessionId && credits) {
+      // Verify the purchase with Supabase
+      const verifyPurchase = async () => {
+        try {
+          const { error } = await supabase.functions.invoke('verify-checkout', {
+            body: { sessionId }
+          });
+          
+          if (error) throw error;
+          
+          toast.success(`Successfully added ${credits} credits to your account!`);
+          refreshData();
+        } catch (error) {
+          console.error('Error verifying purchase:', error);
+          toast.error('There was an error verifying your purchase. Please contact support.');
+        }
+      };
+      
+      verifyPurchase();
+    } else if (searchParams.get('canceled') === 'true') {
+      toast.error('Credit purchase was canceled. No charges were made.');
+    }
+  }, [searchParams, refreshData]);
   
   return (
     <DashboardLayout>

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
+import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import {
   Table,
   TableBody,
@@ -15,11 +16,20 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 export default function AdminResellers() {
-  const { resellers } = useApp();
+  const { resellers, customers } = useApp();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const [selectedResellerId, setSelectedResellerId] = useState<string | null>(null);
+  const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   
   // Filter resellers based on search
   const filteredResellers = resellers.filter(
@@ -27,6 +37,17 @@ export default function AdminResellers() {
       reseller.name.toLowerCase().includes(search.toLowerCase()) ||
       reseller.email.toLowerCase().includes(search.toLowerCase())
   );
+  
+  // Get customer count per reseller
+  const getCustomerCount = (resellerId: string) => {
+    return customers.filter(c => c.resellerId === resellerId).length;
+  };
+
+  // Handle manage credits click
+  const handleManageCredits = (resellerId: string) => {
+    setSelectedResellerId(resellerId);
+    setIsCreditModalOpen(true);
+  };
   
   return (
     <DashboardLayout>
@@ -47,7 +68,7 @@ export default function AdminResellers() {
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-sm"
             />
-            {/* We'll implement add reseller functionality in Phase 2 */}
+            {/* We'll implement add reseller functionality in Phase 3 */}
           </div>
           
           <div className="border rounded-md overflow-hidden">
@@ -57,13 +78,14 @@ export default function AdminResellers() {
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Credits</TableHead>
+                  <TableHead>Customers</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredResellers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-6 text-gray-500">
+                    <TableCell colSpan={5} className="text-center py-6 text-gray-500">
                       No resellers found matching your search.
                     </TableCell>
                   </TableRow>
@@ -76,13 +98,24 @@ export default function AdminResellers() {
                         <CreditsBadge credits={reseller.credits} />
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => navigate(`/admin/resellers/${reseller.id}`)}
-                        >
-                          Manage
-                        </Button>
+                        {getCustomerCount(reseller.id)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleManageCredits(reseller.id)}
+                          >
+                            Manage Credits
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => navigate(`/admin/resellers/${reseller.id}`)}
+                          >
+                            Details
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -92,6 +125,27 @@ export default function AdminResellers() {
           </div>
         </div>
       </DashboardCard>
+
+      {/* Manage Credits Dialog */}
+      {selectedResellerId && (
+        <Dialog open={isCreditModalOpen} onOpenChange={setIsCreditModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Manage Credits</DialogTitle>
+              <DialogDescription>
+                Add or remove credits from this reseller's account.
+              </DialogDescription>
+            </DialogHeader>
+            <CreditManageForm 
+              resellerId={selectedResellerId} 
+              onSuccess={() => {
+                setIsCreditModalOpen(false);
+                setSelectedResellerId(null);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 }

@@ -1,23 +1,63 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { useApp } from '@/contexts/AppContext';
-import { CreditCard, Users, FileText } from 'lucide-react';
+import { CreditCard, Users, FileText, Calendar, CreditCardIcon } from 'lucide-react';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
+import { CreditLogTable } from '@/components/credits/CreditLogTable';
+import { CreditManageForm } from '@/components/credits/CreditManageForm';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
 
 export default function AdminDashboard() {
-  const { resellers, customers } = useApp();
+  const { resellers, customers, creditLogs } = useApp();
   const navigate = useNavigate();
+  const [searchReseller, setSearchReseller] = useState('');
+  const [searchLog, setSearchLog] = useState('');
+  const [selectedResellerId, setSelectedResellerId] = useState<string | null>(null);
+  const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   
   // Calculate total credits across all resellers
   const totalCredits = resellers.reduce((sum, reseller) => sum + reseller.credits, 0);
   
   // Calculate total customers
   const totalCustomers = customers.length;
+
+  // Filter resellers based on search
+  const filteredResellers = resellers.filter(
+    (reseller) =>
+      reseller.name.toLowerCase().includes(searchReseller.toLowerCase()) ||
+      reseller.email.toLowerCase().includes(searchReseller.toLowerCase())
+  );
+
+  // Filter logs based on search
+  const filteredLogs = creditLogs.filter(
+    (log) =>
+      log.customerName?.toLowerCase().includes(searchLog.toLowerCase()) ||
+      log.action.toLowerCase().includes(searchLog.toLowerCase())
+  );
+  
+  // Get customer count per reseller
+  const getCustomerCount = (resellerId: string) => {
+    return customers.filter(c => c.resellerId === resellerId).length;
+  };
+
+  // Handle manage credits click
+  const handleManageCredits = (resellerId: string) => {
+    setSelectedResellerId(resellerId);
+    setIsCreditModalOpen(true);
+  };
   
   return (
     <DashboardLayout>
@@ -45,42 +85,106 @@ export default function AdminDashboard() {
         />
       </div>
       
-      {/* Reseller Overview */}
-      <div className="mb-6">
-        <DashboardCard
-          title="Reseller Overview"
-          description="View and manage all resellers"
-        >
-          <div className="space-y-3">
-            {resellers.map((reseller) => (
-              <div
-                key={reseller.id}
-                className="flex items-center justify-between p-3 border rounded-md hover:bg-gray-50"
-              >
-                <div>
-                  <h3 className="font-medium">{reseller.name}</h3>
-                  <p className="text-sm text-gray-500">{reseller.email}</p>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <CreditsBadge credits={reseller.credits} />
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => navigate(`/admin/resellers/${reseller.id}`)}
-                  >
-                    Manage
-                  </Button>
-                </div>
+      {/* Tabs for Dashboard Sections */}
+      <Tabs defaultValue="resellers" className="space-y-6">
+        <TabsList className="grid grid-cols-2 mb-4">
+          <TabsTrigger value="resellers">Resellers</TabsTrigger>
+          <TabsTrigger value="activities">System Activity</TabsTrigger>
+        </TabsList>
+
+        {/* Resellers Tab */}
+        <TabsContent value="resellers">
+          <DashboardCard
+            title="Reseller Overview"
+            description="View and manage all resellers"
+          >
+            <div className="space-y-4">
+              <Input
+                placeholder="Search resellers..."
+                value={searchReseller}
+                onChange={(e) => setSearchReseller(e.target.value)}
+                className="max-w-sm"
+              />
+              
+              <div className="border rounded-md overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="py-3 px-4 text-left font-medium text-gray-500">Name</th>
+                      <th className="py-3 px-4 text-left font-medium text-gray-500">Email</th>
+                      <th className="py-3 px-4 text-left font-medium text-gray-500">Credits</th>
+                      <th className="py-3 px-4 text-left font-medium text-gray-500">Customers</th>
+                      <th className="py-3 px-4 text-right font-medium text-gray-500">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredResellers.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="text-center py-6 text-gray-500">
+                          No resellers found matching your search.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredResellers.map((reseller) => (
+                        <tr key={reseller.id} className="hover:bg-gray-50">
+                          <td className="py-3 px-4 font-medium">{reseller.name}</td>
+                          <td className="py-3 px-4">{reseller.email}</td>
+                          <td className="py-3 px-4">
+                            <CreditsBadge credits={reseller.credits} />
+                          </td>
+                          <td className="py-3 px-4">
+                            {getCustomerCount(reseller.id)}
+                          </td>
+                          <td className="py-3 px-4 text-right">
+                            <div className="space-x-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleManageCredits(reseller.id)}
+                              >
+                                Manage Credits
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => navigate(`/admin/resellers/${reseller.id}`)}
+                              >
+                                View Details
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-            ))}
-          </div>
-        </DashboardCard>
-      </div>
+            </div>
+          </DashboardCard>
+        </TabsContent>
+
+        {/* Activities Tab */}
+        <TabsContent value="activities">
+          <DashboardCard
+            title="System Activity Log"
+            description="Complete history of all system activity"
+          >
+            <div className="space-y-4">
+              <Input
+                placeholder="Search logs..."
+                value={searchLog}
+                onChange={(e) => setSearchLog(e.target.value)}
+                className="max-w-sm"
+              />
+              <CreditLogTable logs={filteredLogs.slice(0, 100)} />
+            </div>
+          </DashboardCard>
+        </TabsContent>
+      </Tabs>
       
       {/* Quick Actions */}
-      <div>
+      <div className="mt-6">
         <h2 className="text-lg font-medium mb-3">Quick Actions</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
           <Button 
             variant="outline" 
             className="h-auto flex flex-col items-center justify-center px-4 py-6 space-y-2 hover:bg-gray-50"
@@ -105,8 +209,37 @@ export default function AdminDashboard() {
             <FileText className="h-6 w-6 text-eztv-600" />
             <span>View Logs</span>
           </Button>
+          <Button 
+            variant="outline" 
+            className="h-auto flex flex-col items-center justify-center px-4 py-6 space-y-2 hover:bg-gray-50"
+            onClick={() => navigate('/admin/settings')}
+          >
+            <Calendar className="h-6 w-6 text-eztv-600" />
+            <span>System Settings</span>
+          </Button>
         </div>
       </div>
+      
+      {/* Manage Credits Dialog */}
+      {selectedResellerId && (
+        <Dialog open={isCreditModalOpen} onOpenChange={setIsCreditModalOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Manage Credits</DialogTitle>
+              <DialogDescription>
+                Add or remove credits from this reseller's account.
+              </DialogDescription>
+            </DialogHeader>
+            <CreditManageForm 
+              resellerId={selectedResellerId} 
+              onSuccess={() => {
+                setIsCreditModalOpen(false);
+                setSelectedResellerId(null);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </DashboardLayout>
   );
 }
