@@ -136,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error during global sign out:', err);
       }
       
-      // Sign up with email/password and metadata
+      // Sign up with email/password and explicitly set metadata
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
