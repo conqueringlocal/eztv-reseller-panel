@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
+  register: (email: string, password: string, name: string, role?: UserRole) => Promise<boolean>;
 }
 
 // Create the context with a default value
@@ -28,6 +30,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => false,
   logout: () => {},
   isAuthenticated: false,
+  register: async () => false,
 });
 
 // Clean up auth state to prevent issues
@@ -120,6 +123,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  const register = async (email: string, password: string, name: string, role: UserRole = 'reseller'): Promise<boolean> => {
+    try {
+      // Clean up existing state
+      cleanupAuthState();
+      
+      // Try global sign out first
+      try {
+        await supabase.auth.signOut({ scope: 'global' });
+      } catch (err) {
+        // Continue even if this fails
+        console.error('Error during global sign out:', err);
+      }
+      
+      // Sign up with email/password and metadata
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            role
+          },
+        },
+      });
+      
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+
+      if (data.user) {
+        toast.success(`Account created successfully!`);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Registration error:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       // Clean up existing state
@@ -182,7 +228,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading, 
       login, 
       logout, 
-      isAuthenticated: !!user 
+      isAuthenticated: !!user,
+      register
     }}>
       {children}
     </AuthContext.Provider>

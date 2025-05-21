@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from "sonner";
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
@@ -32,6 +33,7 @@ export default function AdminSetup() {
   const [checkingAdmins, setCheckingAdmins] = useState(true);
   const [adminExists, setAdminExists] = useState(false);
   const navigate = useNavigate();
+  const { register } = useAuth();
 
   // Initialize form
   const form = useForm<FormData>({
@@ -76,46 +78,17 @@ export default function AdminSetup() {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     try {
-      // 1. Sign up the user
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            name: data.name,
-          },
-        },
-      });
+      const success = await register(
+        data.email,
+        data.password,
+        data.name,
+        'admin'
+      );
 
-      if (signUpError) {
-        toast.error(signUpError.message);
-        return;
+      if (success) {
+        toast.success('Admin account created successfully!');
+        navigate('/login');
       }
-
-      if (!authData.user) {
-        toast.error('Failed to create account');
-        return;
-      }
-
-      // 2. Update the profile to make them an admin
-      // Note: This assumes you have a trigger that creates profiles on user signup
-      // We'll need to update the role field
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ 
-          role: 'admin',
-          name: data.name,
-          credits: 1000 // Give admin some initial credits
-        })
-        .eq('id', authData.user.id);
-
-      if (updateError) {
-        toast.error('Failed to set admin role: ' + updateError.message);
-        return;
-      }
-
-      toast.success('Admin account created successfully!');
-      navigate('/login');
     } catch (error) {
       console.error('Error creating admin:', error);
       toast.error('An unexpected error occurred');
