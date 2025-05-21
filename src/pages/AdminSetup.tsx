@@ -33,7 +33,7 @@ export default function AdminSetup() {
   const [checkingAdmins, setCheckingAdmins] = useState(true);
   const [adminExists, setAdminExists] = useState(false);
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { login } = useAuth();
 
   // Initialize form
   const form = useForm<FormData>({
@@ -78,21 +78,53 @@ export default function AdminSetup() {
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     try {
-      const success = await register(
-        data.email,
-        data.password,
-        data.name,
-        'admin'
-      );
+      // Step 1: Sign up the user with Supabase Auth
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+      });
 
-      if (success) {
-        toast.success('Admin account created successfully!');
-        navigate('/login');
+      if (signUpError) {
+        toast.error(signUpError.message);
+        setIsLoading(false);
+        return;
       }
+
+      if (!authData.user) {
+        toast.error('Failed to create account');
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: Insert directly into profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: authData.user.id,
+          name: data.name,
+          email: data.email,
+          role: 'admin',
+          credits: 1000 // Starting credits for admin
+        });
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        toast.error('Error creating admin profile');
+        setIsLoading(false);
+        return;
+      }
+
+      toast.success('Admin account created successfully!');
+      
+      // Wait a moment for database to update
+      setTimeout(() => {
+        setIsLoading(false);
+        navigate('/login');
+      }, 1500);
+      
     } catch (error) {
       console.error('Error creating admin:', error);
       toast.error('An unexpected error occurred');
-    } finally {
       setIsLoading(false);
     }
   };
