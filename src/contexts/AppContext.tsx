@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -696,7 +695,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     try {
       // Prepare update data
-      const updateData: { logo_url?: string; accent_color?: string } = {};
+      const updateData: Record<string, string | undefined> = {};
       if (logoUrl) updateData.logo_url = logoUrl;
       if (accentColor) updateData.accent_color = accentColor;
       

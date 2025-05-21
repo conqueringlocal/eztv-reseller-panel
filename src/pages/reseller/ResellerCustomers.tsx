@@ -110,28 +110,28 @@ export default function ResellerCustomers() {
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <DashboardCard>
+        <DashboardCard title="Active Connections">
           <div className="p-4">
             <div className="text-sm font-medium text-gray-500">Active Connections</div>
             <div className="text-2xl font-bold text-green-600">{totalActiveConnections}</div>
           </div>
         </DashboardCard>
         
-        <DashboardCard>
+        <DashboardCard title="Expiring Soon">
           <div className="p-4">
             <div className="text-sm font-medium text-gray-500">Expiring Soon</div>
             <div className="text-2xl font-bold text-yellow-600">{expiringSoonCount}</div>
           </div>
         </DashboardCard>
         
-        <DashboardCard>
+        <DashboardCard title="Expired">
           <div className="p-4">
             <div className="text-sm font-medium text-gray-500">Expired</div>
             <div className="text-2xl font-bold text-red-600">{expiredCount}</div>
           </div>
         </DashboardCard>
         
-        <DashboardCard>
+        <DashboardCard title="Deactivated">
           <div className="p-4">
             <div className="text-sm font-medium text-gray-500">Deactivated</div>
             <div className="text-2xl font-bold text-gray-600">{deactivatedCount}</div>
