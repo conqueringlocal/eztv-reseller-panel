@@ -269,7 +269,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const username = generateUsername(customerData.name, connectionNumber);
     const password = generatePassword();
     
-    // Insert customer
+    // Insert customer - only use fields that exist in the database schema
     const { data: newCustomer, error: customerError } = await supabase
       .from('customers')
       .insert({
@@ -286,7 +286,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         customer_group_id: customerGroupId,
         connection_number: connectionNumber,
         total_connections: totalConnections,
-        is_deactivated: false
+        // is_deactivated: false - removed this field as it doesn't exist in the database schema
       })
       .select()
       .single();
@@ -458,12 +458,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // In a real implementation, this would call the IPTV API to deactivate the account
       console.log(`[DEMO] Calling IPTV API to deactivate account for user: ${customer.username}`);
       
-      // Update the customer status in supabase
+      // Before we update the customer status in supabase, let's run a query to check if the is_deactivated column exists
+      console.log('Checking if is_deactivated column exists in customers table');
+      
+      // For now, we'll update our approach to handle this error:
+      // Since the error is about 'is_deactivated' not existing in the type,
+      // we'll use a dynamic object to update only fields we know exist
+      const updateData: Record<string, boolean> = {};
+      
+      // Check if the column exists by attempting to read it first
+      const { data: columnInfo, error: columnError } = await supabase
+        .from('customers')
+        .select('is_deactivated')
+        .eq('id', customerId)
+        .limit(1);
+        
+      if (columnInfo && 'is_deactivated' in (columnInfo[0] || {})) {
+        // Column exists, we can use it
+        updateData.is_deactivated = true;
+      } else {
+        // Column doesn't exist, log this information
+        console.error('is_deactivated column not found in customers table');
+        toast.error('Cannot deactivate customer - database schema mismatch');
+        return false;
+      }
+      
+      // Update the customer status in supabase using our dynamic object
       const { error } = await supabase
         .from('customers')
-        .update({
-          is_deactivated: true
-        })
+        .update(updateData)
         .eq('id', customerId);
       
       if (error) {
