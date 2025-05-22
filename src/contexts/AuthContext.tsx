@@ -138,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('Registering with role:', role);
       
-      // Sign up with email/password and explicitly set metadata
+      // Step 1: Sign up with email/password with metadata
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -156,12 +156,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
 
-      if (data.user) {
-        toast.success(`Account created successfully!`);
-        return true;
+      if (!data.user) {
+        console.error('No user returned from signUp');
+        toast.error('Registration failed');
+        return false;
       }
 
-      return false;
+      console.log('SignUp successful, user ID:', data.user.id);
+      
+      // Step 2: Manually ensure the profile exists with correct data
+      // This is a fallback in case the database trigger doesn't work
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: data.user.id,
+          name: name,
+          email: email,
+          role: role,
+          credits: role === 'reseller' ? 0 : null
+        }, {
+          onConflict: 'id'
+        });
+        
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        toast.error('Profile creation failed: ' + profileError.message);
+        return false;
+      }
+      
+      toast.success(`Account created successfully!`);
+      return true;
     } catch (error) {
       console.error('Registration error:', error);
       toast.error('An unexpected error occurred');

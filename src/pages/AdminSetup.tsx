@@ -61,8 +61,11 @@ export default function AdminSetup() {
         }
 
         if (count && count > 0) {
+          console.log('Admin accounts found:', count);
           setAdminExists(true);
           navigate('/login');
+        } else {
+          console.log('No admin accounts found');
         }
       } catch (error) {
         console.error('Error in admin check:', error);
@@ -94,6 +97,8 @@ export default function AdminSetup() {
         setTimeout(() => {
           navigate('/login');
         }, 1500);
+      } else {
+        toast.error('Failed to create admin account');
       }
     } catch (error) {
       console.error('Error creating admin:', error);
