@@ -18,6 +18,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
 // Form schema
 const formSchema = z.object({
@@ -33,10 +35,15 @@ type FormData = z.infer<typeof formSchema>;
 const SUPABASE_URL = "https://hddnqgggjjlildufirof.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhkZG5xZ2dnampsaWxkdWZpcm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MDAzMzQsImV4cCI6MjA2MzM3NjMzNH0.ZvsGyn-c_FqwTg6fSLO8C7pWJcyW4Ev2jWoURq_H_Ho";
 
+// Demo account credentials
+const DEMO_EMAIL = 'admin@demo.com';
+const DEMO_PASSWORD = 'Admin123!';
+
 export default function AdminSetup() {
   const [isLoading, setIsLoading] = useState(false);
   const [checkingAdmins, setCheckingAdmins] = useState(true);
   const [adminExists, setAdminExists] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const { register } = useAuth();
 
@@ -74,6 +81,8 @@ export default function AdminSetup() {
           navigate('/login');
         } else {
           console.log('No admin accounts found, showing admin setup form');
+          // Create demo admin account if it doesn't exist
+          await createDemoAdminIfNeeded();
         }
       } catch (error) {
         console.error('Error in admin check:', error);
@@ -85,28 +94,107 @@ export default function AdminSetup() {
     checkForAdmins();
   }, [navigate]);
 
+  // Create demo admin account if needed
+  const createDemoAdminIfNeeded = async () => {
+    try {
+      // First ensure the user_role type exists
+      try {
+        await ensureUserRoleType();
+      } catch (typeError) {
+        console.error('Error ensuring user role type:', typeError);
+        // Continue anyway, it might already exist
+      }
+      
+      // Check if demo account already exists
+      const { data: existingAdmin } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', DEMO_EMAIL)
+        .single();
+
+      if (existingAdmin) {
+        console.log('Demo admin account already exists');
+        return;
+      }
+
+      // Create demo admin directly in the database
+      console.log('Creating demo admin account...');
+      
+      // 1. Create auth user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: DEMO_EMAIL,
+        password: DEMO_PASSWORD,
+        options: {
+          data: {
+            name: 'Demo Admin',
+            role: 'admin'
+          }
+        }
+      });
+
+      if (authError) {
+        console.error('Error creating demo auth user:', authError);
+        return;
+      }
+      
+      if (authData.user) {
+        // 2. Create profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: authData.user.id,
+            name: 'Demo Admin',
+            email: DEMO_EMAIL,
+            role: 'admin',
+            credits: 1000
+          });
+          
+        if (profileError) {
+          console.error('Error creating demo profile:', profileError);
+        } else {
+          console.log('Demo admin account created successfully');
+        }
+      }
+    } catch (error) {
+      console.error('Error creating demo admin:', error);
+    }
+  };
+
+  // Helper to ensure user_role type exists
+  const ensureUserRoleType = async () => {
+    try {
+      console.log('Ensuring user_role type exists...');
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/create-role-type`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      });
+      
+      const result = await response.json();
+      console.log('Role type creation result:', result);
+      return result;
+    } catch (error) {
+      console.error('Error ensuring role type exists:', error);
+      throw error;
+    }
+  };
+
   // Handle form submission
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
+    setError(null);
+    
     try {
       console.log('Creating admin with data:', { ...data, role: 'admin' });
       
-      // First, let's ensure the user_role type exists
+      // Ensure the user_role type exists
       try {
-        // Call the Edge Function to ensure the user_role type exists
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/create-role-type`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-          }
-        });
-        
-        const result = await response.json();
-        console.log('Role type creation result:', result);
+        await ensureUserRoleType();
       } catch (error) {
         console.log('Error ensuring role type exists:', error);
-        // Continue anyway, it might already exist
+        // Continue anyway, it might work
       }
       
       const success = await register(
@@ -165,11 +253,13 @@ export default function AdminSetup() {
           console.error('Fallback creation error:', fallbackError);
         }
         
+        setError('Failed to create admin account - please use demo credentials');
         toast.error('Failed to create admin account - please use demo credentials');
         console.error('Admin registration returned false');
       }
     } catch (error) {
       console.error('Error creating admin:', error);
+      setError('An unexpected error occurred');
       toast.error('An unexpected error occurred');
     } finally {
       setIsLoading(false);
@@ -177,34 +267,38 @@ export default function AdminSetup() {
   };
 
   // Use demo account
-  const useDemo = () => {
-    toast.info('Using demo admin account. Redirecting...');
+  const useDemo = async () => {
+    toast.info('Signing in with demo admin account...');
+    setIsLoading(true);
     
-    // Try to authenticate with demo credentials
-    const loginWithDemo = async () => {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: 'admin@demo.com',
-          password: 'Admin123!'
-        });
-        
-        if (error) {
-          console.error('Demo login error:', error);
-          toast.error('Demo login failed: ' + error.message);
-          return;
-        }
-        
-        if (data.user) {
-          toast.success('Demo login successful!');
-          setTimeout(() => navigate('/admin'), 1500);
-        }
-      } catch (demoError) {
-        console.error('Demo auth error:', demoError);
-        toast.error('Error using demo account');
+    try {
+      // First ensure we're logged out
+      await supabase.auth.signOut();
+      
+      // Try to authenticate with demo credentials
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: DEMO_EMAIL,
+        password: DEMO_PASSWORD
+      });
+      
+      if (error) {
+        console.error('Demo login error:', error);
+        toast.error('Demo login failed: ' + error.message);
+        setError('Demo login failed: ' + error.message);
+        return;
       }
-    };
-    
-    loginWithDemo();
+      
+      if (data.user) {
+        toast.success('Demo login successful!');
+        navigate('/admin');
+      }
+    } catch (demoError: any) {
+      console.error('Demo auth error:', demoError);
+      setError('Error using demo account: ' + (demoError?.message || 'Unknown error'));
+      toast.error('Error using demo account');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   if (checkingAdmins) {
@@ -235,6 +329,14 @@ export default function AdminSetup() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Error</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
@@ -296,16 +398,17 @@ export default function AdminSetup() {
                 </Button>
 
                 <div className="text-center mt-4 text-sm text-gray-500">
-                  <p>If you continue to have issues, you can use these demo credentials:</p>
-                  <p className="font-semibold mt-1">Email: admin@demo.com</p>
-                  <p className="font-semibold">Password: Admin123!</p>
+                  <p>If you continue to have issues, use our demo admin account:</p>
+                  <p className="font-semibold mt-1">Email: {DEMO_EMAIL}</p>
+                  <p className="font-semibold">Password: {DEMO_PASSWORD}</p>
                   <Button 
                     type="button" 
                     variant="outline" 
                     className="mt-2 w-full" 
                     onClick={useDemo}
+                    disabled={isLoading}
                   >
-                    Use Demo Account
+                    {isLoading ? 'Signing in...' : 'Use Demo Account'}
                   </Button>
                 </div>
               </form>

@@ -142,19 +142,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('Registering with email:', email, 'role:', role);
       
-      // Create a direct INSERT into profiles first to avoid DB trigger issues
-      const { error: directProfileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: 'placeholder', // Will be updated by the on_auth_user_created trigger
-          name: name,
-          email: email,
-          role: role
+      // 1. Direct SQL to ensure user_role type exists
+      try {
+        console.log("Attempting to create user_role type if needed");
+        await fetch("https://hddnqgggjjlildufirof.supabase.co/functions/v1/create-role-type", {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhkZG5xZ2dnampsaWxkdWZpcm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MDAzMzQsImV4cCI6MjA2MzM3NjMzNH0.ZvsGyn-c_FqwTg6fSLO8C7pWJcyW4Ev2jWoURq_H_Ho`
+          }
         });
+      } catch (error) {
+        console.error("Error calling create-role-type function:", error);
+        // Continue anyway 
+      }
+      
+      // Create a direct INSERT into profiles first to avoid DB trigger issues
+      try {
+        const { error: directProfileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: 'placeholder', // Will be updated by the on_auth_user_created trigger
+            name: name,
+            email: email,
+            role: role
+          });
 
-      if (directProfileError) {
-        console.log('Profile pre-creation failed (this is expected):', directProfileError.message);
-        // This is expected to fail due to the placeholder ID, but might help initialize the role type
+        if (directProfileError) {
+          console.log('Profile pre-creation failed (this is expected):', directProfileError.message);
+          // This is expected to fail due to the placeholder ID, but might help initialize the role type
+        }
+      } catch (err) {
+        // Continue even if this fails
+        console.error('Error during profile pre-creation:', err);
       }
 
       // Step 1: Sign up with email/password with metadata

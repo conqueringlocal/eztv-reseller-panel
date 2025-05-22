@@ -19,41 +19,46 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     
-    // Check if the enum type exists
-    const { data: enumCheck, error: enumError } = await supabaseClient
-      .rpc('check_if_enum_exists', { enum_name: 'user_role' });
+    console.log('Creating user_role type directly with SQL');
     
-    if (enumError) {
-      console.error('Error checking enum existence:', enumError);
-      return new Response(JSON.stringify({ error: enumError.message }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      });
-    }
+    // Execute direct SQL to create the enum type if it doesn't exist
+    const { data: createTypeResult, error: createTypeError } = await supabaseClient.rpc(
+      'execute_sql',
+      { 
+        sql: "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN CREATE TYPE user_role AS ENUM ('admin', 'reseller'); END IF; END $$;"
+      }
+    ).single();
     
-    if (!enumCheck) {
-      // Create the enum type
-      const { data, error } = await supabaseClient
-        .rpc('create_user_role_enum');
+    if (createTypeError) {
+      console.error('Error creating type with direct SQL:', createTypeError);
+      
+      // Fallback to direct CREATE TYPE statement
+      const { data: fallbackResult, error: fallbackError } = await supabaseClient
+        .rpc('execute_sql', { 
+          sql: "CREATE TYPE IF NOT EXISTS user_role AS ENUM ('admin', 'reseller');" 
+        })
+        .single();
         
-      if (error) {
-        console.error('Error creating enum type:', error);
-        return new Response(JSON.stringify({ error: error.message }), {
+      if (fallbackError) {
+        console.error('Fallback type creation failed:', fallbackError);
+        return new Response(JSON.stringify({ error: fallbackError.message }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500,
         });
       }
       
+      console.log('Fallback type creation result:', fallbackResult);
       return new Response(
-        JSON.stringify({ success: true, message: 'user_role enum type created' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } else {
-      return new Response(
-        JSON.stringify({ success: true, message: 'user_role enum type already exists' }),
+        JSON.stringify({ success: true, message: 'user_role enum type created via fallback' }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log('Type creation result:', createTypeResult);
+    return new Response(
+      JSON.stringify({ success: true, message: 'user_role enum type created or already exists' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   } catch (error) {
     console.error('Unexpected error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
