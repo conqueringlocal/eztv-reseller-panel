@@ -61,6 +61,8 @@ export default function AdminSetup() {
           return;
         }
 
+        console.log('Admin check result:', { data, count });
+
         if (count && count > 0) {
           console.log('Admin accounts found:', count);
           setAdminExists(true);
