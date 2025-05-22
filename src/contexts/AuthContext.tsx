@@ -142,6 +142,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('Registering with email:', email, 'role:', role);
       
+      // Create a direct INSERT into profiles first to avoid DB trigger issues
+      const { error: directProfileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: 'placeholder', // Will be updated by the on_auth_user_created trigger
+          name: name,
+          email: email,
+          role: role
+        });
+
+      if (directProfileError) {
+        console.log('Profile pre-creation failed (this is expected):', directProfileError.message);
+        // This is expected to fail due to the placeholder ID, but might help initialize the role type
+      }
+
       // Step 1: Sign up with email/password with metadata
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -168,21 +183,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('SignUp successful, user ID:', data.user.id);
       
-      // The profile should be created automatically via the database trigger
-      // Wait a moment for the database trigger to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Let's check if the profile was created
-      const { data: profileData, error: profileError } = await supabase
+      // Manually create the user profile as a fallback
+      const { error: profileError } = await supabase
         .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
-        
+        .insert({
+          id: data.user.id,
+          name: name,
+          email: email,
+          role: role,
+          credits: 0
+        });
+
       if (profileError) {
-        console.warn('Could not fetch profile after creation:', profileError);
+        console.error('Manual profile creation error:', profileError);
+        
+        // Try upsert as a fallback
+        const { error: upsertError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            name: name,
+            email: email,
+            role: role,
+            credits: 0
+          });
+          
+        if (upsertError) {
+          console.error('Profile upsert error:', upsertError);
+          toast.error("Account created but profile setup failed");
+          // Continue anyway - we will try to fix this on login
+        }
       } else {
-        console.log('Profile created successfully:', profileData);
+        console.log('Manual profile creation successful');
       }
       
       toast.success(`Account created successfully!`);
