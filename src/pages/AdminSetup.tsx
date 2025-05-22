@@ -86,12 +86,22 @@ export default function AdminSetup() {
     try {
       console.log('Creating admin with data:', { ...data, role: 'admin' });
       
-      // First, let's ensure the user_role type exists and profiles table is ready
+      // First, let's ensure the user_role type exists
       try {
-        // This query will fail if user_role already exists, which is fine
-        await supabase.rpc('create_role_type_if_not_exists');
+        // Call the Edge Function to ensure the user_role type exists
+        const response = await fetch(`${supabase.supabaseUrl}/functions/v1/create-role-type`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabase.supabaseKey}`
+          }
+        });
+        
+        const result = await response.json();
+        console.log('Role type creation result:', result);
       } catch (error) {
-        console.log('Initialization RPC failed or not defined, continuing...');
+        console.log('Error ensuring role type exists:', error);
+        // Continue anyway, it might already exist
       }
       
       const success = await register(
