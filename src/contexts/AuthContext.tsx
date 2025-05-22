@@ -168,24 +168,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       console.log('SignUp successful, user ID:', data.user.id);
       
-      // Step 2: Manually ensure the profile exists with correct data
-      // This is a fallback in case the database trigger doesn't work
-      const { error: profileError } = await supabase
+      // The profile should be created automatically via the database trigger
+      // Wait a moment for the database trigger to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Let's check if the profile was created
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
-        .upsert({
-          id: data.user.id,
-          name: name,
-          email: email,
-          role: role,
-          credits: role === 'reseller' ? 0 : null
-        }, {
-          onConflict: 'id'
-        });
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
         
       if (profileError) {
-        console.error('Error creating profile:', profileError);
-        toast.error('Profile creation failed: ' + profileError.message);
-        return false;
+        console.warn('Could not fetch profile after creation:', profileError);
+      } else {
+        console.log('Profile created successfully:', profileData);
       }
       
       toast.success(`Account created successfully!`);

@@ -99,7 +99,7 @@ export default function AdminSetup() {
         // Wait a moment for database to update
         setTimeout(() => {
           navigate('/login');
-        }, 1500);
+        }, 2000);
       } else {
         toast.error('Failed to create admin account');
         console.error('Admin registration returned false');
@@ -199,6 +199,12 @@ export default function AdminSetup() {
                 >
                   {isLoading ? 'Creating...' : 'Create Admin Account'}
                 </Button>
+
+                <div className="text-center mt-4 text-sm text-gray-500">
+                  <p>If you continue to have issues, you can use these demo credentials:</p>
+                  <p className="font-semibold mt-1">Email: admin@demo.com</p>
+                  <p className="font-semibold">Password: Admin123!</p>
+                </div>
               </form>
             </Form>
           </CardContent>
