@@ -2,6 +2,7 @@
 // This is a Supabase Edge Function that creates the user_role type if it doesn't exist
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as postgres from 'https://deno.land/x/postgres@v0.17.0/mod.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,47 +15,37 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    console.log('Creating user_role type via Edge Function');
     
-    console.log('Creating user_role type directly with SQL');
-    
-    // Execute direct SQL to create the enum type if it doesn't exist
-    const { data: createTypeResult, error: createTypeError } = await supabaseClient.rpc(
-      'execute_sql',
-      { 
-        sql: "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN CREATE TYPE user_role AS ENUM ('admin', 'reseller'); END IF; END $$;"
-      }
-    ).single();
-    
-    if (createTypeError) {
-      console.error('Error creating type with direct SQL:', createTypeError);
-      
-      // Fallback to direct CREATE TYPE statement
-      const { data: fallbackResult, error: fallbackError } = await supabaseClient
-        .rpc('execute_sql', { 
-          sql: "CREATE TYPE IF NOT EXISTS user_role AS ENUM ('admin', 'reseller');" 
-        })
-        .single();
-        
-      if (fallbackError) {
-        console.error('Fallback type creation failed:', fallbackError);
-        return new Response(JSON.stringify({ error: fallbackError.message }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
-        });
-      }
-      
-      console.log('Fallback type creation result:', fallbackResult);
-      return new Response(
-        JSON.stringify({ success: true, message: 'user_role enum type created via fallback' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Connect directly to the database
+    const databaseUrl = Deno.env.get('SUPABASE_DB_URL');
+    if (!databaseUrl) {
+      throw new Error('Database URL not found');
     }
     
-    console.log('Type creation result:', createTypeResult);
+    // Create a connection pool to the database
+    const pool = new postgres.Pool(databaseUrl, 2, true);
+    const connection = await pool.connect();
+    
+    try {
+      // Execute direct SQL to create the type
+      await connection.queryArray(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+            CREATE TYPE user_role AS ENUM ('admin', 'reseller');
+          END IF;
+        END
+        $$;
+      `);
+      
+      console.log('Successfully executed SQL to create user_role type');
+    } finally {
+      // Release the connection back to the pool
+      connection.release();
+      await pool.end();
+    }
+
     return new Response(
       JSON.stringify({ success: true, message: 'user_role enum type created or already exists' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
