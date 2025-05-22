@@ -28,6 +28,11 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
+// Hardcoded Supabase URL and anon key for edge function calls
+// These are public values already exposed in the client code
+const SUPABASE_URL = "https://hddnqgggjjlildufirof.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhkZG5xZ2dnampsaWxkdWZpcm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MDAzMzQsImV4cCI6MjA2MzM3NjMzNH0.ZvsGyn-c_FqwTg6fSLO8C7pWJcyW4Ev2jWoURq_H_Ho";
+
 export default function AdminSetup() {
   const [isLoading, setIsLoading] = useState(false);
   const [checkingAdmins, setCheckingAdmins] = useState(true);
@@ -89,11 +94,11 @@ export default function AdminSetup() {
       // First, let's ensure the user_role type exists
       try {
         // Call the Edge Function to ensure the user_role type exists
-        const response = await fetch(`${supabase.supabaseUrl}/functions/v1/create-role-type`, {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/create-role-type`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.supabaseKey}`
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
           }
         });
         
@@ -171,12 +176,35 @@ export default function AdminSetup() {
     }
   };
 
-  // Use demo account if needed
+  // Use demo account
   const useDemo = () => {
     toast.info('Using demo admin account. Redirecting...');
-    setTimeout(() => {
-      navigate('/login');
-    }, 1500);
+    
+    // Try to authenticate with demo credentials
+    const loginWithDemo = async () => {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: 'admin@demo.com',
+          password: 'Admin123!'
+        });
+        
+        if (error) {
+          console.error('Demo login error:', error);
+          toast.error('Demo login failed: ' + error.message);
+          return;
+        }
+        
+        if (data.user) {
+          toast.success('Demo login successful!');
+          setTimeout(() => navigate('/admin'), 1500);
+        }
+      } catch (demoError) {
+        console.error('Demo auth error:', demoError);
+        toast.error('Error using demo account');
+      }
+    };
+    
+    loginWithDemo();
   };
 
   if (checkingAdmins) {
