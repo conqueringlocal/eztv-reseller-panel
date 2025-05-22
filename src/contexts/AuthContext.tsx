@@ -60,6 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch user profile data
   const fetchUserProfile = async (userId: string) => {
     try {
+      console.log('Fetching user profile for ID:', userId);
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -72,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data) {
+        console.log('User profile data:', data);
         setUser({
           id: data.id,
           name: data.name,
@@ -89,6 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('Auth state changed:', event, session?.user?.id);
       if (event === 'SIGNED_IN' && session?.user) {
         // Defer data fetching to prevent deadlocks
         setTimeout(() => {
@@ -105,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user) {
+          console.log('Existing session found:', session.user.id);
           await fetchUserProfile(session.user.id);
         }
         
@@ -136,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error during global sign out:', err);
       }
       
-      console.log('Registering with role:', role);
+      console.log('Registering with email:', email, 'role:', role);
       
       // Step 1: Sign up with email/password with metadata
       const { data, error } = await supabase.auth.signUp({
@@ -206,6 +210,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error during global sign out:', err);
       }
       
+      console.log('Attempting login for:', email);
+      
       // Sign in with email/password
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -219,6 +225,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (data.user) {
         // User data will be set by the auth state change event
+        console.log('Login successful for user:', data.user.id);
         toast.success(`Welcome back!`);
         return true;
       }
@@ -235,6 +242,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Clean up auth state
       cleanupAuthState();
+      
+      console.log('Logging out');
       
       // Attempt global sign out
       await supabase.auth.signOut({ scope: 'global' });

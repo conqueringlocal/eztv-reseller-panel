@@ -49,6 +49,7 @@ export default function AdminSetup() {
   useEffect(() => {
     const checkForAdmins = async () => {
       try {
+        console.log('Checking for existing admin accounts...');
         const { data, error, count } = await supabase
           .from('profiles')
           .select('*', { count: 'exact' })
@@ -65,7 +66,7 @@ export default function AdminSetup() {
           setAdminExists(true);
           navigate('/login');
         } else {
-          console.log('No admin accounts found');
+          console.log('No admin accounts found, showing admin setup form');
         }
       } catch (error) {
         console.error('Error in admin check:', error);
@@ -99,6 +100,7 @@ export default function AdminSetup() {
         }, 1500);
       } else {
         toast.error('Failed to create admin account');
+        console.error('Admin registration returned false');
       }
     } catch (error) {
       console.error('Error creating admin:', error);
