@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,7 +24,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
 // Form schemas
@@ -45,8 +45,6 @@ export default function Login() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isResetLoading, setIsResetLoading] = useState(false);
-  const [checkingAdmins, setCheckingAdmins] = useState(true);
-  const [adminExists, setAdminExists] = useState(true);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   
   // Initialize forms
@@ -64,31 +62,6 @@ export default function Login() {
       email: '',
     },
   });
-  
-  // Check if admin exists
-  useEffect(() => {
-    const checkForAdmins = async () => {
-      try {
-        const { data, error, count } = await supabase
-          .from('profiles')
-          .select('*', { count: 'exact' })
-          .eq('role', 'admin');
-
-        if (error) {
-          console.error('Error checking for admins:', error);
-          return;
-        }
-
-        setAdminExists(!!count && count > 0);
-      } catch (error) {
-        console.error('Error in admin check:', error);
-      } finally {
-        setCheckingAdmins(false);
-      }
-    };
-
-    checkForAdmins();
-  }, []);
   
   // Redirect if already logged in
   useEffect(() => {
@@ -266,21 +239,6 @@ export default function Login() {
               </form>
             </Form>
           </CardContent>
-          <CardFooter className="flex flex-col justify-center border-t pt-4 text-xs text-gray-500">
-            {!checkingAdmins && !adminExists && (
-              <div className="mb-3 text-center">
-                <p className="text-sm">No admin account found.</p>
-                <Link to="/admin-setup" className="text-eztv-700 hover:underline text-sm font-medium">
-                  Set up admin account →
-                </Link>
-              </div>
-            )}
-            <div>
-              <p>For demo purposes:</p>
-              <p>Admin: admin@eztv.club / admin123</p>
-              <p>Reseller: reseller@eztv.club / reseller123</p>
-            </div>
-          </CardFooter>
         </Card>
       </div>
     </div>

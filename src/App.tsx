@@ -24,7 +24,6 @@ import ResellerCredits from "./pages/reseller/ResellerCredits";
 import ResellerCreditPurchase from "./pages/reseller/ResellerCreditPurchase";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
 import Webhook from "./pages/Webhook";
-import AdminSetup from "./pages/AdminSetup";
 
 const queryClient = new QueryClient();
 
@@ -43,7 +42,6 @@ const App = () => (
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/admin-setup" element={<AdminSetup />} />
               <Route path="/api/webhook" element={<Webhook />} />
               
               {/* Protected admin routes */}
