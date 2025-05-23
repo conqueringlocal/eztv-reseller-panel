@@ -34,11 +34,6 @@ type FormData = z.infer<typeof formSchema>;
 const DEMO_EMAIL = 'admin@demo.com';
 const DEMO_PASSWORD = 'Admin123!';
 
-// Hardcoded Supabase URL and anon key for edge function calls
-// These are public values already exposed in the client code
-const SUPABASE_URL = "https://hddnqgggjjlildufirof.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhkZG5xZ2dnampsaWxkdWZpcm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MDAzMzQsImV4cCI6MjA2MzM3NjMzNH0.ZvsGyn-c_FqwTg6fSLO8C7pWJcyW4Ev2jWoURq_H_Ho";
-
 export default function AdminSetup() {
   const [isLoading, setIsLoading] = useState(false);
   const [checkingAdmins, setCheckingAdmins] = useState(true);
@@ -57,40 +52,11 @@ export default function AdminSetup() {
     },
   });
 
-  // Helper to ensure user_role type exists
-  const ensureUserRoleType = async () => {
-    try {
-      console.log('Calling create-role-type edge function...');
-      
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/create-role-type`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-        }
-      });
-      
-      const result = await response.json();
-      console.log('Edge function response:', result);
-      
-      if (result.error) {
-        console.error('Error from edge function:', result.error);
-      }
-      return result;
-    } catch (error) {
-      console.error('Error calling edge function:', error);
-      throw error;
-    }
-  };
-
   // Create demo admin account
   const createDemoAdmin = async () => {
     try {
       console.log('Creating demo admin account...');
       toast.info('Setting up demo admin account...');
-      
-      // Ensure role type exists first
-      await ensureUserRoleType();
       
       // Sign out any existing session
       await supabase.auth.signOut({ scope: 'global' });
@@ -126,31 +92,8 @@ export default function AdminSetup() {
       }
 
       console.log('Demo auth created successfully:', authData?.user?.id);
-      
-      if (authData?.user) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: authData.user.id,
-            name: 'Demo Admin',
-            email: DEMO_EMAIL,
-            role: 'admin',
-            credits: 1000
-          });
-          
-        if (profileError) {
-          console.error('Error creating demo profile:', profileError);
-          toast.error('Failed to create demo profile: ' + profileError.message);
-          return false;
-        }
-        
-        console.log('Demo admin account created successfully');
-        toast.success('Demo admin account created successfully');
-        return true;
-      }
-      
-      return false;
+      toast.success('Demo admin account created successfully');
+      return true;
     } catch (error: any) {
       console.error('Error creating demo admin:', error);
       toast.error('Error creating demo admin: ' + (error?.message || 'Unknown error'));
@@ -162,14 +105,6 @@ export default function AdminSetup() {
   useEffect(() => {
     const checkForAdmins = async () => {
       try {
-        // First ensure the user_role type exists
-        try {
-          await ensureUserRoleType();
-        } catch (typeError) {
-          console.error('Error ensuring user role type:', typeError);
-          // Continue anyway, we'll try to fix this later
-        }
-        
         console.log('Checking for existing admin accounts...');
         const { data, error, count } = await supabase
           .from('profiles')
@@ -218,9 +153,6 @@ export default function AdminSetup() {
     try {
       console.log('Creating admin with data:', { ...data, role: 'admin' });
       
-      // Ensure the user_role type exists
-      await ensureUserRoleType();
-      
       // Sign out any existing session
       await supabase.auth.signOut({ scope: 'global' });
       
@@ -239,8 +171,8 @@ export default function AdminSetup() {
           navigate('/login');
         }, 2000);
       } else {
-        setError('Failed to create admin account - please use demo credentials');
-        toast.error('Failed to create admin account - please use demo credentials');
+        setError('Failed to create admin account - please try again or use demo credentials');
+        toast.error('Failed to create admin account');
       }
     } catch (error: any) {
       console.error('Error creating admin:', error);
@@ -395,7 +327,7 @@ export default function AdminSetup() {
                 </Button>
 
                 <div className="text-center mt-4 text-sm text-gray-500">
-                  <p>If you continue to have issues, use our demo admin account:</p>
+                  <p>Or use our demo admin account:</p>
                   <p className="font-semibold mt-1">Email: {DEMO_EMAIL}</p>
                   <p className="font-semibold">Password: {DEMO_PASSWORD}</p>
                   <Button 

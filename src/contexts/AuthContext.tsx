@@ -51,37 +51,6 @@ const cleanupAuthState = () => {
   });
 };
 
-// Helper to ensure user_role type exists
-const ensureUserRoleType = async () => {
-  try {
-    console.log('Ensuring user_role type exists via edge function...');
-    
-    const SUPABASE_URL = "https://hddnqgggjjlildufirof.supabase.co";
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhkZG5xZ2dnampsaWxkdWZpcm9mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc4MDAzMzQsImV4cCI6MjA2MzM3NjMzNH0.ZvsGyn-c_FqwTg6fSLO8C7pWJcyW4Ev2jWoURq_H_Ho";
-    
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/create-role-type`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-      }
-    });
-    
-    const result = await response.json();
-    console.log('Edge function response:', result);
-    
-    if (result.error) {
-      console.error('Error from edge function:', result.error);
-    }
-    
-    return result;
-  } catch (error) {
-    console.error('Error calling edge function:', error);
-    // Continue anyway - it might still work
-    return { error: error };
-  }
-};
-
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -167,35 +136,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await supabase.auth.signOut({ scope: 'global' });
       } catch (err) {
-        // Continue even if this fails
         console.error('Error during global sign out:', err);
       }
       
       console.log('Registering with email:', email, 'role:', role);
       
-      // Call edge function to ensure user_role type exists
-      await ensureUserRoleType();
-      
-      // Create a direct INSERT into profiles first to avoid DB trigger issues
-      try {
-        const { error: directProfileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: 'placeholder', // Will be updated by the on_auth_user_created trigger
-            name: name,
-            email: email,
-            role: role
-          });
-
-        if (directProfileError) {
-          console.log('Profile pre-creation failed (expected):', directProfileError.message);
-          // This is expected to fail due to the placeholder ID, but might help initialize the role type
-        }
-      } catch (err) {
-        // Continue even if this fails
-        console.error('Error during profile pre-creation:', err);
-      }
-
       // Step 1: Sign up with email/password with metadata
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -221,41 +166,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       console.log('SignUp successful, user ID:', data.user.id);
-      
-      // Manually create the user profile as a fallback
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: data.user.id,
-          name: name,
-          email: email,
-          role: role,
-          credits: 0
-        });
-
-      if (profileError) {
-        console.error('Manual profile creation error:', profileError);
-        
-        // Try upsert as a fallback
-        const { error: upsertError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: data.user.id,
-            name: name,
-            email: email,
-            role: role,
-            credits: 0
-          });
-          
-        if (upsertError) {
-          console.error('Profile upsert error:', upsertError);
-          toast.error("Account created but profile setup failed");
-          // Continue anyway - we will try to fix this on login
-        }
-      } else {
-        console.log('Manual profile creation successful');
-      }
-      
       toast.success(`Account created successfully!`);
       return true;
     } catch (error) {
@@ -274,16 +184,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         await supabase.auth.signOut({ scope: 'global' });
       } catch (err) {
-        // Continue even if this fails
         console.error('Error during global sign out:', err);
       }
       
       console.log('Attempting login for:', email);
-      
-      // Ensure user_role exists (in case this is a demo login)
-      if (email === 'admin@demo.com') {
-        await ensureUserRoleType();
-      }
       
       // Sign in with email/password
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -297,7 +201,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (data.user) {
-        // User data will be set by the auth state change event
         console.log('Login successful for user:', data.user.id);
         toast.success(`Welcome back!`);
         return true;
