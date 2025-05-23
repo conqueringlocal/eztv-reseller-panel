@@ -45,39 +45,35 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
   const onSubmit = async (data: AddResellerFormData) => {
     setIsLoading(true);
     try {
-      // Create the user account in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-        email: data.email,
-        password: data.password,
-        user_metadata: {
+      // Get the current session to include the auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        toast.error('You must be logged in to create resellers');
+        return;
+      }
+
+      // Call the edge function to create the reseller
+      const { data: result, error } = await supabase.functions.invoke('create-reseller', {
+        body: {
           name: data.name,
-          role: 'reseller'
-        }
+          email: data.email,
+          password: data.password,
+          credits: data.credits,
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       });
 
-      if (authError) {
-        console.error('Auth error:', authError);
-        toast.error(`Failed to create reseller account: ${authError.message}`);
+      if (error) {
+        console.error('Edge function error:', error);
+        toast.error(`Failed to create reseller: ${error.message}`);
         return;
       }
 
-      if (!authData.user) {
-        toast.error('Failed to create user account');
-        return;
-      }
-
-      // Update the profile with the correct credits
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ 
-          credits: data.credits,
-          name: data.name 
-        })
-        .eq('id', authData.user.id);
-
-      if (profileError) {
-        console.error('Profile error:', profileError);
-        toast.error(`Failed to update reseller profile: ${profileError.message}`);
+      if (result?.error) {
+        toast.error(`Failed to create reseller: ${result.error}`);
         return;
       }
 
