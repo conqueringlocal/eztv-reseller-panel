@@ -15,31 +15,53 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
-// Form schema
-const formSchema = z.object({
+// Form schemas
+const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address.'),
   password: z.string().min(1, 'Password is required'),
 });
 
-type FormData = z.infer<typeof formSchema>;
+const resetSchema = z.object({
+  email: z.string().email('Please enter a valid email address.'),
+});
+
+type LoginFormData = z.infer<typeof loginSchema>;
+type ResetFormData = z.infer<typeof resetSchema>;
 
 export default function Login() {
   const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
+  const [isResetLoading, setIsResetLoading] = useState(false);
   const [checkingAdmins, setCheckingAdmins] = useState(true);
   const [adminExists, setAdminExists] = useState(true);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
   
-  // Initialize form
-  const form = useForm<FormData>({
-    resolver: zodResolver(formSchema),
+  // Initialize forms
+  const loginForm = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
     defaultValues: {
       email: '',
       password: '',
+    },
+  });
+
+  const resetForm = useForm<ResetFormData>({
+    resolver: zodResolver(resetSchema),
+    defaultValues: {
+      email: '',
     },
   });
   
@@ -79,8 +101,8 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate, user]);
   
-  // Handle form submission
-  const onSubmit = async (data: FormData) => {
+  // Handle login form submission
+  const onLoginSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     try {
       const success = await login(data.email, data.password);
@@ -91,6 +113,29 @@ export default function Login() {
       console.error('Login error:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Handle password reset
+  const onResetSubmit = async (data: ResetFormData) => {
+    setIsResetLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('Password reset email sent! Check your inbox.');
+        setResetDialogOpen(false);
+        resetForm.reset();
+      }
+    } catch (error) {
+      console.error('Reset password error:', error);
+      toast.error('An unexpected error occurred');
+    } finally {
+      setIsResetLoading(false);
     }
   };
   
@@ -110,10 +155,10 @@ export default function Login() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Form {...loginForm}>
+              <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
                 <FormField
-                  control={form.control}
+                  control={loginForm.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
@@ -131,7 +176,7 @@ export default function Login() {
                 />
                 
                 <FormField
-                  control={form.control}
+                  control={loginForm.control}
                   name="password"
                   render={({ field }) => (
                     <FormItem>
@@ -155,6 +200,61 @@ export default function Login() {
                 >
                   {isLoading ? 'Loading...' : 'Login'}
                 </Button>
+
+                <div className="text-center">
+                  <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button variant="link" className="text-sm text-eztv-700 hover:underline">
+                        Forgot your password?
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Reset Password</DialogTitle>
+                        <DialogDescription>
+                          Enter your email address and we'll send you a link to reset your password.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <Form {...resetForm}>
+                        <form onSubmit={resetForm.handleSubmit(onResetSubmit)} className="space-y-4">
+                          <FormField
+                            control={resetForm.control}
+                            name="email"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Email</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    placeholder="name@example.com" 
+                                    type="email" 
+                                    {...field} 
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <div className="flex justify-end space-x-2">
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              onClick={() => setResetDialogOpen(false)}
+                            >
+                              Cancel
+                            </Button>
+                            <Button 
+                              type="submit" 
+                              disabled={isResetLoading}
+                              className="bg-eztv-700 hover:bg-eztv-800"
+                            >
+                              {isResetLoading ? 'Sending...' : 'Send Reset Link'}
+                            </Button>
+                          </div>
+                        </form>
+                      </Form>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </form>
             </Form>
           </CardContent>
