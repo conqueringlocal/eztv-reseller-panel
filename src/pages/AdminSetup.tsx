@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 
 // Form schema
 const formSchema = z.object({
@@ -40,6 +40,7 @@ export default function AdminSetup() {
   const [adminExists, setAdminExists] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const { login } = useAuth();
 
   // Initialize form
   const form = useForm<FormData>({
@@ -86,48 +87,73 @@ export default function AdminSetup() {
     checkForAdmins();
   }, [navigate]);
 
-  // Create admin account directly without metadata
-  const createAdminDirectly = async (email: string, password: string, name: string) => {
+  // Create admin account using a two-step process
+  const createAdmin = async (email: string, password: string, name: string): Promise<boolean> => {
     try {
-      console.log('Creating admin account directly...');
+      console.log('Creating admin account...');
       
-      // Step 1: Create auth user without metadata
+      // Step 1: Create auth user with metadata for role
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            name,
+            role: 'admin' // This will be used by the handle_new_user trigger
+          }
+        }
       });
 
       if (authError) {
-        console.error('Auth signup error:', authError);
-        throw authError;
+        console.error('Auth error during signup:', authError);
+        throw new Error(authError.message);
       }
 
-      if (!authData.user?.id) {
-        throw new Error('No user ID returned from signup');
+      if (!authData.user) {
+        throw new Error('No user was created');
       }
-
-      console.log('Auth user created:', authData.user.id);
-
-      // Step 2: Create profile record directly
-      const { error: profileError } = await supabase
+      
+      console.log('Auth user created successfully:', authData.user.id);
+      
+      // The trigger handle_new_user should have created the profile
+      // Let's verify the profile was created
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .insert({
-          id: authData.user.id,
-          name,
-          email,
-          role: 'admin',
-          credits: 1000
-        });
-
+        .select('*')
+        .eq('id', authData.user.id)
+        .single();
+        
       if (profileError) {
-        console.error('Profile creation error:', profileError);
-        throw profileError;
+        console.error('Error checking profile creation:', profileError);
+        
+        // If profile wasn't created automatically, create it manually
+        if (profileError.code === 'PGRST116') { // No rows returned error
+          console.log('Profile not found, creating manually...');
+          
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              id: authData.user.id,
+              name,
+              email,
+              role: 'admin',
+              credits: 1000
+            });
+            
+          if (insertError) {
+            console.error('Error creating profile manually:', insertError);
+            throw new Error(`Failed to create admin profile: ${insertError.message}`);
+          }
+        } else {
+          throw new Error(`Error verifying profile: ${profileError.message}`);
+        }
+      } else {
+        console.log('Profile was created automatically:', profile);
       }
-
-      console.log('Profile created successfully');
+      
       return true;
     } catch (error: any) {
-      console.error('Error creating admin:', error);
+      console.error('Error in createAdmin:', error);
       throw error;
     }
   };
@@ -140,19 +166,18 @@ export default function AdminSetup() {
     try {
       console.log('Creating admin with data:', { ...data, role: 'admin' });
       
-      // Sign out any existing session
+      // Sign out any existing session first
       await supabase.auth.signOut({ scope: 'global' });
       
-      const success = await createAdminDirectly(data.email, data.password, data.name);
-
-      if (success) {
-        toast.success('Admin account created successfully!');
-        
-        // Wait a moment then redirect
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
-      }
+      // Create the admin account
+      await createAdmin(data.email, data.password, data.name);
+      
+      toast.success('Admin account created successfully!');
+      
+      // Wait a moment then redirect
+      setTimeout(() => {
+        navigate('/login');
+      }, 2000);
     } catch (error: any) {
       console.error('Error creating admin:', error);
       const errorMessage = error?.message || 'Unknown error';
@@ -182,25 +207,19 @@ export default function AdminSetup() {
       
       if (!existingProfiles || existingProfiles.length === 0) {
         console.log('Creating demo account...');
-        await createAdminDirectly(DEMO_EMAIL, DEMO_PASSWORD, 'Demo Admin');
+        await createAdmin(DEMO_EMAIL, DEMO_PASSWORD, 'Demo Admin');
+        toast.success('Demo account created successfully!');
+      } else {
+        console.log('Demo account already exists');
       }
       
-      // Wait a moment
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Login with demo credentials
+      const success = await login(DEMO_EMAIL, DEMO_PASSWORD);
       
-      // Sign in with demo credentials
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: DEMO_EMAIL,
-        password: DEMO_PASSWORD
-      });
-      
-      if (error) {
-        throw error;
-      }
-      
-      if (data.user) {
-        toast.success('Demo login successful!');
-        setTimeout(() => navigate('/admin'), 500);
+      if (success) {
+        navigate('/admin');
+      } else {
+        throw new Error('Failed to login with demo account');
       }
     } catch (error: any) {
       console.error('Demo setup error:', error);
@@ -305,7 +324,11 @@ export default function AdminSetup() {
                   className="w-full bg-eztv-700 hover:bg-eztv-800" 
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Creating...' : 'Create Admin Account'}
+                  {isLoading ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...</>
+                  ) : (
+                    'Create Admin Account'
+                  )}
                 </Button>
 
                 <div className="text-center mt-4 text-sm text-gray-500">
@@ -319,7 +342,11 @@ export default function AdminSetup() {
                     onClick={useDemo}
                     disabled={isLoading}
                   >
-                    {isLoading ? 'Setting up...' : 'Use Demo Account'}
+                    {isLoading ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Setting up...</>
+                    ) : (
+                      'Use Demo Account'
+                    )}
                   </Button>
                 </div>
               </form>
