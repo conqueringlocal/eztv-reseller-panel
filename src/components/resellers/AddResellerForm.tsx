@@ -45,6 +45,8 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
   const onSubmit = async (data: AddResellerFormData) => {
     setIsLoading(true);
     try {
+      console.log('Starting reseller creation process');
+      
       // Get the current session to include the auth token
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -52,6 +54,8 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
         toast.error('You must be logged in to create resellers');
         return;
       }
+
+      console.log('Session found, calling edge function');
 
       // Call the edge function to create the reseller
       const { data: result, error } = await supabase.functions.invoke('create-reseller', {
@@ -66,6 +70,8 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
         },
       });
 
+      console.log('Edge function response:', { result, error });
+
       if (error) {
         console.error('Edge function error:', error);
         toast.error(`Failed to create reseller: ${error.message}`);
@@ -73,10 +79,18 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
       }
 
       if (result?.error) {
+        console.error('Result error:', result.error);
         toast.error(`Failed to create reseller: ${result.error}`);
         return;
       }
 
+      if (!result?.success) {
+        console.error('Unexpected result:', result);
+        toast.error('Failed to create reseller: Unexpected response');
+        return;
+      }
+
+      console.log('Reseller created successfully');
       toast.success('Reseller added successfully');
       form.reset();
       onSuccess();

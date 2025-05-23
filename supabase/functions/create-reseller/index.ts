@@ -13,6 +13,8 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Create reseller function called');
+
     // Create Supabase client with service role key for admin operations
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -25,9 +27,12 @@ serve(async (req) => {
       }
     );
 
+    console.log('Admin client created');
+
     // Get the authorization header and verify the user is an admin
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.log('No authorization header');
       return new Response(JSON.stringify({ error: 'No authorization header' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -40,17 +45,22 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
+    console.log('Regular client created, checking user');
+
     // Get the user from the auth header
     const { data: { user }, error: userError } = await supabase.auth.getUser(
       authHeader.replace('Bearer ', '')
     );
 
     if (userError || !user) {
+      console.log('Invalid authorization:', userError);
       return new Response(JSON.stringify({ error: 'Invalid authorization' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('User found:', user.id);
 
     // Check if the user is an admin
     const { data: profile, error: profileError } = await supabase
@@ -60,22 +70,30 @@ serve(async (req) => {
       .single();
 
     if (profileError || profile?.role !== 'admin') {
+      console.log('Insufficient permissions:', profileError, profile);
       return new Response(JSON.stringify({ error: 'Insufficient permissions' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    console.log('Admin verified, parsing request body');
+
     // Parse the request body
     const { name, email, password, credits } = await req.json();
 
+    console.log('Request data:', { name, email, credits });
+
     // Validate required fields
     if (!email || !password || !name) {
+      console.log('Missing required fields');
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('Creating user account');
 
     // Create the user account using admin client
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -97,11 +115,14 @@ serve(async (req) => {
     }
 
     if (!authData.user) {
+      console.log('No user data returned');
       return new Response(JSON.stringify({ error: 'Failed to create user account' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('User created:', authData.user.id);
 
     // Update the profile with the correct credits using admin client
     const { error: profileUpdateError } = await supabaseAdmin
@@ -119,6 +140,8 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('Profile updated successfully');
 
     return new Response(JSON.stringify({ 
       success: true, 
