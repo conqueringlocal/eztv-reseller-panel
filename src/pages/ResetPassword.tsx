@@ -50,47 +50,28 @@ export default function ResetPassword() {
     const setupAuth = async () => {
       setError(null);
       
-      // Check for hash params (Supabase sometimes adds tokens as hash params)
-      const hashParams = new URLSearchParams(location.hash.substring(1));
+      // For password reset flows, we check for the token parameter
+      const token = searchParams.get('token');
+      const type = searchParams.get('type');
       
-      // First try to get tokens from query params, then from hash params if not found
-      const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
-      const refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
-      const type = searchParams.get('type') || hashParams.get('type');
+      console.log('Reset flow debug:', { hasToken: !!token, type });
       
-      console.log('Token debug:', { accessToken: !!accessToken, refreshToken: !!refreshToken, type });
-      
-      if (!accessToken || !refreshToken) {
-        console.error('Missing tokens for password reset');
+      if (!token || type !== 'recovery') {
+        console.error('Invalid recovery parameters');
         setError('Invalid or expired reset link. Please request a new password reset.');
-        return;
-      }
-
-      try {
-        // Set the session with the tokens
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        });
-
-        if (sessionError) {
-          console.error('Error setting session:', sessionError);
-          setError('Invalid or expired reset link. Please request a new password reset.');
-        }
-      } catch (err: any) {
-        console.error('Error setting up auth:', err);
-        setError('An unexpected error occurred. Please try again.');
       }
     };
 
     setupAuth();
-  }, [searchParams, location.hash]);
+  }, [searchParams]);
 
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     setError(null);
     
     try {
+      // For password reset flows, we use updateUser directly
+      // The auth session is already established by the recovery token in the URL
       const { error } = await supabase.auth.updateUser({
         password: data.password
       });
