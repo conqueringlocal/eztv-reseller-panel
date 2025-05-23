@@ -20,6 +20,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
+  signup: (email: string, password: string, name: string, role?: UserRole) => Promise<boolean>;
 }
 
 // Create the context with a default value
@@ -29,6 +30,7 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => false,
   logout: () => {},
   isAuthenticated: false,
+  signup: async () => false,
 });
 
 // Clean up auth state to prevent issues
@@ -126,6 +128,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // New signup function to create users with profiles
+  const signup = async (email: string, password: string, name: string, role: UserRole = 'reseller'): Promise<boolean> => {
+    try {
+      // Clean up existing state
+      cleanupAuthState();
+      
+      console.log('Attempting signup for:', email, 'with role:', role);
+      
+      // Sign up with email/password
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            role
+          }
+        }
+      });
+      
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+
+      if (!data.user) {
+        toast.error('Failed to create user');
+        return false;
+      }
+      
+      console.log('Signup successful for user:', data.user.id);
+      toast.success(`Account created successfully!`);
+      return true;
+    } catch (error: any) {
+      console.error('Signup error:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       // Clean up existing state
@@ -191,6 +233,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isLoading, 
       login, 
       logout, 
+      signup,
       isAuthenticated: !!user,
     }}>
       {children}

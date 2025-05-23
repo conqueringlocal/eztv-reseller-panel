@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -40,7 +39,7 @@ export default function AdminSetup() {
   const [adminExists, setAdminExists] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, signup } = useAuth();
 
   // Initialize form
   const form = useForm<FormData>({
@@ -87,77 +86,6 @@ export default function AdminSetup() {
     checkForAdmins();
   }, [navigate]);
 
-  // Create admin account using a two-step process
-  const createAdmin = async (email: string, password: string, name: string): Promise<boolean> => {
-    try {
-      console.log('Creating admin account...');
-      
-      // Step 1: Create auth user with metadata for role
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-            role: 'admin' // This will be used by the handle_new_user trigger
-          }
-        }
-      });
-
-      if (authError) {
-        console.error('Auth error during signup:', authError);
-        throw new Error(authError.message);
-      }
-
-      if (!authData.user) {
-        throw new Error('No user was created');
-      }
-      
-      console.log('Auth user created successfully:', authData.user.id);
-      
-      // The trigger handle_new_user should have created the profile
-      // Let's verify the profile was created
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authData.user.id)
-        .single();
-        
-      if (profileError) {
-        console.error('Error checking profile creation:', profileError);
-        
-        // If profile wasn't created automatically, create it manually
-        if (profileError.code === 'PGRST116') { // No rows returned error
-          console.log('Profile not found, creating manually...');
-          
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert({
-              id: authData.user.id,
-              name,
-              email,
-              role: 'admin',
-              credits: 1000
-            });
-            
-          if (insertError) {
-            console.error('Error creating profile manually:', insertError);
-            throw new Error(`Failed to create admin profile: ${insertError.message}`);
-          }
-        } else {
-          throw new Error(`Error verifying profile: ${profileError.message}`);
-        }
-      } else {
-        console.log('Profile was created automatically:', profile);
-      }
-      
-      return true;
-    } catch (error: any) {
-      console.error('Error in createAdmin:', error);
-      throw error;
-    }
-  };
-
   // Handle form submission
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
@@ -169,15 +97,19 @@ export default function AdminSetup() {
       // Sign out any existing session first
       await supabase.auth.signOut({ scope: 'global' });
       
-      // Create the admin account
-      await createAdmin(data.email, data.password, data.name);
+      // Use the signup method from AuthContext
+      const success = await signup(data.email, data.password, data.name, 'admin');
       
-      toast.success('Admin account created successfully!');
-      
-      // Wait a moment then redirect
-      setTimeout(() => {
-        navigate('/login');
-      }, 2000);
+      if (success) {
+        toast.success('Admin account created successfully!');
+        
+        // Wait a moment then redirect
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000);
+      } else {
+        throw new Error('Failed to create admin account');
+      }
     } catch (error: any) {
       console.error('Error creating admin:', error);
       const errorMessage = error?.message || 'Unknown error';
@@ -207,7 +139,12 @@ export default function AdminSetup() {
       
       if (!existingProfiles || existingProfiles.length === 0) {
         console.log('Creating demo account...');
-        await createAdmin(DEMO_EMAIL, DEMO_PASSWORD, 'Demo Admin');
+        const success = await signup(DEMO_EMAIL, DEMO_PASSWORD, 'Demo Admin', 'admin');
+        
+        if (!success) {
+          throw new Error('Failed to create demo account');
+        }
+        
         toast.success('Demo account created successfully!');
       } else {
         console.log('Demo account already exists');
