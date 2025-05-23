@@ -20,7 +20,6 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   isAuthenticated: boolean;
-  register: (email: string, password: string, name: string, role?: UserRole) => Promise<boolean>;
 }
 
 // Create the context with a default value
@@ -30,7 +29,6 @@ const AuthContext = createContext<AuthContextType>({
   login: async () => false,
   logout: () => {},
   isAuthenticated: false,
-  register: async () => false,
 });
 
 // Clean up auth state to prevent issues
@@ -127,54 +125,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const register = async (email: string, password: string, name: string, role: UserRole = 'reseller'): Promise<boolean> => {
-    try {
-      // Clean up existing state
-      cleanupAuthState();
-      
-      // Try global sign out first
-      try {
-        await supabase.auth.signOut({ scope: 'global' });
-      } catch (err) {
-        console.error('Error during global sign out:', err);
-      }
-      
-      console.log('Registering with email:', email, 'role:', role);
-      
-      // Step 1: Sign up with email/password with metadata
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name,
-            role
-          },
-        },
-      });
-      
-      if (error) {
-        console.error('Registration error:', error);
-        toast.error(error.message);
-        return false;
-      }
-
-      if (!data.user) {
-        console.error('No user returned from signUp');
-        toast.error('Registration failed');
-        return false;
-      }
-
-      console.log('SignUp successful, user ID:', data.user.id);
-      toast.success(`Account created successfully!`);
-      return true;
-    } catch (error) {
-      console.error('Registration error:', error);
-      toast.error('An unexpected error occurred');
-      return false;
-    }
-  };
-
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       // Clean up existing state
@@ -241,7 +191,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       login, 
       logout, 
       isAuthenticated: !!user,
-      register
     }}>
       {children}
     </AuthContext.Provider>
