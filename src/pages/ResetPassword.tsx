@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -36,6 +36,7 @@ export default function ResetPassword() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -46,21 +47,44 @@ export default function ResetPassword() {
   });
 
   useEffect(() => {
-    // Check if we have the necessary tokens from the URL
-    const accessToken = searchParams.get('access_token');
-    const refreshToken = searchParams.get('refresh_token');
-    
-    if (!accessToken || !refreshToken) {
-      setError('Invalid or expired reset link. Please request a new password reset.');
-      return;
-    }
+    const setupAuth = async () => {
+      setError(null);
+      
+      // Check for hash params (Supabase sometimes adds tokens as hash params)
+      const hashParams = new URLSearchParams(location.hash.substring(1));
+      
+      // First try to get tokens from query params, then from hash params if not found
+      const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
+      const refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
+      const type = searchParams.get('type') || hashParams.get('type');
+      
+      console.log('Token debug:', { accessToken: !!accessToken, refreshToken: !!refreshToken, type });
+      
+      if (!accessToken || !refreshToken) {
+        console.error('Missing tokens for password reset');
+        setError('Invalid or expired reset link. Please request a new password reset.');
+        return;
+      }
 
-    // Set the session with the tokens from the URL
-    supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    });
-  }, [searchParams]);
+      try {
+        // Set the session with the tokens
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (sessionError) {
+          console.error('Error setting session:', sessionError);
+          setError('Invalid or expired reset link. Please request a new password reset.');
+        }
+      } catch (err: any) {
+        console.error('Error setting up auth:', err);
+        setError('An unexpected error occurred. Please try again.');
+      }
+    };
+
+    setupAuth();
+  }, [searchParams, location.hash]);
 
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
@@ -72,11 +96,16 @@ export default function ResetPassword() {
       });
 
       if (error) {
+        console.error('Error updating password:', error);
         setError(error.message);
         return;
       }
 
       toast.success('Password updated successfully!');
+      
+      // Sign out to clear the session after password reset
+      await supabase.auth.signOut();
+      
       navigate('/login');
     } catch (error: any) {
       console.error('Error updating password:', error);

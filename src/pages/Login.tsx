@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
@@ -115,12 +116,20 @@ export default function Login() {
     }
   };
 
+  // Get the current site URL for redirection
+  const getSiteUrl = () => {
+    return window.location.origin;
+  };
+
   // Handle password reset
   const onResetSubmit = async (data: ResetFormData) => {
     setIsResetLoading(true);
     try {
+      const redirectTo = `${getSiteUrl()}/reset-password`;
+      console.log(`Setting redirect URL to: ${redirectTo}`);
+      
       const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo
       });
 
       if (error) {
