@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
@@ -127,7 +126,7 @@ export default function Login() {
       if (error) {
         toast.error(error.message);
       } else {
-        toast.success('Password reset email sent! Check your inbox.');
+        toast.success('Password reset email sent! Check your inbox and click the link to reset your password.');
         setResetDialogOpen(false);
         resetForm.reset();
       }
