@@ -62,16 +62,26 @@ serve(async (req) => {
 
     console.log('User found:', user.id);
 
-    // Check if the user is an admin
-    const { data: profile, error: profileError } = await supabase
+    // Check if the user is an admin using the admin client
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('role')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || profile?.role !== 'admin') {
-      console.log('Insufficient permissions:', profileError, profile);
-      return new Response(JSON.stringify({ error: 'Insufficient permissions' }), {
+    console.log('Profile query result:', { profile, profileError });
+
+    if (profileError) {
+      console.log('Profile query error:', profileError);
+      return new Response(JSON.stringify({ error: 'Error checking user permissions' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!profile || profile.role !== 'admin') {
+      console.log('User is not admin:', { profile, userRole: profile?.role });
+      return new Response(JSON.stringify({ error: 'Insufficient permissions - admin role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
