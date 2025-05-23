@@ -69,10 +69,19 @@ serve(async (req) => {
     // Parse the request body
     const { name, email, password, credits } = await req.json();
 
+    // Validate required fields
+    if (!email || !password || !name) {
+      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Create the user account using admin client
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
+      email_confirm: true, // Auto confirm email
       user_metadata: {
         name,
         role: 'reseller'
@@ -117,6 +126,7 @@ serve(async (req) => {
       message: 'Reseller created successfully' 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200
     });
 
   } catch (error) {
