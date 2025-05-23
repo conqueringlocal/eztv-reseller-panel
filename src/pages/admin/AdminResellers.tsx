@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
+import { AddResellerForm } from '@/components/resellers/AddResellerForm';
 import {
   Table,
   TableBody,
@@ -25,11 +26,12 @@ import {
 } from '@/components/ui/dialog';
 
 export default function AdminResellers() {
-  const { resellers, customers } = useApp();
+  const { resellers, customers, refreshData } = useApp();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedResellerId, setSelectedResellerId] = useState<string | null>(null);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
+  const [isAddResellerModalOpen, setIsAddResellerModalOpen] = useState(false);
   
   // Filter resellers based on search
   const filteredResellers = resellers.filter(
@@ -58,6 +60,12 @@ export default function AdminResellers() {
     setSelectedResellerId(resellerId);
     setIsCreditModalOpen(true);
   };
+
+  // Handle add reseller success
+  const handleAddResellerSuccess = () => {
+    setIsAddResellerModalOpen(false);
+    refreshData();
+  };
   
   return (
     <DashboardLayout>
@@ -78,7 +86,12 @@ export default function AdminResellers() {
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-sm"
             />
-            {/* We'll implement add reseller functionality in Phase 4 */}
+            <Button 
+              onClick={() => setIsAddResellerModalOpen(true)}
+              className="bg-eztv-700 hover:bg-eztv-800"
+            >
+              Add Reseller
+            </Button>
           </div>
           
           <div className="border rounded-md overflow-hidden">
@@ -167,6 +180,19 @@ export default function AdminResellers() {
           </div>
         </div>
       </DashboardCard>
+
+      {/* Add Reseller Dialog */}
+      <Dialog open={isAddResellerModalOpen} onOpenChange={setIsAddResellerModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Reseller</DialogTitle>
+            <DialogDescription>
+              Create a new reseller account with login credentials and initial credits.
+            </DialogDescription>
+          </DialogHeader>
+          <AddResellerForm onSuccess={handleAddResellerSuccess} />
+        </DialogContent>
+      </Dialog>
 
       {/* Manage Credits Dialog */}
       {selectedResellerId && (
