@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { createUser, generateUsername, generatePassword, dateToUnixTimestamp, IPTVUserParams } from '@/utils/iptvApi';
 
 // Types
 export interface Customer {
@@ -230,7 +231,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const getCurrentISOString = () => new Date().toISOString();
   
   // Helper for generating usernames based on customer name and connection number
-  const generateUsername = (name: string, connectionNumber: number): string => {
+  const generateCustomerUsername = (name: string, connectionNumber: number): string => {
     // Remove spaces, special chars and convert to lowercase
     const baseName = name
       .replace(/[^a-zA-Z0-9]/g, "")
@@ -241,7 +242,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
   
   // Helper for generating random passwords
-  const generatePassword = (): string => {
+  const generateCustomerPassword = (): string => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let password = "";
     for (let i = 0; i < 8; i++) {
@@ -257,6 +258,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     connectionNumber: number,
     totalConnections: number
   ): Promise<string | null> => {
+    console.log(`Creating customer connection ${connectionNumber} for ${customerData.name}`);
+    
     // Generate dates
     const today = new Date();
     const startDate = today.toISOString().split('T')[0];
@@ -266,17 +269,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const expirationDate = expiryDate.toISOString().split('T')[0];
     
     // Generate credentials
-    const username = generateUsername(customerData.name, connectionNumber);
-    const password = generatePassword();
+    const username = generateCustomerUsername(customerData.name, connectionNumber);
+    const password = generateCustomerPassword();
     
-    // Insert customer - mac_address is now optional
+    console.log(`Generated credentials: ${username} / ${password}`);
+    
+    // Create IPTV user first
+    try {
+      const iptvParams: IPTVUserParams = {
+        username,
+        password,
+        maxConnections: 1, // Each connection is a separate user
+        expiryDate,
+        isTrial: false,
+        output: "ts"
+      };
+      
+      console.log('Creating IPTV user with params:', iptvParams);
+      const userCreated = await createUser(iptvParams);
+      
+      if (!userCreated) {
+        console.error(`Failed to create IPTV user for connection ${connectionNumber}`);
+        toast.error(`Failed to create IPTV account for connection ${connectionNumber}`);
+        return null;
+      }
+      
+      console.log(`Successfully created IPTV user: ${username}`);
+    } catch (error) {
+      console.error('Error creating IPTV user:', error);
+      toast.error(`Error creating IPTV account: ${error}`);
+      return null;
+    }
+    
+    // Insert customer record in database
     const { data: newCustomer, error: customerError } = await supabase
       .from('customers')
       .insert({
         reseller_id: customerData.resellerId,
         name: customerData.name,
         email: customerData.email,
-        mac_address: customerData.macAddress || null, // Can be null now
         device_type: customerData.deviceType,
         plan_duration: customerData.planDuration,
         start_date: startDate,
@@ -292,15 +323,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     if (customerError) {
       console.error(`Failed to create customer connection ${connectionNumber}:`, customerError);
+      toast.error(`Failed to save customer connection ${connectionNumber}: ${customerError.message}`);
       return null;
     }
     
+    console.log(`Successfully created customer record: ${newCustomer.id}`);
     return newCustomer.id;
   };
 
   // Add new customer with multiple connections
   const addCustomer = async (customerData: AddCustomerData): Promise<boolean> => {
-    if (!user) return false;
+    if (!user) {
+      console.error('No user found');
+      toast.error('You must be logged in to add customers');
+      return false;
+    }
+    
+    console.log('Starting customer creation process:', customerData);
     
     try {
       // Check if reseller has enough credits
@@ -311,24 +350,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .single();
       
       if (resellerError || !reseller) {
+        console.error('Reseller error:', resellerError);
         toast.error('Reseller not found');
         return false;
       }
       
+      console.log(`Reseller has ${reseller.credits} credits`);
+      
       // Calculate total credits needed (connections * plan duration)
       const totalCreditsNeeded = customerData.connections * customerData.planDuration;
+      console.log(`Total credits needed: ${totalCreditsNeeded}`);
       
       if (reseller.credits < totalCreditsNeeded) {
+        console.error(`Insufficient credits: has ${reseller.credits}, needs ${totalCreditsNeeded}`);
         toast.error(`Insufficient credits. You need ${totalCreditsNeeded} credits but have ${reseller.credits}.`);
         return false;
       }
       
       // Generate a customer group ID
       const customerGroupId = `group-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+      console.log(`Generated customer group ID: ${customerGroupId}`);
       
       // Create multiple connections
       const customerIds: string[] = [];
       for (let i = 1; i <= customerData.connections; i++) {
+        console.log(`Creating connection ${i} of ${customerData.connections}`);
         const customerId = await createCustomerConnection(
           customerData,
           customerGroupId,
@@ -338,13 +384,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         
         if (customerId) {
           customerIds.push(customerId);
+          console.log(`Successfully created connection ${i}`);
+        } else {
+          console.error(`Failed to create connection ${i}`);
+          // Continue with other connections even if one fails
         }
       }
       
       if (customerIds.length === 0) {
+        console.error('Failed to create any customer connections');
         toast.error('Failed to create any customer connections');
         return false;
       }
+      
+      console.log(`Created ${customerIds.length} out of ${customerData.connections} connections`);
       
       // Update reseller credits
       const { error: creditError } = await supabase
@@ -353,9 +406,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .eq('id', customerData.resellerId);
       
       if (creditError) {
+        console.error('Credit update error:', creditError);
         toast.error(`Failed to update credits: ${creditError.message}`);
         return false;
       }
+      
+      console.log(`Successfully deducted ${totalCreditsNeeded} credits`);
       
       // Log the transaction
       const { error: logError } = await supabase
@@ -376,11 +432,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Refresh data
       await refreshData();
       
-      toast.success(`Customer added successfully with ${customerData.connections} connections`);
+      if (customerIds.length === customerData.connections) {
+        toast.success(`Customer added successfully with ${customerData.connections} connections`);
+      } else {
+        toast.success(`Customer partially added with ${customerIds.length} out of ${customerData.connections} connections`);
+      }
+      
       return true;
     } catch (error) {
       console.error('Error adding customer:', error);
-      toast.error('An unexpected error occurred');
+      toast.error('An unexpected error occurred while adding customer');
       return false;
     }
   };

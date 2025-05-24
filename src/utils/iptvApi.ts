@@ -1,5 +1,5 @@
 
-// IPTV API Integration
+// IPTV API Integration for my8k.me panel
 
 export interface IPTVUserParams {
   username: string;
@@ -12,25 +12,24 @@ export interface IPTVUserParams {
   ip?: string;
 }
 
-const API_KEY = "89c1247e5b70f6b18665734b735d2cad";
-const API_BASE_URL = "https://my8k.me/player_api.php";
+// You'll need to set these in your environment or get them from your IPTV provider
+const PANEL_URL = "https://my8k.me/player_api.php";
+const ADMIN_USERNAME = "your_admin_username"; // Replace with your admin username
+const ADMIN_PASSWORD = "your_admin_password"; // Replace with your admin password
 
 // Helper to convert Date to Unix timestamp
 export const dateToUnixTimestamp = (date: Date): number => {
   return Math.floor(date.getTime() / 1000);
 };
 
-// Create a new user in the IPTV system
+// Create a new user in the IPTV system using my8k.me API
 export const createUser = async (params: IPTVUserParams): Promise<boolean> => {
   try {
-    // In a real implementation, this would be a server-side API call to prevent
-    // exposing the API key to the client. For this demo, we'll simulate the request.
-    
-    // Construct the URL with parameters
-    const url = new URL(API_BASE_URL);
-    url.searchParams.append("username", "admin");
-    url.searchParams.append("password", "admin");
-    url.searchParams.append("action", "create_user");
+    // Construct the URL with parameters for creating a user
+    const url = new URL(PANEL_URL);
+    url.searchParams.append("username", ADMIN_USERNAME);
+    url.searchParams.append("password", ADMIN_PASSWORD);
+    url.searchParams.append("action", "user_create");
     url.searchParams.append("user_username", params.username);
     url.searchParams.append("user_password", params.password);
     url.searchParams.append("user_max_connections", params.maxConnections.toString());
@@ -38,20 +37,45 @@ export const createUser = async (params: IPTVUserParams): Promise<boolean> => {
     url.searchParams.append("user_is_trial", params.isTrial ? "1" : "0");
     url.searchParams.append("user_bouquet", params.bouquet || "1");
     url.searchParams.append("user_output", params.output || "ts");
-    url.searchParams.append("user_ip", params.ip || "0.0.0.0");
-    url.searchParams.append("user_allowed_output", params.output || "ts");
+    url.searchParams.append("user_ip", params.ip || "*");
     
-    console.log(`[Demo] IPTV API call: ${url.toString()}`);
+    console.log(`Making IPTV API call to create user: ${params.username}`);
     
-    // In a real app, this would be:
-    // const response = await fetch(url);
-    // const data = await response.json();
-    // return data.result === "success";
+    const response = await fetch(url.toString());
+    const data = await response.json();
     
-    // Simulate API response
-    return true;
+    console.log('IPTV API Response:', data);
+    
+    // Check if the user was created successfully
+    // The API should return a success status or the user data
+    if (data && (data.user_info || data.status === 'success' || response.ok)) {
+      console.log(`Successfully created IPTV user: ${params.username}`);
+      return true;
+    } else {
+      console.error('Failed to create IPTV user:', data);
+      return false;
+    }
   } catch (error) {
     console.error("Error creating IPTV user:", error);
+    return false;
+  }
+};
+
+// Check if a user exists in the IPTV system
+export const checkUserExists = async (username: string): Promise<boolean> => {
+  try {
+    const url = new URL(PANEL_URL);
+    url.searchParams.append("username", ADMIN_USERNAME);
+    url.searchParams.append("password", ADMIN_PASSWORD);
+    url.searchParams.append("action", "user_info");
+    url.searchParams.append("user_username", username);
+    
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    
+    return data && data.user_info && data.user_info.username;
+  } catch (error) {
+    console.error("Error checking user existence:", error);
     return false;
   }
 };
@@ -73,4 +97,24 @@ export const generatePassword = (): string => {
     password += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return password;
+};
+
+// Delete a user from the IPTV system
+export const deleteUser = async (username: string): Promise<boolean> => {
+  try {
+    const url = new URL(PANEL_URL);
+    url.searchParams.append("username", ADMIN_USERNAME);
+    url.searchParams.append("password", ADMIN_PASSWORD);
+    url.searchParams.append("action", "user_delete");
+    url.searchParams.append("user_username", username);
+    
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    
+    console.log('Delete user response:', data);
+    return response.ok;
+  } catch (error) {
+    console.error("Error deleting IPTV user:", error);
+    return false;
+  }
 };
