@@ -49,22 +49,33 @@ serve(async (req) => {
     console.log(`Creating IPTV user: ${userParams.username}`)
     console.log(`Expiry timestamp: ${expiryTimestamp}`)
 
-    // Build the API URL according to the documentation
-    const url = new URL("https://my8k.me/panel_api.php")
-    url.searchParams.append("key", IPTV_API_KEY)
-    url.searchParams.append("action", "user_create")
-    url.searchParams.append("user_username", userParams.username)
-    url.searchParams.append("user_password", userParams.password)
-    url.searchParams.append("user_max_connections", userParams.maxConnections.toString())
-    url.searchParams.append("user_expire", expiryTimestamp.toString())
-    url.searchParams.append("user_is_trial", userParams.isTrial ? "1" : "0")
-    url.searchParams.append("user_bouquet", userParams.bouquet || "1")
-    url.searchParams.append("user_output", userParams.output || "ts")
-    url.searchParams.append("user_ip", userParams.ip || "*")
-
-    console.log(`API URL:`, url.toString().replace(IPTV_API_KEY, '[REDACTED]'))
+    // Use the correct API endpoint as shown in the reference screenshot
+    const apiUrl = "https://my8k.me/api"
     
-    const response = await fetch(url.toString())
+    // Prepare the API request body
+    const requestBody = {
+      key: IPTV_API_KEY,
+      action: "user_create",
+      user_username: userParams.username,
+      user_password: userParams.password,
+      user_max_connections: userParams.maxConnections,
+      user_expire: expiryTimestamp,
+      user_is_trial: userParams.isTrial ? 1 : 0,
+      user_bouquet: userParams.bouquet || "1",
+      user_output: userParams.output || "ts",
+      user_ip: userParams.ip || "*"
+    }
+
+    console.log('API Request Body:', { ...requestBody, key: '[REDACTED]' })
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    })
+    
     const responseText = await response.text()
     
     console.log('API Response Status:', response.status)
