@@ -298,19 +298,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       
       if (!data?.success) {
-        console.error(`IPTV API error for connection ${connectionNumber}:`, data?.error);
-        toast.error(`Failed to create IPTV account for connection ${connectionNumber}: ${data?.error || 'Unknown error'}`);
+        console.error(`IPTV API error for connection ${connectionNumber}:`, data?.error || 'Unknown error');
+        const errorMessage = data?.error || data?.details || 'Unknown error';
+        toast.error(`Failed to create IPTV account for connection ${connectionNumber}: ${errorMessage}`);
+        
+        // Log more details for debugging
+        console.error('Full error response:', data);
         return null;
       }
       
       console.log(`Successfully created IPTV user: ${username}`);
+      console.log('IPTV API returned user data:', data.user);
+      
+      // Store the actual credentials returned by the IPTV panel
+      const actualUsername = data.user?.username || username;
+      const actualPassword = data.user?.password || password;
+      
     } catch (error) {
       console.error('Error calling edge function:', error);
       toast.error(`Error creating IPTV account: ${error}`);
       return null;
     }
     
-    // Insert customer record in database
+    // Insert customer record in database with the actual credentials
     const { data: newCustomer, error: customerError } = await supabase
       .from('customers')
       .insert({
@@ -321,8 +331,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         plan_duration: customerData.planDuration,
         start_date: startDate,
         expiration_date: expirationDate,
-        username: username,
-        password: password,
+        username: actualUsername,
+        password: actualPassword,
         customer_group_id: customerGroupId,
         connection_number: connectionNumber,
         total_connections: totalConnections,
@@ -337,6 +347,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     
     console.log(`Successfully created customer record: ${newCustomer.id}`);
+    
+    // Show success message with credentials
+    toast.success(`Connection ${connectionNumber} created successfully! Username: ${actualUsername}, Password: ${actualPassword}`);
+    
     return newCustomer.id;
   };
 
