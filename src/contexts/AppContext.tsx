@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { createUser, generateUsername, generatePassword, dateToUnixTimestamp, IPTVUserParams } from '@/utils/iptvApi';
 
 // Types
 export interface Customer {
@@ -274,22 +273,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     console.log(`Generated credentials: ${username} / ${password}`);
     
-    // Create IPTV user first
+    // Create IPTV user using edge function
     try {
-      const iptvParams: IPTVUserParams = {
-        username,
-        password,
-        maxConnections: 1, // Each connection is a separate user
-        expiryDate,
-        isTrial: false,
-        output: "ts"
-      };
+      const { data, error } = await supabase.functions.invoke('create-iptv-user', {
+        body: {
+          userParams: {
+            username,
+            password,
+            maxConnections: 1,
+            expiryDate: expiryDate.toISOString(),
+            isTrial: false,
+            output: "ts"
+          }
+        }
+      });
       
-      console.log('Creating IPTV user with params:', iptvParams);
-      const userCreated = await createUser(iptvParams);
-      
-      if (!userCreated) {
-        console.error(`Failed to create IPTV user for connection ${connectionNumber}`);
+      if (error || !data?.success) {
+        console.error(`Failed to create IPTV user for connection ${connectionNumber}:`, error || data?.error);
         toast.error(`Failed to create IPTV account for connection ${connectionNumber}`);
         return null;
       }

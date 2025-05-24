@@ -1,7 +1,7 @@
 
 import { Customer } from "../contexts/AppContext";
 import { supabase } from "@/integrations/supabase/client";
-import { createUser, generateUsername, generatePassword, dateToUnixTimestamp, IPTVUserParams } from "./iptvApi";
+import { generateUsername, generatePassword, dateToUnixTimestamp } from "./iptvApi";
 
 // Define webhook payload structure to match HighLevel format
 export interface WebhookPayload {
@@ -77,20 +77,21 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     expiryDate.setMonth(expiryDate.getMonth() + planDuration);
     const expirationDate = expiryDate.toISOString().split('T')[0];
 
-    // Create IPTV API params
-    const iptvParams: IPTVUserParams = {
-      username,
-      password,
-      maxConnections: 1,
-      expiryDate,
-      isTrial: false,
-      output: "ts"
-    };
-
-    // Call IPTV API
-    const userCreated = await createUser(iptvParams);
+    // Call IPTV API via edge function
+    const { data, error } = await supabase.functions.invoke('create-iptv-user', {
+      body: {
+        userParams: {
+          username,
+          password,
+          maxConnections: 1,
+          expiryDate: expiryDate.toISOString(),
+          isTrial: false,
+          output: "ts"
+        }
+      }
+    });
     
-    if (!userCreated) {
+    if (error || !data?.success) {
       return {
         success: false,
         message: "Failed to create IPTV user"
