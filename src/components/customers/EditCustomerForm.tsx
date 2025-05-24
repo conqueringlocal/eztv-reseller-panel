@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -25,15 +24,10 @@ import { useApp } from '@/contexts/AppContext';
 import { Customer } from '@/contexts/AppContext';
 import { toast } from 'sonner';
 
-// Form schema with validation
+// Form schema with validation - removed macAddress
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
-  macAddress: z
-    .string()
-    .regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/, {
-      message: 'Please enter a valid MAC address (XX:XX:XX:XX:XX:XX)',
-    }),
   deviceType: z.string().min(1, { message: 'Please select a device type.' }),
 });
 
@@ -47,13 +41,12 @@ interface EditCustomerFormProps {
 export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps) {
   const { updateCustomer } = useApp();
   
-  // Initialize form with customer values
+  // Initialize form with customer values - removed macAddress
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: customer.name,
       email: customer.email,
-      macAddress: customer.macAddress,
       deviceType: customer.deviceType,
     },
   });
@@ -65,7 +58,7 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
         ...customer,
         name: data.name,
         email: data.email,
-        macAddress: data.macAddress,
+        macAddress: customer.macAddress || '', // Keep existing or empty
         deviceType: data.deviceType,
       });
       
@@ -107,23 +100,6 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
               <FormControl>
                 <Input type="email" placeholder="john@example.com" {...field} />
               </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <FormField
-          control={form.control}
-          name="macAddress"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>MAC Address</FormLabel>
-              <FormControl>
-                <Input placeholder="00:1A:2B:3C:4D:5E" {...field} />
-              </FormControl>
-              <FormDescription>
-                Format: XX:XX:XX:XX:XX:XX (letters and numbers)
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

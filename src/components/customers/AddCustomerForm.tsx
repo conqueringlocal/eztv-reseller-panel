@@ -25,15 +25,10 @@ import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-// Form schema with validation
+// Form schema with validation - removed macAddress
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
-  macAddress: z
-    .string()
-    .regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/, {
-      message: 'Please enter a valid MAC address (XX:XX:XX:XX:XX:XX)',
-    }),
   deviceType: z.string().min(1, { message: 'Please select a device type.' }),
   planDuration: z.coerce
     .number()
@@ -57,13 +52,12 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { user } = useAuth();
   const { addCustomer } = useApp();
   
-  // Initialize form with default values
+  // Initialize form with default values - removed macAddress
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
       email: '',
-      macAddress: '',
       deviceType: 'Smart TV',
       planDuration: 1,
       connections: 1,
@@ -91,7 +85,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         resellerId,
         name: data.name,
         email: data.email,
-        macAddress: data.macAddress,
+        macAddress: '', // Set empty string for MAC address
         deviceType: data.deviceType,
         planDuration: data.planDuration,
         connections: data.connections,
@@ -136,23 +130,6 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
               <FormControl>
                 <Input type="email" placeholder="john@example.com" {...field} />
               </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <FormField
-          control={form.control}
-          name="macAddress"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>MAC Address</FormLabel>
-              <FormControl>
-                <Input placeholder="00:1A:2B:3C:4D:5E" {...field} />
-              </FormControl>
-              <FormDescription>
-                Format: XX:XX:XX:XX:XX:XX (letters and numbers)
-              </FormDescription>
               <FormMessage />
             </FormItem>
           )}

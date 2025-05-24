@@ -9,7 +9,7 @@ export interface Customer {
   resellerId: string;
   name: string;
   email: string;
-  macAddress: string;
+  macAddress?: string; // Made optional since it's not required anymore
   deviceType: string;
   planDuration: number;
   startDate: string;
@@ -48,7 +48,7 @@ interface AddCustomerData {
   resellerId: string;
   name: string;
   email: string;
-  macAddress: string;
+  macAddress?: string; // Made optional
   deviceType: string;
   planDuration: number;
   connections: number;
@@ -122,7 +122,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       resellerId: dbCustomer.reseller_id,
       name: dbCustomer.name,
       email: dbCustomer.email,
-      macAddress: dbCustomer.mac_address,
+      macAddress: dbCustomer.mac_address || '', // Handle nullable MAC address
       deviceType: dbCustomer.device_type,
       planDuration: dbCustomer.plan_duration,
       startDate: dbCustomer.start_date,
@@ -269,14 +269,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const username = generateUsername(customerData.name, connectionNumber);
     const password = generatePassword();
     
-    // Insert customer - only use fields that exist in the database schema
+    // Insert customer - mac_address is now optional
     const { data: newCustomer, error: customerError } = await supabase
       .from('customers')
       .insert({
         reseller_id: customerData.resellerId,
         name: customerData.name,
         email: customerData.email,
-        mac_address: customerData.macAddress,
+        mac_address: customerData.macAddress || null, // Can be null now
         device_type: customerData.deviceType,
         plan_duration: customerData.planDuration,
         start_date: startDate,
@@ -286,7 +286,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         customer_group_id: customerGroupId,
         connection_number: connectionNumber,
         total_connections: totalConnections,
-        // is_deactivated: false - removed this field as it doesn't exist in the database schema
       })
       .select()
       .single();
@@ -391,13 +390,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!user) return false;
     
     try {
-      // Update the customer in supabase
+      // Update the customer in supabase - mac_address is optional
       const { error } = await supabase
         .from('customers')
         .update({
           name: updatedCustomer.name,
           email: updatedCustomer.email,
-          mac_address: updatedCustomer.macAddress,
+          mac_address: updatedCustomer.macAddress || null, // Can be null
           device_type: updatedCustomer.deviceType
         })
         .eq('id', updatedCustomer.id);

@@ -64,7 +64,7 @@ export type Database = {
           email: string
           expiration_date: string
           id: string
-          mac_address: string
+          mac_address: string | null
           name: string
           password: string | null
           plan_duration: number
@@ -78,7 +78,7 @@ export type Database = {
           email: string
           expiration_date: string
           id?: string
-          mac_address: string
+          mac_address?: string | null
           name: string
           password?: string | null
           plan_duration: number
@@ -92,7 +92,7 @@ export type Database = {
           email?: string
           expiration_date?: string
           id?: string
-          mac_address?: string
+          mac_address?: string | null
           name?: string
           password?: string | null
           plan_duration?: number
