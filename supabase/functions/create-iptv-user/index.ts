@@ -49,33 +49,26 @@ serve(async (req) => {
     console.log(`Creating IPTV user: ${userParams.username}`)
     console.log(`Expiry timestamp: ${expiryTimestamp}`)
 
-    // Use the correct API endpoint as shown in the reference screenshot
-    const apiUrl = "https://my8k.me/api"
+    // Use the correct endpoint as shown in the reference screenshot
+    const apiUrl = "https://my8k.me/player_api.php"
     
-    // Prepare the API request body
-    const requestBody = {
-      key: IPTV_API_KEY,
-      action: "user_create",
-      user_username: userParams.username,
-      user_password: userParams.password,
-      user_max_connections: userParams.maxConnections,
-      user_expire: expiryTimestamp,
-      user_is_trial: userParams.isTrial ? 1 : 0,
-      user_bouquet: userParams.bouquet || "1",
-      user_output: userParams.output || "ts",
-      user_ip: userParams.ip || "*"
-    }
+    // Build URL parameters as shown in your reference image
+    const url = new URL(apiUrl)
+    url.searchParams.append("username", IPTV_API_KEY) // API key goes in username parameter
+    url.searchParams.append("password", "")  // Empty password when using API key
+    url.searchParams.append("action", "user_create")
+    url.searchParams.append("user_username", userParams.username)
+    url.searchParams.append("user_password", userParams.password)
+    url.searchParams.append("user_max_connections", userParams.maxConnections.toString())
+    url.searchParams.append("user_expire", expiryTimestamp.toString())
+    url.searchParams.append("user_is_trial", userParams.isTrial ? "1" : "0")
+    url.searchParams.append("user_bouquet", userParams.bouquet || "1")
+    url.searchParams.append("user_output", userParams.output || "ts")
+    url.searchParams.append("user_ip", userParams.ip || "*")
 
-    console.log('API Request Body:', { ...requestBody, key: '[REDACTED]' })
+    console.log('API URL (with redacted key):', url.toString().replace(IPTV_API_KEY, '[REDACTED]'))
     
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
-    })
-    
+    const response = await fetch(url.toString())
     const responseText = await response.text()
     
     console.log('API Response Status:', response.status)
@@ -165,7 +158,6 @@ serve(async (req) => {
     }
 
     // Check if the user was created successfully
-    // The API should return the created user information
     const isSuccess = data.user_info || 
                      data.success || 
                      data.result === 'success' ||
@@ -179,7 +171,6 @@ serve(async (req) => {
       const userInfo = data.user_info || data.result || data
       
       // Get the actual username/password from the API response
-      // If the API doesn't return them, use the ones we sent
       const actualUsername = userInfo?.username || 
                             userInfo?.user_username || 
                             userParams.username
