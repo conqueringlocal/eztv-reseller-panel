@@ -302,12 +302,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       
       if (!data?.success) {
-        console.error(`IPTV API error for connection ${connectionNumber}:`, data?.error || 'Unknown error');
+        console.error(`IPTV API error for connection ${connectionNumber}:`, data);
         const errorMessage = data?.error || data?.details || 'Unknown error';
-        toast.error(`Failed to create IPTV account for connection ${connectionNumber}: ${errorMessage}`);
+        const method = data?.method || 'unknown';
+        
+        toast.error(`Failed to create IPTV account for connection ${connectionNumber} (${method}): ${errorMessage}`);
         
         // Log more details for debugging
         console.error('Full error response:', data);
+        console.error('API Method used:', method);
+        
+        // If it's a 404 error, show specific guidance
+        if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+          toast.error('IPTV API endpoint not found. Please check the API configuration or contact support.');
+        }
+        
         return null;
       }
       
@@ -317,6 +326,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Store the actual credentials returned by the IPTV panel
       actualUsername = data.user?.username || username;
       actualPassword = data.user?.password || password;
+      
+      // Show success with actual credentials
+      toast.success(`Connection ${connectionNumber} created! User: ${actualUsername}, Pass: ${actualPassword}`);
       
     } catch (error) {
       console.error('Error calling edge function:', error);
@@ -351,10 +363,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     
     console.log(`Successfully created customer record: ${newCustomer.id}`);
-    
-    // Show success message with credentials
-    toast.success(`Connection ${connectionNumber} created successfully! Username: ${actualUsername}, Password: ${actualPassword}`);
-    
     return newCustomer.id;
   };
 
