@@ -50,25 +50,32 @@ serve(async (req) => {
     console.log(`Expiry timestamp: ${expiryTimestamp}`)
 
     // Use the correct endpoint as shown in the reference screenshot
-    const apiUrl = "https://my8k.me/player_api.php"
+    const apiUrl = "https://my8k.me/api"
     
-    // Build URL parameters as shown in your reference image
-    const url = new URL(apiUrl)
-    url.searchParams.append("username", IPTV_API_KEY) // API key goes in username parameter
-    url.searchParams.append("password", "")  // Empty password when using API key
-    url.searchParams.append("action", "user_create")
-    url.searchParams.append("user_username", userParams.username)
-    url.searchParams.append("user_password", userParams.password)
-    url.searchParams.append("user_max_connections", userParams.maxConnections.toString())
-    url.searchParams.append("user_expire", expiryTimestamp.toString())
-    url.searchParams.append("user_is_trial", userParams.isTrial ? "1" : "0")
-    url.searchParams.append("user_bouquet", userParams.bouquet || "1")
-    url.searchParams.append("user_output", userParams.output || "ts")
-    url.searchParams.append("user_ip", userParams.ip || "*")
+    // Prepare the API request body as shown in your screenshot
+    const requestBody = {
+      key: IPTV_API_KEY,
+      action: "user_create",
+      user_username: userParams.username,
+      user_password: userParams.password,
+      user_max_connections: userParams.maxConnections,
+      user_expire: expiryTimestamp,
+      user_is_trial: userParams.isTrial ? 1 : 0,
+      user_bouquet: userParams.bouquet || "1",
+      user_output: userParams.output || "ts",
+      user_ip: userParams.ip || "*"
+    }
 
-    console.log('API URL (with redacted key):', url.toString().replace(IPTV_API_KEY, '[REDACTED]'))
+    console.log('API Request Body:', { ...requestBody, key: '[REDACTED]' })
     
-    const response = await fetch(url.toString())
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody)
+    })
+    
     const responseText = await response.text()
     
     console.log('API Response Status:', response.status)
