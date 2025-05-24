@@ -27,7 +27,14 @@ serve(async (req) => {
     // Get the API key from Supabase secrets
     const IPTV_API_KEY = Deno.env.get('IPTV_API_KEY')
     if (!IPTV_API_KEY) {
-      throw new Error('IPTV_API_KEY not configured')
+      console.error('IPTV_API_KEY not configured in Supabase secrets')
+      return new Response(
+        JSON.stringify({ success: false, error: 'IPTV API key not configured' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        },
+      )
     }
 
     const { userParams }: { userParams: IPTVUserParams } = await req.json()
@@ -49,14 +56,45 @@ serve(async (req) => {
     url.searchParams.append("user_ip", userParams.ip || "*")
 
     console.log(`Making IPTV API call to create user: ${userParams.username}`)
+    console.log(`API URL (key redacted):`, url.toString().replace(IPTV_API_KEY, '[REDACTED]'))
 
     const response = await fetch(url.toString())
-    const data = await response.json()
+    
+    // Check if response is ok first
+    if (!response.ok) {
+      console.error(`IPTV API returned status ${response.status}: ${response.statusText}`)
+      return new Response(
+        JSON.stringify({ success: false, error: `IPTV API error: ${response.status} ${response.statusText}` }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        },
+      )
+    }
 
-    console.log('IPTV API Response:', data)
+    // Get response text first to handle both JSON and HTML responses
+    const responseText = await response.text()
+    console.log('Raw IPTV API Response:', responseText.substring(0, 200) + '...')
+
+    let data
+    try {
+      data = JSON.parse(responseText)
+    } catch (parseError) {
+      console.error('Failed to parse IPTV API response as JSON:', parseError)
+      console.error('Response was:', responseText.substring(0, 500))
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid response from IPTV API - not JSON' }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        },
+      )
+    }
+
+    console.log('Parsed IPTV API Response:', data)
 
     // Check if the user was created successfully
-    if (response.ok && data && !data.error) {
+    if (data && !data.error && data.user_info) {
       console.log(`Successfully created IPTV user: ${userParams.username}`)
       return new Response(
         JSON.stringify({ success: true, data }),
@@ -68,7 +106,7 @@ serve(async (req) => {
     } else {
       console.error('Failed to create IPTV user:', data)
       return new Response(
-        JSON.stringify({ success: false, error: data }),
+        JSON.stringify({ success: false, error: data?.error || 'Unknown error from IPTV API' }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400,

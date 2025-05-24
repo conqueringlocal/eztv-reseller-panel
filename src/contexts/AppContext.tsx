@@ -275,6 +275,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     // Create IPTV user using edge function
     try {
+      console.log('Calling create-iptv-user edge function...');
       const { data, error } = await supabase.functions.invoke('create-iptv-user', {
         body: {
           userParams: {
@@ -288,15 +289,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       });
       
-      if (error || !data?.success) {
-        console.error(`Failed to create IPTV user for connection ${connectionNumber}:`, error || data?.error);
-        toast.error(`Failed to create IPTV account for connection ${connectionNumber}`);
+      console.log('Edge function response:', { data, error });
+      
+      if (error) {
+        console.error(`Edge function error for connection ${connectionNumber}:`, error);
+        toast.error(`Failed to create IPTV account for connection ${connectionNumber}: ${error.message}`);
+        return null;
+      }
+      
+      if (!data?.success) {
+        console.error(`IPTV API error for connection ${connectionNumber}:`, data?.error);
+        toast.error(`Failed to create IPTV account for connection ${connectionNumber}: ${data?.error || 'Unknown error'}`);
         return null;
       }
       
       console.log(`Successfully created IPTV user: ${username}`);
     } catch (error) {
-      console.error('Error creating IPTV user:', error);
+      console.error('Error calling edge function:', error);
       toast.error(`Error creating IPTV account: ${error}`);
       return null;
     }
@@ -399,10 +408,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       console.log(`Created ${customerIds.length} out of ${customerData.connections} connections`);
       
-      // Update reseller credits
+      // Update reseller credits only if we created at least some connections
+      const actualCreditsUsed = customerIds.length * customerData.planDuration;
       const { error: creditError } = await supabase
         .from('profiles')
-        .update({ credits: reseller.credits - totalCreditsNeeded })
+        .update({ credits: reseller.credits - actualCreditsUsed })
         .eq('id', customerData.resellerId);
       
       if (creditError) {
@@ -411,7 +421,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return false;
       }
       
-      console.log(`Successfully deducted ${totalCreditsNeeded} credits`);
+      console.log(`Successfully deducted ${actualCreditsUsed} credits`);
       
       // Log the transaction
       const { error: logError } = await supabase
@@ -419,10 +429,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .insert({
           reseller_id: customerData.resellerId,
           action: 'account_creation',
-          credits_used: totalCreditsNeeded,
+          credits_used: actualCreditsUsed,
           customer_id: customerIds[0],  // Reference first connection
           customer_name: customerData.name,
-          notes: `${customerData.planDuration} month subscription with ${customerData.connections} connections`
+          notes: `${customerData.planDuration} month subscription with ${customerIds.length} connections created`
         });
       
       if (logError) {
