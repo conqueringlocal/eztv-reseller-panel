@@ -25,7 +25,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
-// Form schema with validation - added IPTV credentials
+// Form schema with validation - removed API key field
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
@@ -40,8 +40,6 @@ const formSchema = z.object({
     .int()
     .min(1, { message: 'Must have at least 1 connection.' })
     .max(3, { message: 'Cannot exceed 3 connections.' }),
-  iptvUsername: z.string().min(1, { message: 'IPTV panel username is required.' }),
-  iptvPassword: z.string().min(1, { message: 'IPTV panel password is required.' }),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -63,8 +61,6 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       deviceType: 'Smart TV',
       planDuration: 1,
       connections: 1,
-      iptvUsername: '',
-      iptvPassword: '',
     },
   });
 
@@ -93,10 +89,6 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         deviceType: data.deviceType,
         planDuration: data.planDuration,
         connections: data.connections,
-        iptvCredentials: {
-          username: data.iptvUsername,
-          password: data.iptvPassword,
-        },
       });
       
       if (success) {
@@ -142,39 +134,6 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             </FormItem>
           )}
         />
-
-        <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
-          <h3 className="font-medium text-gray-900">IPTV Panel Credentials</h3>
-          <p className="text-sm text-gray-600">Enter your my8k.me panel login credentials</p>
-          
-          <FormField
-            control={form.control}
-            name="iptvUsername"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>IPTV Username</FormLabel>
-                <FormControl>
-                  <Input placeholder="Your panel username" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          <FormField
-            control={form.control}
-            name="iptvPassword"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>IPTV Password</FormLabel>
-                <FormControl>
-                  <Input type="password" placeholder="Your panel password" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
         
         <FormField
           control={form.control}
