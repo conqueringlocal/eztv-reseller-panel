@@ -273,6 +273,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     console.log(`Generated credentials: ${username} / ${password}`);
     
+    // Initialize variables to store actual credentials
+    let actualUsername = username;
+    let actualPassword = password;
+    
     // Create IPTV user using edge function
     try {
       console.log('Calling create-iptv-user edge function...');
@@ -311,8 +315,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.log('IPTV API returned user data:', data.user);
       
       // Store the actual credentials returned by the IPTV panel
-      const actualUsername = data.user?.username || username;
-      const actualPassword = data.user?.password || password;
+      actualUsername = data.user?.username || username;
+      actualPassword = data.user?.password || password;
       
     } catch (error) {
       console.error('Error calling edge function:', error);
