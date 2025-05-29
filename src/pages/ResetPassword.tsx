@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,8 +35,6 @@ export default function ResetPassword() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const location = useLocation();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -47,31 +45,51 @@ export default function ResetPassword() {
   });
 
   useEffect(() => {
-    const setupAuth = async () => {
+    const checkResetToken = () => {
       setError(null);
       
-      // For password reset flows, we check for the token parameter
-      const token = searchParams.get('token');
-      const type = searchParams.get('type');
+      // Parse URL fragments (hash parameters) for Supabase password reset
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+      const type = hashParams.get('type');
       
-      console.log('Reset flow debug:', { hasToken: !!token, type });
+      console.log('Reset flow debug:', { 
+        hasAccessToken: !!accessToken, 
+        hasRefreshToken: !!refreshToken, 
+        type,
+        fullHash: window.location.hash 
+      });
       
-      if (!token || type !== 'recovery') {
-        console.error('Invalid recovery parameters');
+      if (!accessToken || !refreshToken || type !== 'recovery') {
+        console.error('Invalid recovery parameters in URL hash');
         setError('Invalid or expired reset link. Please request a new password reset.');
+        return;
       }
+
+      // Set the session with the tokens from the URL
+      supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      }).then(({ error }) => {
+        if (error) {
+          console.error('Error setting session:', error);
+          setError('Failed to validate reset link. Please request a new password reset.');
+        } else {
+          console.log('Session set successfully for password reset');
+        }
+      });
     };
 
-    setupAuth();
-  }, [searchParams]);
+    checkResetToken();
+  }, []);
 
   const onSubmit = async (data: FormData) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      // For password reset flows, we use updateUser directly
-      // The auth session is already established by the recovery token in the URL
+      // Update the user's password
       const { error } = await supabase.auth.updateUser({
         password: data.password
       });
