@@ -49,21 +49,21 @@ serve(async (req) => {
     console.log(`Creating IPTV user: ${userParams.username}`)
     console.log(`Expiry timestamp: ${expiryTimestamp}`)
 
-    // Use the correct endpoint with API key in URL
-    const apiBaseUrl = "https://my8k.me/player_api.php"
+    // Use the correct endpoint with API key authentication
+    const apiBaseUrl = "https://my8k.me/api/api.php"
     
     // Prepare the API request parameters as URL search params (GET request)
     const apiUrl = new URL(apiBaseUrl)
     apiUrl.searchParams.append('key', API_KEY)
     apiUrl.searchParams.append('action', 'user_create')
-    apiUrl.searchParams.append('user_username', userParams.username)
-    apiUrl.searchParams.append('user_password', userParams.password)
-    apiUrl.searchParams.append('user_expire', expiryTimestamp.toString())
-    apiUrl.searchParams.append('user_max_connections', userParams.maxConnections.toString())
-    apiUrl.searchParams.append('user_is_trial', userParams.isTrial ? '1' : '0')
-    apiUrl.searchParams.append('user_bouquet', userParams.bouquet || '1') // Package ID - default to package 1
-    apiUrl.searchParams.append('user_output', userParams.output || 'ts')
-    apiUrl.searchParams.append('user_ip', userParams.ip || '*')
+    apiUrl.searchParams.append('username', userParams.username)
+    apiUrl.searchParams.append('password', userParams.password)
+    apiUrl.searchParams.append('expire_date', expiryTimestamp.toString())
+    apiUrl.searchParams.append('max_connections', userParams.maxConnections.toString())
+    apiUrl.searchParams.append('is_trial', userParams.isTrial ? '1' : '0')
+    apiUrl.searchParams.append('package_id', userParams.bouquet || '1') // Package ID - default to package 1
+    apiUrl.searchParams.append('output_format', userParams.output || 'ts')
+    apiUrl.searchParams.append('allowed_ips', userParams.ip || '*')
     
     console.log('API Request URL:', apiUrl.toString().replace(API_KEY, '[REDACTED]'))
     
@@ -132,13 +132,13 @@ serve(async (req) => {
       )
     }
 
-    // Handle array response format
+    // Handle array response format based on documentation
     const responseData = Array.isArray(data) ? data[0] : data;
     
     console.log('Processed API Response:', responseData);
 
-    // Check for errors in response
-    if (!responseData || responseData.status !== 'true') {
+    // Check for errors in response - status should be "success"
+    if (!responseData || responseData.status !== 'success') {
       const errorMsg = responseData?.message || 'Unknown error from IPTV API'
       console.error('IPTV API returned error:', errorMsg)
       return new Response(
@@ -154,7 +154,7 @@ serve(async (req) => {
       )
     }
 
-    // Extract username and password from the URL
+    // Extract username and password from the URL based on the expected response format
     let extractedUsername = userParams.username;
     let extractedPassword = userParams.password;
     
