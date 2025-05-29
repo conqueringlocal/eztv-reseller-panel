@@ -22,6 +22,7 @@ export interface Customer {
   isDeactivated?: boolean;
   username?: string;
   password?: string;
+  m3uUrl?: string; // Add M3U URL field
 }
 
 export interface CreditLog {
@@ -135,6 +136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isDeactivated: dbCustomer.is_deactivated || false,
       username: dbCustomer.username,
       password: dbCustomer.password,
+      m3uUrl: dbCustomer.m3u_url, // Add M3U URL field
     };
   };
 

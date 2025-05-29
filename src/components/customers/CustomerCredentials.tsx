@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Copy, Eye, EyeOff, Mail, MessageSquare } from 'lucide-react';
+import { Copy, Eye, EyeOff, Mail, MessageSquare, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Customer } from '@/contexts/AppContext';
 
@@ -33,6 +33,7 @@ Password: ${customer.password}
 Server: my8k.me
 Expires: ${new Date(customer.expirationDate).toLocaleDateString()}
 Max Connections: ${customer.totalConnections || 1}
+M3U URL: ${customer.m3uUrl || 'Not available'}
     `.trim();
 
     try {
@@ -157,6 +158,37 @@ Max Connections: ${customer.totalConnections || 1}
             />
           </div>
         </div>
+
+        {/* M3U URL Section */}
+        {customer.m3uUrl && (
+          <div className="space-y-2">
+            <Label htmlFor="m3u-url">M3U URL</Label>
+            <div className="flex">
+              <Input
+                id="m3u-url"
+                value={customer.m3uUrl}
+                readOnly
+                className="flex-1 font-mono text-sm"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-2"
+                onClick={() => copyToClipboard(customer.m3uUrl || '', 'M3U URL')}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-2"
+                onClick={() => window.open(customer.m3uUrl, '_blank')}
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
         
         <div className="bg-gray-50 p-4 rounded-lg">
           <h4 className="font-medium mb-2">Setup Instructions</h4>
@@ -166,6 +198,13 @@ Max Connections: ${customer.totalConnections || 1}
             Username: {customer.username}
             <br />
             Password: {customer.password}
+            {customer.m3uUrl && (
+              <>
+                <br />
+                <br />
+                <strong>M3U URL:</strong> Use this URL directly in apps that support M3U playlists
+              </>
+            )}
           </p>
         </div>
       </CardContent>
