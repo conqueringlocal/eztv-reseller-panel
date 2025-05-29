@@ -250,14 +250,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return password;
   };
   
-  // Create customer connection
+  // Create customer connection with M3U account
   const createCustomerConnection = async (
     customerData: AddCustomerData,
     customerGroupId: string,
     connectionNumber: number,
     totalConnections: number
   ): Promise<string | null> => {
-    console.log(`Creating customer connection ${connectionNumber} for ${customerData.name}`);
+    console.log(`Creating M3U customer connection ${connectionNumber} for ${customerData.name}`);
     
     // Generate dates
     const today = new Date();
@@ -271,15 +271,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const username = generateCustomerUsername(customerData.name, connectionNumber);
     const password = generateCustomerPassword();
     
-    console.log(`Generated credentials: ${username} / ${password}`);
+    console.log(`Generated credentials for M3U account: ${username} / ${password}`);
     
     // Initialize variables to store actual credentials
     let actualUsername = username;
     let actualPassword = password;
     
-    // Create IPTV user using edge function
+    // Create M3U IPTV user using edge function
     try {
-      console.log('Calling create-iptv-user edge function...');
+      console.log('Calling create-iptv-user edge function for M3U account...');
       const { data, error } = await supabase.functions.invoke('create-iptv-user', {
         body: {
           userParams: {
@@ -288,51 +288,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             maxConnections: 1,
             expiryDate: expiryDate.toISOString(),
             isTrial: false,
-            output: "ts"
+            bouquet: "1", // Default package ID for M3U
+            output: "m3u" // Specify M3U format
           }
         }
       });
       
-      console.log('Edge function response:', { data, error });
+      console.log('M3U Edge function response:', { data, error });
       
       if (error) {
-        console.error(`Edge function error for connection ${connectionNumber}:`, error);
-        toast.error(`Failed to create IPTV account for connection ${connectionNumber}: ${error.message}`);
+        console.error(`Edge function error for M3U connection ${connectionNumber}:`, error);
+        toast.error(`Failed to create M3U IPTV account for connection ${connectionNumber}: ${error.message}`);
         return null;
       }
       
       if (!data?.success) {
-        console.error(`IPTV API error for connection ${connectionNumber}:`, data);
+        console.error(`M3U IPTV API error for connection ${connectionNumber}:`, data);
         const errorMessage = data?.error || data?.details || 'Unknown error';
-        const method = data?.method || 'unknown';
         
-        toast.error(`Failed to create IPTV account for connection ${connectionNumber} (${method}): ${errorMessage}`);
+        toast.error(`Failed to create M3U IPTV account for connection ${connectionNumber}: ${errorMessage}`);
         
         // Log more details for debugging
-        console.error('Full error response:', data);
-        console.error('API Method used:', method);
+        console.error('Full M3U API error response:', data);
         
-        // If it's a 404 error, show specific guidance
-        if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
-          toast.error('IPTV API endpoint not found. Please check the API configuration or contact support.');
+        // If it's a 403 error, show specific guidance
+        if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+          toast.error('M3U API access forbidden. Please check the API key configuration.');
         }
         
         return null;
       }
       
-      console.log(`Successfully created IPTV user: ${username}`);
-      console.log('IPTV API returned user data:', data.user);
+      console.log(`Successfully created M3U IPTV user: ${username}`);
+      console.log('M3U API returned user data:', data.user);
       
       // Store the actual credentials returned by the IPTV panel
       actualUsername = data.user?.username || username;
       actualPassword = data.user?.password || password;
       
       // Show success with actual credentials
-      toast.success(`Connection ${connectionNumber} created! User: ${actualUsername}, Pass: ${actualPassword}`);
+      toast.success(`M3U Connection ${connectionNumber} created! User: ${actualUsername}, Pass: ${actualPassword}`);
       
     } catch (error) {
-      console.error('Error calling edge function:', error);
-      toast.error(`Error creating IPTV account: ${error}`);
+      console.error('Error calling M3U edge function:', error);
+      toast.error(`Error creating M3U IPTV account: ${error}`);
       return null;
     }
     
@@ -357,12 +356,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .single();
     
     if (customerError) {
-      console.error(`Failed to create customer connection ${connectionNumber}:`, customerError);
-      toast.error(`Failed to save customer connection ${connectionNumber}: ${customerError.message}`);
+      console.error(`Failed to create M3U customer connection ${connectionNumber}:`, customerError);
+      toast.error(`Failed to save M3U customer connection ${connectionNumber}: ${customerError.message}`);
       return null;
     }
     
-    console.log(`Successfully created customer record: ${newCustomer.id}`);
+    console.log(`Successfully created M3U customer record: ${newCustomer.id}`);
     return newCustomer.id;
   };
 

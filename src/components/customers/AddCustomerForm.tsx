@@ -85,21 +85,21 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         resellerId,
         name: data.name,
         email: data.email,
-        macAddress: '', // Set empty string for MAC address
+        macAddress: '', // Not required for M3U accounts
         deviceType: data.deviceType,
         planDuration: data.planDuration,
         connections: data.connections,
       });
       
       if (success) {
-        toast.success('Customer added successfully!');
+        toast.success('M3U customer added successfully!');
         form.reset();
         if (onSuccess) onSuccess();
       } else {
-        toast.error('Failed to add customer. Please check your credits balance.');
+        toast.error('Failed to add M3U customer. Please check your credits balance.');
       }
     } catch (error) {
-      toast.error('An error occurred while adding the customer.');
+      toast.error('An error occurred while adding the M3U customer.');
       console.error(error);
     }
   };
@@ -150,6 +150,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                 <SelectContent>
                   <SelectItem value="Smart TV">Smart TV</SelectItem>
                   <SelectItem value="Android Box">Android Box</SelectItem>
+                  <SelectItem value="Apple TV">Apple TV</SelectItem>
                   <SelectItem value="Fire TV">Fire TV</SelectItem>
                   <SelectItem value="Mobile Device">Mobile Device</SelectItem>
                   <SelectItem value="Tablet">Tablet</SelectItem>
@@ -201,12 +202,17 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
           />
         </div>
         
-        <FormDescription className="text-amber-600 font-medium">
-          This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
-          ({watchPlanDuration} month{watchPlanDuration !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})
-        </FormDescription>
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <p className="text-sm text-blue-800 mb-2">
+            <strong>Account Type:</strong> M3U (Compatible with all device types)
+          </p>
+          <p className="text-sm text-amber-600 font-medium">
+            This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
+            ({watchPlanDuration} month{watchPlanDuration !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})
+          </p>
+        </div>
         
-        <Button type="submit" className="w-full">Add Customer</Button>
+        <Button type="submit" className="w-full">Add M3U Customer</Button>
       </form>
     </Form>
   );

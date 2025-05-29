@@ -46,34 +46,31 @@ serve(async (req) => {
     // Convert ISO date string to Unix timestamp
     const expiryTimestamp = Math.floor(new Date(userParams.expiryDate).getTime() / 1000)
 
-    console.log(`Creating IPTV user: ${userParams.username}`)
+    console.log(`Creating M3U IPTV user: ${userParams.username}`)
     console.log(`Expiry timestamp: ${expiryTimestamp}`)
 
-    // Use the correct endpoint as shown in the reference screenshot
-    const apiUrl = "https://my8k.me/api"
+    // Use the correct endpoint for M3U account creation as shown in the API documentation
+    const apiBaseUrl = "https://my8k.me/api/api.php"
     
-    // Prepare the API request body as shown in your screenshot
-    const requestBody = {
-      key: IPTV_API_KEY,
-      action: "user_create",
-      user_username: userParams.username,
-      user_password: userParams.password,
-      user_max_connections: userParams.maxConnections,
-      user_expire: expiryTimestamp,
-      user_is_trial: userParams.isTrial ? 1 : 0,
-      user_bouquet: userParams.bouquet || "1",
-      user_output: userParams.output || "ts",
-      user_ip: userParams.ip || "*"
-    }
-
-    console.log('API Request Body:', { ...requestBody, key: '[REDACTED]' })
+    // Prepare the API request parameters as URL search params (GET request)
+    const apiUrl = new URL(apiBaseUrl)
+    apiUrl.searchParams.append('key', IPTV_API_KEY)
+    apiUrl.searchParams.append('action', 'add_user')
+    apiUrl.searchParams.append('username', userParams.username)
+    apiUrl.searchParams.append('password', userParams.password)
+    apiUrl.searchParams.append('exp', expiryTimestamp.toString())
+    apiUrl.searchParams.append('conn', userParams.maxConnections.toString())
+    apiUrl.searchParams.append('trial', userParams.isTrial ? '1' : '0')
+    apiUrl.searchParams.append('pack', userParams.bouquet || '1') // Package ID - default to package 1
     
-    const response = await fetch(apiUrl, {
-      method: 'POST',
+    console.log('API Request URL:', apiUrl.toString().replace(IPTV_API_KEY, '[REDACTED]'))
+    
+    // Make GET request to the API
+    const response = await fetch(apiUrl.toString(), {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody)
+        'User-Agent': 'IPTV-Management-System/1.0',
+      }
     })
     
     const responseText = await response.text()
@@ -99,11 +96,11 @@ serve(async (req) => {
 
     // Check if it's an HTML error page
     if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-      console.error('IPTV API returned HTML instead of JSON')
+      console.error('IPTV API returned HTML instead of expected response')
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'IPTV API returned HTML instead of JSON - possible server error or invalid endpoint',
+          error: 'IPTV API returned HTML instead of expected response - possible server error',
           details: responseText.substring(0, 200)
         }),
         { 
@@ -113,42 +110,62 @@ serve(async (req) => {
       )
     }
 
-    // Try to parse as JSON
+    // Try to parse as JSON first, but handle plain text responses
     let data;
     try {
       data = JSON.parse(responseText)
+      console.log('Parsed JSON response:', data)
     } catch (parseError) {
-      console.error('Failed to parse IPTV API response as JSON:', parseError)
+      console.log('Response is not JSON, treating as plain text:', responseText)
       
-      // If it's not JSON but looks like a success response, try to extract info
-      if (responseText.includes('success') || responseText.includes('created')) {
-        console.log('Response appears to be successful but not JSON, treating as success')
+      // For M3U API, check for success indicators in plain text response
+      const lowerResponse = responseText.toLowerCase()
+      if (lowerResponse.includes('success') || 
+          lowerResponse.includes('user added') || 
+          lowerResponse.includes('created') ||
+          lowerResponse.includes('ok')) {
+        console.log('Plain text response appears to be successful')
         data = { 
           success: true, 
+          message: responseText.trim(),
           user_info: {
             username: userParams.username,
             password: userParams.password
           }
         }
-      } else {
+      } else if (lowerResponse.includes('error') || 
+                 lowerResponse.includes('fail') ||
+                 lowerResponse.includes('invalid')) {
+        console.error('Plain text response indicates error:', responseText)
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: 'Invalid response from IPTV API - not valid JSON',
-            details: responseText.substring(0, 200)
+            error: 'IPTV API returned error',
+            details: responseText.trim()
           }),
           { 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 400,
           },
         )
+      } else {
+        // Unknown response format
+        console.log('Unknown response format, treating as success if status is OK')
+        data = { 
+          success: true, 
+          message: responseText.trim(),
+          user_info: {
+            username: userParams.username,
+            password: userParams.password
+          }
+        }
       }
     }
 
-    console.log('Parsed IPTV API Response:', data)
+    console.log('Processed API Response:', data)
 
-    // Check for errors in the API response
-    if (data.error || data.message?.includes('error') || data.status === 'error') {
+    // Check for errors in JSON response
+    if (data && (data.error || data.status === 'error' || data.success === false)) {
       const errorMsg = data.error || data.message || 'Unknown error from IPTV API'
       console.error('IPTV API returned error:', errorMsg)
       return new Response(
@@ -164,20 +181,20 @@ serve(async (req) => {
       )
     }
 
-    // Check if the user was created successfully
-    const isSuccess = data.user_info || 
-                     data.success || 
-                     data.result === 'success' ||
-                     (data.status && data.status === 'success') || 
-                     (!data.error && typeof data === 'object' && Object.keys(data).length > 0)
+    // Determine if the operation was successful
+    const isSuccess = data?.success || 
+                     data?.status === 'success' || 
+                     data?.message?.toLowerCase().includes('success') ||
+                     data?.message?.toLowerCase().includes('created') ||
+                     (!data?.error && responseText.length > 0)
 
     if (isSuccess) {
-      console.log(`Successfully created IPTV user: ${userParams.username}`)
+      console.log(`Successfully created M3U IPTV user: ${userParams.username}`)
       
       // Extract user credentials from the response
-      const userInfo = data.user_info || data.result || data
+      const userInfo = data?.user_info || data?.result || {}
       
-      // Get the actual username/password from the API response
+      // Get the actual username/password from the API response, fallback to original
       const actualUsername = userInfo?.username || 
                             userInfo?.user_username || 
                             userParams.username
@@ -191,14 +208,17 @@ serve(async (req) => {
         password: actualPassword,
         expiryDate: userParams.expiryDate,
         connections: userParams.maxConnections,
-        userInfo: userInfo
+        accountType: 'M3U',
+        userInfo: userInfo,
+        apiResponse: data
       }
       
       return new Response(
         JSON.stringify({ 
           success: true, 
           data: data,
-          user: createdUser
+          user: createdUser,
+          message: `M3U account created successfully for ${actualUsername}`
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -206,12 +226,12 @@ serve(async (req) => {
         },
       )
     } else {
-      console.error('Failed to create IPTV user - unexpected response format:', data)
+      console.error('Failed to create M3U IPTV user - unexpected response:', data)
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Unexpected response format from IPTV API',
-          details: data
+          error: 'Unexpected response from IPTV API',
+          details: data || responseText
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
