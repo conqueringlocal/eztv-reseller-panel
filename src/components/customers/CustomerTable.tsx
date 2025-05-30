@@ -33,7 +33,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -159,15 +159,10 @@ export function CustomerTable({
     console.log(`🗑️ CustomerTable: Initiating delete for customer ID: ${customerId}`);
     
     try {
-      const success = await onDelete?.(customerId);
-      console.log(`📊 CustomerTable: Delete result: ${success}`);
-      
-      if (success) {
+      if (onDelete) {
+        await onDelete(customerId);
         console.log(`✅ CustomerTable: Customer ${customerId} deleted successfully`);
         // Don't show toast here as AppContext already shows it
-      } else {
-        console.error(`❌ CustomerTable: Failed to delete customer ${customerId}`);
-        toast.error('Failed to delete customer - please try again');
       }
     } catch (error) {
       console.error('💥 CustomerTable: Error during customer deletion:', error);
