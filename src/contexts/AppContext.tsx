@@ -51,6 +51,7 @@ interface AddCustomerData {
   email: string;
   macAddress?: string;
   deviceType: string;
+  packageId: string; // Added packageId
   planDuration: number;
   connections: number;
 }
@@ -274,6 +275,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const password = generateCustomerPassword();
     
     console.log(`Generated credentials for M3U account: ${username} / ${password}`);
+    console.log(`Using package ID: ${customerData.packageId}`);
     
     // Initialize variables to store actual credentials and M3U URL
     let actualUsername = username;
@@ -291,7 +293,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             maxConnections: 1,
             expiryDate: expiryDate.toISOString(),
             isTrial: false,
-            bouquet: "1", // Default package ID for M3U
+            bouquet: customerData.packageId, // Use the selected package ID
             output: "ts" // Specify TS format
           }
         }

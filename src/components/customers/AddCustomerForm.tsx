@@ -23,13 +23,15 @@ import {
 } from '@/components/ui/select';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
 
-// Form schema with validation - removed API key field
+// Form schema with validation - added package selection
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   deviceType: z.string().min(1, { message: 'Please select a device type.' }),
+  packageId: z.string().min(1, { message: 'Please select a package.' }),
   planDuration: z.coerce
     .number()
     .int()
@@ -51,6 +53,7 @@ interface AddCustomerFormProps {
 export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { user } = useAuth();
   const { addCustomer } = useApp();
+  const { packages, isLoading: packagesLoading, error: packagesError } = useIptvPackages();
   
   // Initialize form with default values
   const form = useForm<FormData>({
@@ -59,6 +62,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       name: '',
       email: '',
       deviceType: 'Smart TV',
+      packageId: '',
       planDuration: 1,
       connections: 1,
     },
@@ -87,6 +91,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         email: data.email,
         macAddress: '', // Not required for M3U accounts
         deviceType: data.deviceType,
+        packageId: data.packageId, // Include the selected package
         planDuration: data.planDuration,
         connections: data.connections,
       });
@@ -158,6 +163,41 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                   <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="packageId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>IPTV Package</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder={packagesLoading ? "Loading packages..." : "Select a package"} />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {packages.map((pkg) => (
+                    <SelectItem key={pkg.id} value={pkg.id}>
+                      <div>
+                        <div className="font-medium">{pkg.name}</div>
+                        {pkg.description && (
+                          <div className="text-sm text-gray-500">{pkg.description}</div>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {packagesError && (
+                <FormDescription className="text-red-500">
+                  {packagesError}
+                </FormDescription>
+              )}
               <FormMessage />
             </FormItem>
           )}
