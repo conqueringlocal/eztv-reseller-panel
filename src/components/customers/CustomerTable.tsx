@@ -39,7 +39,7 @@ interface CustomerTableProps {
   customers: Customer[];
   onAddClick?: () => void;
   onEdit?: (customer: Customer) => void;
-  onDelete?: (customerId: string) => void;
+  onCancel?: (customerId: string) => void; // Changed from onDelete to onCancel
   onRenew?: (customer: Customer) => void;
   onDeactivate?: (customerId: string) => void;
 }
@@ -50,7 +50,7 @@ export function CustomerTable({
   customers, 
   onAddClick, 
   onEdit,
-  onDelete,
+  onCancel, // Changed from onDelete to onCancel
   onRenew,
   onDeactivate
 }: CustomerTableProps) {
@@ -58,9 +58,9 @@ export function CustomerTable({
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false); // Changed from isDeleteDialogOpen
   const [isDeactivateDialogOpen, setIsDeactivateDialogOpen] = useState(false);
-  const [customerToDelete, setCustomerToDelete] = useState<string | null>(null);
+  const [customerToCancel, setCustomerToCancel] = useState<string | null>(null); // Changed from customerToDelete
   const [customerToDeactivate, setCustomerToDeactivate] = useState<string | null>(null);
   
   // Filter customers based on search and status
@@ -105,13 +105,22 @@ export function CustomerTable({
     }
   };
 
-  // Get status badge for customer
+  // Get status badge for customer - updated to handle cancelled status
   const getStatusBadge = (customer: Customer) => {
     if (customer.isDeactivated) {
       return (
         <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200 flex items-center space-x-1">
           <ShieldOff size={12} />
           <span>Deactivated</span>
+        </Badge>
+      );
+    }
+    
+    if (customer.status === 'cancelled') {
+      return (
+        <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200 flex items-center space-x-1">
+          <Clock size={12} />
+          <span>Cancelled</span>
         </Badge>
       );
     }
@@ -148,38 +157,38 @@ export function CustomerTable({
     setIsEditDialogOpen(true);
   };
 
-  // Handle delete button click
-  const handleDeleteClick = (customerId: string) => {
-    setCustomerToDelete(customerId);
-    setIsDeleteDialogOpen(true);
+  // Handle cancel button click - updated from handleDeleteClick
+  const handleCancelClick = (customerId: string) => {
+    setCustomerToCancel(customerId);
+    setIsCancelDialogOpen(true);
   };
 
-  // Handle customer delete with improved error handling
-  const handleDeleteCustomer = async (customerId: string) => {
-    console.log(`🗑️ CustomerTable: Initiating delete for customer ID: ${customerId}`);
+  // Handle customer cancel - updated from handleDeleteCustomer
+  const handleCancelCustomer = async (customerId: string) => {
+    console.log(`🚫 CustomerTable: Initiating cancel for customer ID: ${customerId}`);
     
     try {
-      if (onDelete) {
-        await onDelete(customerId);
-        console.log(`✅ CustomerTable: Customer ${customerId} deleted successfully`);
+      if (onCancel) {
+        await onCancel(customerId);
+        console.log(`✅ CustomerTable: Customer ${customerId} cancelled successfully`);
         // Don't show toast here as AppContext already shows it
       }
     } catch (error) {
-      console.error('💥 CustomerTable: Error during customer deletion:', error);
-      toast.error('An error occurred while deleting the customer');
+      console.error('💥 CustomerTable: Error during customer cancellation:', error);
+      toast.error('An error occurred while cancelling the customer account');
     }
   };
 
-  // Handle confirm delete with better logging
-  const handleConfirmDelete = () => {
-    if (customerToDelete) {
-      console.log(`🔄 CustomerTable: Confirming deletion of customer: ${customerToDelete}`);
-      handleDeleteCustomer(customerToDelete);
+  // Handle confirm cancel - updated from handleConfirmDelete
+  const handleConfirmCancel = () => {
+    if (customerToCancel) {
+      console.log(`🔄 CustomerTable: Confirming cancellation of customer: ${customerToCancel}`);
+      handleCancelCustomer(customerToCancel);
     } else {
-      console.error('❌ CustomerTable: No customer selected for deletion');
+      console.error('❌ CustomerTable: No customer selected for cancellation');
     }
-    setIsDeleteDialogOpen(false);
-    setCustomerToDelete(null);
+    setIsCancelDialogOpen(false);
+    setCustomerToCancel(null);
   };
 
   // Handle deactivate button click
@@ -318,7 +327,8 @@ export function CustomerTable({
                     <TableCell>{formatDate(customer.expirationDate)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end space-x-2">
-                        {onRenew && (customer.status === 'expired' || customer.status === 'expiring_soon') && (
+                        {/* Only show renew for non-cancelled customers */}
+                        {onRenew && (customer.status === 'expired' || customer.status === 'expiring_soon') && customer.status !== 'cancelled' && (
                           <Button 
                             variant="outline" 
                             size="sm"
@@ -330,7 +340,8 @@ export function CustomerTable({
                           </Button>
                         )}
                         
-                        {onDeactivate && customer.status === 'expired' && !customer.isDeactivated && (
+                        {/* Only show deactivate for expired, non-cancelled customers */}
+                        {onDeactivate && customer.status === 'expired' && !customer.isDeactivated && customer.status !== 'cancelled' && (
                           <Button 
                             variant="outline"
                             size="sm"
@@ -342,7 +353,8 @@ export function CustomerTable({
                           </Button>
                         )}
                         
-                        {onEdit && (
+                        {/* Only show edit for non-cancelled customers */}
+                        {onEdit && customer.status !== 'cancelled' && (
                           <Button 
                             variant="ghost" 
                             size="icon" 
@@ -352,12 +364,13 @@ export function CustomerTable({
                           </Button>
                         )}
                         
-                        {onDelete && (
+                        {/* Only show cancel for active customers */}
+                        {onCancel && customer.status === 'active' && (
                           <Button 
                             variant="ghost" 
                             size="icon" 
-                            onClick={() => handleDeleteClick(customer.id)}
-                            className="text-red-600 hover:text-red-800 hover:bg-red-100"
+                            onClick={() => handleCancelClick(customer.id)}
+                            className="text-orange-600 hover:text-orange-800 hover:bg-orange-100"
                           >
                             <Trash2 size={16} />
                           </Button>
@@ -393,23 +406,24 @@ export function CustomerTable({
         </Dialog>
       )}
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+      {/* Cancel Confirmation Dialog - updated from Delete Confirmation Dialog */}
+      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>Cancel this customer's account?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete this customer and revoke their IPTV access.
+              This will cancel the customer's account and stop any future billing or renewals. 
+              The customer will keep access until their current subscription expires.
               This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction 
-              onClick={handleConfirmDelete}
-              className="bg-red-600 hover:bg-red-700"
+              onClick={handleConfirmCancel}
+              className="bg-orange-600 hover:bg-orange-700"
             >
-              Delete
+              Cancel Account
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

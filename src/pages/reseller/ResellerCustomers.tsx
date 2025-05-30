@@ -29,7 +29,7 @@ import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
 
 export default function ResellerCustomers() {
   const { user } = useAuth();
-  const { customers, deleteCustomer, deactivateCustomer } = useApp();
+  const { customers, cancelCustomer, deactivateCustomer } = useApp();
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
@@ -37,24 +37,24 @@ export default function ResellerCustomers() {
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
 
-  // Handle customer delete with enhanced error handling
-  const handleDeleteCustomer = async (customerId: string) => {
-    console.log(`🗑️ ResellerCustomers: Delete request for customer ID: ${customerId}`);
+  // Handle customer cancel - updated from handleDeleteCustomer
+  const handleCancelCustomer = async (customerId: string) => {
+    console.log(`🚫 ResellerCustomers: Cancel request for customer ID: ${customerId}`);
     
     try {
-      const success = await deleteCustomer(customerId);
-      console.log(`📊 ResellerCustomers: Delete operation result: ${success}`);
+      const success = await cancelCustomer(customerId);
+      console.log(`📊 ResellerCustomers: Cancel operation result: ${success}`);
       
       if (success) {
-        console.log(`✅ ResellerCustomers: Customer ${customerId} deleted successfully`);
+        console.log(`✅ ResellerCustomers: Customer ${customerId} cancelled successfully`);
         // Success toast is handled by AppContext
       } else {
-        console.error(`❌ ResellerCustomers: Delete operation failed for customer ${customerId}`);
-        toast.error('Failed to delete customer - please check logs and try again');
+        console.error(`❌ ResellerCustomers: Cancel operation failed for customer ${customerId}`);
+        toast.error('Failed to cancel customer account - please check logs and try again');
       }
     } catch (error) {
-      console.error('💥 ResellerCustomers: Unexpected error during customer deletion:', error);
-      toast.error('An error occurred while deleting the customer');
+      console.error('💥 ResellerCustomers: Unexpected error during customer cancellation:', error);
+      toast.error('An error occurred while cancelling the customer account');
     }
   };
 
@@ -79,11 +79,12 @@ export default function ResellerCustomers() {
     setIsRenewCustomerOpen(true);
   };
   
-  // Get customer counts by status
+  // Get customer counts by status - updated to handle cancelled status
   const activeCount = resellerCustomers.filter(c => c.status === 'active' && !c.isDeactivated).length;
   const expiringSoonCount = resellerCustomers.filter(c => c.status === 'expiring_soon' && !c.isDeactivated).length;
   const expiredCount = resellerCustomers.filter(c => c.status === 'expired' && !c.isDeactivated).length;
   const deactivatedCount = resellerCustomers.filter(c => c.isDeactivated).length;
+  const cancelledCount = resellerCustomers.filter(c => c.status === 'cancelled').length;
   const totalActiveConnections = resellerCustomers.filter(c => c.status === 'active' && !c.isDeactivated).length;
   
   // Parse token from query string for HighLevel integration
@@ -113,8 +114,8 @@ export default function ResellerCustomers() {
         </Button>
       </div>
       
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      {/* Stats Cards - updated to include cancelled count */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <DashboardCard title="Active Connections">
           <div className="p-4">
             <div className="text-sm font-medium text-gray-500">Active Connections</div>
@@ -136,6 +137,13 @@ export default function ResellerCustomers() {
           </div>
         </DashboardCard>
         
+        <DashboardCard title="Cancelled">
+          <div className="p-4">
+            <div className="text-sm font-medium text-gray-500">Cancelled</div>
+            <div className="text-2xl font-bold text-orange-600">{cancelledCount}</div>
+          </div>
+        </DashboardCard>
+        
         <DashboardCard title="Deactivated">
           <div className="p-4">
             <div className="text-sm font-medium text-gray-500">Deactivated</div>
@@ -151,7 +159,7 @@ export default function ResellerCustomers() {
         <CustomerTable 
           customers={resellerCustomers}
           onAddClick={() => setIsAddCustomerOpen(true)}
-          onDelete={handleDeleteCustomer}
+          onCancel={handleCancelCustomer} // Changed from onDelete to onCancel
           onRenew={handleRenewCustomer}
           onDeactivate={handleDeactivateCustomer}
         />

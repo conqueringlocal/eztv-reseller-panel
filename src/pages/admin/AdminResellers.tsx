@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -45,7 +44,7 @@ export default function AdminResellers() {
     return customers.filter(c => c.resellerId === resellerId).length;
   };
   
-  // Get active connections per reseller
+  // Get active connections per reseller - updated to exclude cancelled customers
   const getActiveConnectionsCount = (resellerId: string) => {
     return customers.filter(c => c.resellerId === resellerId && c.status === 'active' && !c.isDeactivated).length;
   };

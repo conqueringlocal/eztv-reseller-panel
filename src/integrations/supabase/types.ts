@@ -59,6 +59,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          cancelled_at: string | null
           connection_number: number | null
           created_at: string
           customer_group_id: string | null
@@ -74,10 +75,12 @@ export type Database = {
           plan_duration: number
           reseller_id: string
           start_date: string
+          status: string | null
           total_connections: number | null
           username: string | null
         }
         Insert: {
+          cancelled_at?: string | null
           connection_number?: number | null
           created_at?: string
           customer_group_id?: string | null
@@ -93,10 +96,12 @@ export type Database = {
           plan_duration: number
           reseller_id: string
           start_date: string
+          status?: string | null
           total_connections?: number | null
           username?: string | null
         }
         Update: {
+          cancelled_at?: string | null
           connection_number?: number | null
           created_at?: string
           customer_group_id?: string | null
@@ -112,6 +117,7 @@ export type Database = {
           plan_duration?: number
           reseller_id?: string
           start_date?: string
+          status?: string | null
           total_connections?: number | null
           username?: string | null
         }
