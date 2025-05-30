@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -26,17 +27,15 @@ import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
 
-// Form schema with validation - added package selection
+// Form schema with validation - updated to only allow specific duration values
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   deviceType: z.string().min(1, { message: 'Please select a device type.' }),
   packageId: z.string().min(1, { message: 'Please select a package.' }),
-  planDuration: z.coerce
-    .number()
-    .int()
-    .min(1, { message: 'Plan duration must be at least 1 month.' })
-    .max(12, { message: 'Plan duration cannot exceed 12 months.' }),
+  planDuration: z.enum(['1', '3', '6', '12'], { 
+    errorMap: () => ({ message: 'Please select a valid plan duration.' })
+  }),
   connections: z.coerce
     .number()
     .int()
@@ -63,7 +62,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       email: '',
       deviceType: 'Smart TV',
       packageId: '',
-      planDuration: 1,
+      planDuration: '1',
       connections: 1,
     },
   });
@@ -71,7 +70,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   // Calculate total credits needed
   const watchPlanDuration = form.watch('planDuration');
   const watchConnections = form.watch('connections');
-  const totalCreditsNeeded = watchPlanDuration * watchConnections;
+  const totalCreditsNeeded = parseInt(watchPlanDuration) * watchConnections;
 
   // Handle form submission
   const onSubmit = async (data: FormData) => {
@@ -92,7 +91,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         macAddress: '', // Not required for M3U accounts
         deviceType: data.deviceType,
         packageId: data.packageId, // Include the selected package
-        planDuration: data.planDuration,
+        planDuration: parseInt(data.planDuration),
         connections: data.connections,
       });
       
@@ -259,10 +258,20 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             name="planDuration"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Plan Duration (Months)</FormLabel>
-                <FormControl>
-                  <Input type="number" min="1" max="12" {...field} />
-                </FormControl>
+                <FormLabel>Plan Duration</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select duration" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="1">1 Month</SelectItem>
+                    <SelectItem value="3">3 Months</SelectItem>
+                    <SelectItem value="6">6 Months</SelectItem>
+                    <SelectItem value="12">12 Months</SelectItem>
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
@@ -298,7 +307,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
           </p>
           <p className="text-sm text-amber-600 font-medium">
             This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
-            ({watchPlanDuration} month{watchPlanDuration !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})
+            ({parseInt(watchPlanDuration)} month{parseInt(watchPlanDuration) !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})
           </p>
         </div>
         
