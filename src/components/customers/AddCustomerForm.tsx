@@ -52,7 +52,7 @@ interface AddCustomerFormProps {
 export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { user } = useAuth();
   const { addCustomer } = useApp();
-  const { packages, isLoading: packagesLoading, error: packagesError, source } = useIptvPackages();
+  const { packages, isLoading: packagesLoading, error: packagesError, source, debugInfo } = useIptvPackages();
   
   // Initialize form with default values
   const form = useForm<FormData>({
@@ -199,12 +199,21 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
               )}
               {source === 'default' && (
                 <FormDescription className="text-amber-600">
-                  Using default packages - IPTV API configuration may need adjustment
+                  <div>Using default packages - IPTV API configuration needs setup</div>
+                  {debugInfo && (
+                    <div className="text-xs mt-1 space-y-1">
+                      <div>Auth format: {debugInfo.auth_format}</div>
+                      <div>Endpoints tried: {debugInfo.total_endpoints_tried}</div>
+                      {debugInfo.last_error && (
+                        <div>Last error: {debugInfo.last_error}</div>
+                      )}
+                    </div>
+                  )}
                 </FormDescription>
               )}
               {source === 'api' && packages.length > 0 && (
                 <FormDescription className="text-green-600">
-                  Packages loaded from your IPTV panel
+                  ✅ Packages loaded from your IPTV panel
                 </FormDescription>
               )}
               <FormMessage />
