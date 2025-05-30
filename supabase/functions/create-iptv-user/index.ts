@@ -31,7 +31,7 @@ serve(async (req) => {
     const PANEL_URL = Deno.env.get('IPTV_PANEL_URL')
     
     if (!API_KEY) {
-      console.error('IPTV API key not configured')
+      console.error('❌ IPTV API key not configured')
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -45,7 +45,7 @@ serve(async (req) => {
     }
 
     if (!PANEL_URL) {
-      console.error('IPTV Panel URL not configured')
+      console.error('❌ IPTV Panel URL not configured')
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -58,15 +58,13 @@ serve(async (req) => {
       )
     }
 
-    // Convert ISO date string to days from now
+    // Convert ISO date string to Unix timestamp for IPTV API
     const expiryDate = new Date(userParams.expiryDate);
     const today = new Date();
-    const diffTime = expiryDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const sub = Math.max(1, diffDays);
+    const unixTimestamp = Math.floor(expiryDate.getTime() / 1000);
 
     console.log(`🔄 Creating IPTV user: ${userParams.username}`)
-    console.log(`📅 Subscription days: ${sub}`)
+    console.log(`📅 Expiry date: ${userParams.expiryDate} (Unix: ${unixTimestamp})`)
     console.log(`📦 Using package/bouquet: ${userParams.bouquet}`)
     console.log(`🌐 Panel URL: ${PANEL_URL}`)
 
@@ -76,39 +74,30 @@ serve(async (req) => {
 
     // Try different actions for user creation in order of preference
     const actions = [
-      { action: 'new', type: 'm3u' },
-      { action: 'user_create', type: 'm3u' },
-      { action: 'create_user', type: 'm3u' },
-      { action: 'add_user', type: 'm3u' }
+      'user_create',
+      'create_user', 
+      'add_user',
+      'new_user'
     ];
 
-    for (const actionConfig of actions) {
+    for (const action of actions) {
       try {
-        console.log(`🧪 Trying action: ${actionConfig.action} with type: ${actionConfig.type}`)
+        console.log(`🧪 Trying action: ${action}`)
         
         // Construct the URL with query parameters
         const apiUrl = new URL(PANEL_URL);
-        apiUrl.searchParams.append('action', actionConfig.action);
+        apiUrl.searchParams.append('action', action);
         apiUrl.searchParams.append('api_key', API_KEY);
         
-        // Add parameters based on action type
-        if (actionConfig.action === 'new') {
-          apiUrl.searchParams.append('type', actionConfig.type);
-          apiUrl.searchParams.append('sub', sub.toString());
-          apiUrl.searchParams.append('pack', userParams.bouquet || '1');
-          apiUrl.searchParams.append('country', 'us');
-          apiUrl.searchParams.append('notes', `User: ${userParams.username}`);
-        } else {
-          // Standard user creation parameters
-          apiUrl.searchParams.append('user_username', userParams.username);
-          apiUrl.searchParams.append('user_password', userParams.password);
-          apiUrl.searchParams.append('user_max_connections', userParams.maxConnections.toString());
-          apiUrl.searchParams.append('user_expire', sub.toString());
-          apiUrl.searchParams.append('user_is_trial', userParams.isTrial ? '1' : '0');
-          apiUrl.searchParams.append('user_bouquet', userParams.bouquet || '1');
-          apiUrl.searchParams.append('user_output', userParams.output || 'ts');
-          apiUrl.searchParams.append('user_ip', userParams.ip || '*');
-        }
+        // Add user creation parameters
+        apiUrl.searchParams.append('user_username', userParams.username);
+        apiUrl.searchParams.append('user_password', userParams.password);
+        apiUrl.searchParams.append('user_max_connections', userParams.maxConnections.toString());
+        apiUrl.searchParams.append('user_expire', unixTimestamp.toString());
+        apiUrl.searchParams.append('user_is_trial', userParams.isTrial ? '1' : '0');
+        apiUrl.searchParams.append('user_bouquet', userParams.bouquet || '1');
+        apiUrl.searchParams.append('user_output', userParams.output || 'ts');
+        apiUrl.searchParams.append('user_ip', userParams.ip || '*');
         
         console.log(`🔗 Full URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
         
@@ -119,23 +108,23 @@ serve(async (req) => {
             'Accept': 'application/json, text/plain, */*',
             'Cache-Control': 'no-cache',
           },
-          signal: AbortSignal.timeout(15000), // 15 second timeout
+          signal: AbortSignal.timeout(30000), // 30 second timeout
         });
         
         const responseText = await response.text();
         console.log(`📡 Response Status: ${response.status}`);
-        console.log(`📡 Response preview: ${responseText.substring(0, 300)}...`);
+        console.log(`📡 Response: ${responseText}`);
 
         if (!response.ok) {
           lastError = `HTTP ${response.status}: ${response.statusText}`;
-          console.log(`❌ Failed with: ${lastError}`);
+          console.log(`❌ HTTP Error: ${lastError}`);
           continue;
         }
 
         // Check if it's an HTML error page
         if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
           lastError = 'Received HTML error page instead of API response';
-          console.log(`❌ Failed with: ${lastError}`);
+          console.log(`❌ HTML Error: ${lastError}`);
           continue;
         }
 
@@ -149,7 +138,8 @@ serve(async (req) => {
           console.log(`📄 Response is not JSON, treating as text`);
           
           // Check if response looks like success (contains useful data)
-          if (responseText.length > 10 && !responseText.toLowerCase().includes('error')) {
+          if (responseText.length > 10 && !responseText.toLowerCase().includes('error') && 
+              !responseText.toLowerCase().includes('fail')) {
             data = {
               success: true,
               response: responseText,
@@ -157,7 +147,7 @@ serve(async (req) => {
             };
           } else {
             lastError = `Invalid response format: ${responseText.substring(0, 100)}`;
-            console.log(`❌ Failed with: ${lastError}`);
+            console.log(`❌ Parse Error: ${lastError}`);
             continue;
           }
         }
@@ -168,15 +158,12 @@ serve(async (req) => {
           lastError = errorMsg;
           console.log(`❌ API Error: ${errorMsg}`);
           
-          // If it's a "Subscription Package not found" error, try with different package ID
-          if (errorMsg.includes('Subscription Package not found') || errorMsg.includes('Package not found')) {
+          // If it's a package not found error, try with default package
+          if (errorMsg.includes('Package not found') || errorMsg.includes('Subscription Package not found')) {
             console.log(`🔄 Package ${userParams.bouquet} not found, trying with package ID 1`);
+            
             // Update the URL to use package ID 1 instead
-            if (actionConfig.action === 'new') {
-              apiUrl.searchParams.set('pack', '1');
-            } else {
-              apiUrl.searchParams.set('user_bouquet', '1');
-            }
+            apiUrl.searchParams.set('user_bouquet', '1');
             
             console.log(`🔗 Retry URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
             
@@ -187,12 +174,12 @@ serve(async (req) => {
                 'Accept': 'application/json, text/plain, */*',
                 'Cache-Control': 'no-cache',
               },
-              signal: AbortSignal.timeout(15000),
+              signal: AbortSignal.timeout(30000),
             });
             
             const retryResponseText = await retryResponse.text();
             console.log(`🔄 Retry Response Status: ${retryResponse.status}`);
-            console.log(`🔄 Retry Response: ${retryResponseText.substring(0, 300)}...`);
+            console.log(`🔄 Retry Response: ${retryResponseText}`);
             
             if (retryResponse.ok && !retryResponseText.includes('<html')) {
               try {
@@ -225,9 +212,11 @@ serve(async (req) => {
         const isSuccess = data.success === true || 
                          data.status === 'success' || 
                          data.message?.includes('success') || 
+                         data.message?.includes('created') ||
                          (typeof data.response === 'string' && data.response.length > 0) ||
                          data.user_id ||
-                         data.id;
+                         data.id ||
+                         (!data.error && !data.status);
 
         if (isSuccess) {
           // Extract or generate credentials and M3U URL
@@ -249,8 +238,9 @@ serve(async (req) => {
           } else if (data.url) {
             m3uUrl = data.url;
           } else {
-            // Generate M3U URL based on standard format
-            m3uUrl = `http://my8k.me:8080/get.php?username=${extractedUsername}&password=${extractedPassword}&type=m3u_plus&output=ts`;
+            // Generate M3U URL based on panel URL structure
+            const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
+            m3uUrl = `${baseUrl}/get.php?username=${extractedUsername}&password=${extractedPassword}&type=m3u_plus&output=ts`;
           }
 
           createdUser = {
@@ -264,18 +254,19 @@ serve(async (req) => {
             apiResponse: data
           };
           
-          successfulAction = `${actionConfig.action} action`;
+          successfulAction = `${action} action`;
           console.log(`✅ SUCCESS: User created using ${successfulAction}`);
           console.log(`👤 Username: ${extractedUsername}`);
-          console.log(`🔗 M3U URL generated: ${m3uUrl}`);
+          console.log(`🔑 Password: ${extractedPassword}`);
+          console.log(`🔗 M3U URL: ${m3uUrl}`);
           break;
         } else {
-          lastError = `No success indicators found in ${actionConfig.action} response`;
-          console.log(`❌ Failed with: ${lastError}`);
+          lastError = `No success indicators found in ${action} response`;
+          console.log(`❌ No Success: ${lastError}`);
         }
         
       } catch (error) {
-        console.error(`💥 Error with ${actionConfig.action} action:`, error);
+        console.error(`💥 Error with ${action} action:`, error);
         lastError = error.message;
         continue;
       }
@@ -291,13 +282,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: `Failed to create IPTV user: ${lastError}`,
+          error: `Failed to create IPTV user. Last error: ${lastError}`,
           debug_info: {
             total_actions_tried: actions.length,
             last_error: lastError,
             panel_url: PANEL_URL,
             package_id: userParams.bouquet,
-            subscription_days: sub
+            unix_timestamp: unixTimestamp,
+            actions_tried: actions
           }
         }),
         { 
@@ -321,8 +313,8 @@ serve(async (req) => {
         debug_info: {
           panel_url: PANEL_URL,
           package_used: userParams.bouquet,
-          subscription_days: sub,
-          auth_format: 'api_key'
+          unix_timestamp: unixTimestamp,
+          successful_action: successfulAction
         }
       }),
       { 

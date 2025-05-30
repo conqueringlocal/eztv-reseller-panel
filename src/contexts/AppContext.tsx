@@ -519,28 +519,86 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Delete customer
+  // Delete customer - Enhanced to handle customer groups and IPTV accounts
   const deleteCustomer = async (customerId: string): Promise<boolean> => {
     if (!user) return false;
     
     try {
-      // Delete the customer from supabase
-      const { error } = await supabase
+      // Get the customer to delete
+      const customer = customers.find(c => c.id === customerId);
+      if (!customer) {
+        toast.error('Customer not found');
+        return false;
+      }
+
+      console.log(`Deleting customer: ${customer.name} (ID: ${customerId})`);
+      
+      // Find all customers in the same group (if it's a multi-connection customer)
+      let customersToDelete = [customer];
+      if (customer.customerGroupId && customer.totalConnections && customer.totalConnections > 1) {
+        customersToDelete = customers.filter(c => c.customerGroupId === customer.customerGroupId);
+        console.log(`Found ${customersToDelete.length} customers in group ${customer.customerGroupId} to delete`);
+      }
+      
+      // Delete IPTV accounts for each customer connection
+      const iptvDeletionPromises = customersToDelete.map(async (customerToDelete) => {
+        if (customerToDelete.username) {
+          try {
+            console.log(`Attempting to delete IPTV account: ${customerToDelete.username}`);
+            
+            // Call IPTV API to delete the user account
+            const { data, error } = await supabase.functions.invoke('delete-iptv-user', {
+              body: {
+                username: customerToDelete.username
+              }
+            });
+            
+            if (error) {
+              console.error(`Failed to delete IPTV account ${customerToDelete.username}:`, error);
+              // Don't fail the whole operation, just log the error
+            } else if (data?.success) {
+              console.log(`Successfully deleted IPTV account: ${customerToDelete.username}`);
+            } else {
+              console.warn(`IPTV account deletion may have failed for ${customerToDelete.username}:`, data);
+            }
+          } catch (error) {
+            console.error(`Error deleting IPTV account ${customerToDelete.username}:`, error);
+            // Continue with database deletion even if IPTV deletion fails
+          }
+        }
+      });
+      
+      // Wait for all IPTV deletions to complete (but don't fail if they don't work)
+      await Promise.allSettled(iptvDeletionPromises);
+      
+      // Delete all customer records from database
+      const customerIds = customersToDelete.map(c => c.id);
+      console.log(`Deleting customer records from database:`, customerIds);
+      
+      const { error: deleteError } = await supabase
         .from('customers')
         .delete()
-        .eq('id', customerId);
+        .in('id', customerIds);
       
-      if (error) {
-        toast.error(`Failed to delete customer: ${error.message}`);
+      if (deleteError) {
+        console.error('Failed to delete customer records:', deleteError);
+        toast.error(`Failed to delete customer records: ${deleteError.message}`);
         return false;
       }
       
       // Refresh data
       await refreshData();
+      
+      if (customersToDelete.length > 1) {
+        toast.success(`Successfully deleted ${customersToDelete.length} customer connections for ${customer.name}`);
+      } else {
+        toast.success(`Successfully deleted customer ${customer.name}`);
+      }
+      
       return true;
     } catch (error) {
       console.error('Error deleting customer:', error);
-      toast.error('An unexpected error occurred');
+      toast.error('An unexpected error occurred while deleting customer');
       return false;
     }
   };
