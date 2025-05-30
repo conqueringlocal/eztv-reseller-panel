@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
@@ -24,15 +23,22 @@ function calculateSubscriptionMonths(expiryDateStr: string): number {
   const diffTime = expiryDate.getTime() - today.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   
-  // Convert days to months and map to valid subscription values
-  const diffMonths = Math.ceil(diffDays / 30);
+  console.log(`📊 Days until expiry: ${diffDays}`);
   
-  // Return exact month values based on the calculated difference
-  if (diffMonths <= 1) return 1;
-  if (diffMonths <= 3) return 3;
-  if (diffMonths <= 6) return 6;
-  if (diffMonths <= 12) return 12;
-  return 12; // Cap at 12 months for longer periods
+  // Use proper day-based thresholds to determine subscription duration
+  if (diffDays <= 45) {
+    console.log(`📅 Mapping to 1 month (${diffDays} days <= 45 days)`);
+    return 1;
+  } else if (diffDays <= 120) {
+    console.log(`📅 Mapping to 3 months (${diffDays} days <= 120 days)`);
+    return 3;
+  } else if (diffDays <= 210) {
+    console.log(`📅 Mapping to 6 months (${diffDays} days <= 210 days)`);
+    return 6;
+  } else {
+    console.log(`📅 Mapping to 12 months (${diffDays} days > 210 days)`);
+    return 12;
+  }
 }
 
 serve(async (req) => {
