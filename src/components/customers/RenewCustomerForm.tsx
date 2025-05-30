@@ -13,19 +13,17 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Customer } from '@/contexts/AppContext';
 
-// Form schema with validation
+// Form schema with validation - only allow 1, 3, 6, or 12 months
 const formSchema = z.object({
-  planDuration: z.coerce
-    .number()
-    .int()
-    .min(1, { message: 'Plan duration must be at least 1 month.' })
-    .max(12, { message: 'Plan duration cannot exceed 12 months.' }),
+  planDuration: z.enum(['1', '3', '6', '12'], {
+    required_error: 'Please select a plan duration.',
+  }).transform(val => parseInt(val)),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -146,10 +144,20 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
           name="planDuration"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Plan Duration (Months)</FormLabel>
-              <FormControl>
-                <Input type="number" min="1" max="12" {...field} />
-              </FormControl>
+              <FormLabel>Plan Duration</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value?.toString()}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select plan duration" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="1">1 Month</SelectItem>
+                  <SelectItem value="3">3 Months</SelectItem>
+                  <SelectItem value="6">6 Months</SelectItem>
+                  <SelectItem value="12">12 Months</SelectItem>
+                </SelectContent>
+              </Select>
               <FormDescription>
                 This will consume {field.value || 0} credit{field.value !== 1 ? 's' : ''} and extend the subscription accordingly.
               </FormDescription>

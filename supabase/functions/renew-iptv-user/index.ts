@@ -49,6 +49,15 @@ serve(async (req) => {
 
     console.log(`🔄 Starting renewal process for customer: ${customerId}, duration: ${planDuration} months`);
 
+    // Validate plan duration
+    if (![1, 3, 6, 12].includes(planDuration)) {
+      console.error(`❌ Invalid plan duration: ${planDuration}. Must be 1, 3, 6, or 12 months.`);
+      return new Response(
+        JSON.stringify({ error: 'Invalid plan duration. Must be 1, 3, 6, or 12 months.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Get customer details
     const { data: customer, error: customerError } = await supabaseClient
       .from('customers')
@@ -96,19 +105,25 @@ serve(async (req) => {
       );
     }
 
-    // Get IPTV panel credentials from system settings
-    const { data: settings } = await supabaseClient
-      .from('system_settings')
-      .select('*');
+    // Get IPTV panel credentials from Supabase secrets
+    const iptvApiKey = Deno.env.get('IPTV_API_KEY');
+    const panelUrl = Deno.env.get('IPTV_PANEL_URL') || 'https://my8k.me/player_api.php';
 
-    const iptvUsername = settings?.find(s => s.id === 'iptv_username')?.value;
-    const iptvPassword = settings?.find(s => s.id === 'iptv_password')?.value;
-    const panelUrl = settings?.find(s => s.id === 'iptv_panel_url')?.value || 'https://my8k.me/player_api.php';
-
-    if (!iptvUsername || !iptvPassword) {
-      console.error('IPTV credentials not configured');
+    if (!iptvApiKey) {
+      console.error('IPTV API key not configured in secrets');
       return new Response(
-        JSON.stringify({ error: 'IPTV credentials not configured' }),
+        JSON.stringify({ error: 'IPTV credentials not configured. Please contact administrator.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse the API key (assuming format: username:password)
+    const [iptvUsername, iptvPassword] = iptvApiKey.split(':');
+    
+    if (!iptvUsername || !iptvPassword) {
+      console.error('IPTV API key format invalid. Expected format: username:password');
+      return new Response(
+        JSON.stringify({ error: 'IPTV credentials format invalid. Please contact administrator.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
