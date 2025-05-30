@@ -126,22 +126,18 @@ serve(async (req) => {
       );
     }
 
-    // Call IPTV panel to renew user - using exact same format as get-iptv-packages
+    // Call IPTV panel to renew user - using the subscription time parameter instead of expire
     console.log(`📡 Calling IPTV panel to renew customer: ${customer.username} for ${planDuration} months`);
-    
-    const newExpiryDate = new Date();
-    newExpiryDate.setMonth(newExpiryDate.getMonth() + planDuration);
-    const unixTimestamp = Math.floor(newExpiryDate.getTime() / 1000);
     
     const renewUrl = new URL(panelUrl);
     renewUrl.searchParams.append("api_key", iptvApiKey);
-    renewUrl.searchParams.append("action", "user_edit");
+    renewUrl.searchParams.append("action", "user_renew");
     renewUrl.searchParams.append("user_username", customer.username);
-    renewUrl.searchParams.append("user_expire", unixTimestamp.toString());
+    renewUrl.searchParams.append("subscription_time", planDuration.toString());
 
     console.log(`🔗 Renewal API URL: ${renewUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
     console.log(`👤 Renewing customer username: ${customer.username}`);
-    console.log(`📅 New expiry timestamp: ${unixTimestamp} (${newExpiryDate.toISOString()})`);
+    console.log(`📅 Subscription time: ${planDuration} months`);
 
     const iptvResponse = await fetch(renewUrl.toString());
     const iptvData = await iptvResponse.json();
