@@ -1,3 +1,4 @@
+
 import React, {
   createContext,
   useState,
@@ -5,7 +6,7 @@ import React, {
   useContext,
   useCallback,
 } from 'react';
-import { AuthContext } from './AuthContext';
+import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Tables, Enums } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
@@ -36,7 +37,7 @@ interface Reseller extends Tables<'profiles'> {}
 
 interface SystemSetting extends Tables<'system_settings'> {}
 
-interface CreditLog extends Tables<'credit_logs'> {}
+export interface CreditLog extends Tables<'credit_logs'> {}
 
 interface AppContextType {
   customers: Customer[];
@@ -62,7 +63,7 @@ interface AppProviderProps {
 }
 
 export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
-  const { user } = useContext(AuthContext);
+  const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resellers, setResellers] = useState<Reseller[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSetting[]>([]);
@@ -85,7 +86,29 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         console.error('Error fetching customers:', customersError);
         toast.error('Failed to load customers');
       } else {
-        setCustomers(customersData || []);
+        // Transform snake_case to camelCase
+        const transformedCustomers = (customersData || []).map(customer => ({
+          id: customer.id,
+          resellerId: customer.reseller_id,
+          name: customer.name,
+          email: customer.email,
+          macAddress: customer.mac_address || '',
+          deviceType: customer.device_type,
+          planDuration: customer.plan_duration,
+          startDate: customer.start_date,
+          expirationDate: customer.expiration_date,
+          createdAt: customer.created_at,
+          username: customer.username,
+          password: customer.password,
+          m3uUrl: customer.m3u_url,
+          customerGroupId: customer.customer_group_id,
+          connectionNumber: customer.connection_number,
+          totalConnections: customer.total_connections,
+          isDeactivated: customer.is_deactivated,
+          cancelledAt: customer.cancelled_at,
+          status: customer.status as 'active' | 'cancelled' | 'expired' | 'expiring_soon'
+        }));
+        setCustomers(transformedCustomers);
       }
 
       // Fetch resellers
@@ -138,9 +161,30 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   const addCustomer = async (customer: Omit<Customer, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
+      // Transform camelCase to snake_case for database
+      const dbCustomer = {
+        reseller_id: customer.resellerId,
+        name: customer.name,
+        email: customer.email,
+        mac_address: customer.macAddress,
+        device_type: customer.deviceType,
+        plan_duration: customer.planDuration,
+        start_date: customer.startDate,
+        expiration_date: customer.expirationDate,
+        username: customer.username,
+        password: customer.password,
+        m3u_url: customer.m3uUrl,
+        customer_group_id: customer.customerGroupId,
+        connection_number: customer.connectionNumber,
+        total_connections: customer.totalConnections,
+        is_deactivated: customer.isDeactivated || false,
+        cancelled_at: customer.cancelledAt,
+        status: customer.status || 'active'
+      };
+
       const { data, error } = await supabase
         .from('customers')
-        .insert([customer])
+        .insert([dbCustomer])
         .select()
         .single();
 
@@ -162,9 +206,30 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   const updateCustomer = async (customer: Customer): Promise<boolean> => {
     try {
+      // Transform camelCase to snake_case for database
+      const dbCustomer = {
+        reseller_id: customer.resellerId,
+        name: customer.name,
+        email: customer.email,
+        mac_address: customer.macAddress,
+        device_type: customer.deviceType,
+        plan_duration: customer.planDuration,
+        start_date: customer.startDate,
+        expiration_date: customer.expirationDate,
+        username: customer.username,
+        password: customer.password,
+        m3u_url: customer.m3uUrl,
+        customer_group_id: customer.customerGroupId,
+        connection_number: customer.connectionNumber,
+        total_connections: customer.totalConnections,
+        is_deactivated: customer.isDeactivated,
+        cancelled_at: customer.cancelledAt,
+        status: customer.status
+      };
+
       const { data, error } = await supabase
         .from('customers')
-        .update(customer)
+        .update(dbCustomer)
         .eq('id', customer.id)
         .select()
         .single();
@@ -430,10 +495,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   );
 };
 
-export const useAppContext = () => {
+export const useApp = () => {
   const context = useContext(AppContext);
   if (context === undefined) {
-    throw new Error('useAppContext must be used within an AppProvider');
+    throw new Error('useApp must be used within an AppProvider');
   }
   return context;
 };
