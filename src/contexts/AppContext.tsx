@@ -275,9 +275,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     
     console.log(`Generated credentials for M3U account: ${username} / ${password}`);
     
-    // Initialize variables to store actual credentials
+    // Initialize variables to store actual credentials and M3U URL
     let actualUsername = username;
     let actualPassword = password;
+    let m3uUrl = '';
     
     // Create M3U IPTV user using edge function
     try {
@@ -291,7 +292,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             expiryDate: expiryDate.toISOString(),
             isTrial: false,
             bouquet: "1", // Default package ID for M3U
-            output: "m3u" // Specify M3U format
+            output: "ts" // Specify TS format
           }
         }
       });
@@ -327,6 +328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Store the actual credentials returned by the IPTV panel
       actualUsername = data.user?.username || username;
       actualPassword = data.user?.password || password;
+      m3uUrl = data.user?.m3uUrl || data.m3uUrl || '';
       
       // Show success with actual credentials
       toast.success(`M3U Connection ${connectionNumber} created! User: ${actualUsername}, Pass: ${actualPassword}`);
@@ -337,7 +339,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return null;
     }
     
-    // Insert customer record in database with the actual credentials
+    // Insert customer record in database with the actual credentials and M3U URL
     const { data: newCustomer, error: customerError } = await supabase
       .from('customers')
       .insert({
@@ -350,6 +352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         expiration_date: expirationDate,
         username: actualUsername,
         password: actualPassword,
+        m3u_url: m3uUrl,
         customer_group_id: customerGroupId,
         connection_number: connectionNumber,
         total_connections: totalConnections,

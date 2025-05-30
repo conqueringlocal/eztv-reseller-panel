@@ -49,30 +49,40 @@ serve(async (req) => {
     console.log(`Creating IPTV user: ${userParams.username}`)
     console.log(`Expiry timestamp: ${expiryTimestamp}`)
 
-    // Use the correct endpoint with API key authentication
-    const apiBaseUrl = "https://my8k.me/api/api.php"
+    // Use the correct endpoint from the documentation
+    const apiBaseUrl = "https://my8k.me/player_api.php"
     
-    // Prepare the API request parameters as URL search params (GET request)
-    const apiUrl = new URL(apiBaseUrl)
-    apiUrl.searchParams.append('key', API_KEY)
-    apiUrl.searchParams.append('action', 'user_create')
-    apiUrl.searchParams.append('username', userParams.username)
-    apiUrl.searchParams.append('password', userParams.password)
-    apiUrl.searchParams.append('expire_date', expiryTimestamp.toString())
-    apiUrl.searchParams.append('max_connections', userParams.maxConnections.toString())
-    apiUrl.searchParams.append('is_trial', userParams.isTrial ? '1' : '0')
-    apiUrl.searchParams.append('package_id', userParams.bouquet || '1') // Package ID - default to package 1
-    apiUrl.searchParams.append('output_format', userParams.output || 'ts')
-    apiUrl.searchParams.append('allowed_ips', userParams.ip || '*')
+    // Prepare the API request data using the format from documentation
+    const requestData = {
+      key: API_KEY,
+      action: 'user_create',
+      user_username: userParams.username,
+      user_password: userParams.password,
+      user_expire: expiryTimestamp.toString(),
+      user_max_connections: userParams.maxConnections.toString(),
+      user_is_trial: userParams.isTrial ? '1' : '0',
+      user_bouquet: userParams.bouquet || '1',
+      user_output: userParams.output || 'ts',
+      user_ip: userParams.ip || '*'
+    }
     
-    console.log('API Request URL:', apiUrl.toString().replace(API_KEY, '[REDACTED]'))
+    console.log('API Request data:', { 
+      ...requestData, 
+      key: '[REDACTED]' 
+    })
     
-    // Make GET request to the API
-    const response = await fetch(apiUrl.toString(), {
-      method: 'GET',
+    // Make POST request to the API with form data
+    const formData = new FormData()
+    Object.entries(requestData).forEach(([key, value]) => {
+      formData.append(key, value)
+    })
+    
+    const response = await fetch(apiBaseUrl, {
+      method: 'POST',
       headers: {
         'User-Agent': 'IPTV-Management-System/1.0',
-      }
+      },
+      body: formData
     })
     
     const responseText = await response.text()
@@ -132,14 +142,14 @@ serve(async (req) => {
       )
     }
 
-    // Handle array response format based on documentation
+    // Handle response format based on documentation - check for "true" status
     const responseData = Array.isArray(data) ? data[0] : data;
     
     console.log('Processed API Response:', responseData);
 
-    // Check for errors in response - status should be "success"
-    if (!responseData || responseData.status !== 'success') {
-      const errorMsg = responseData?.message || 'Unknown error from IPTV API'
+    // Check for errors in response - status should be "true" for success
+    if (!responseData || responseData.status !== 'true') {
+      const errorMsg = responseData?.message || responseData?.error || 'Unknown error from IPTV API'
       console.error('IPTV API returned error:', errorMsg)
       return new Response(
         JSON.stringify({ 
@@ -154,27 +164,30 @@ serve(async (req) => {
       )
     }
 
-    // Extract username and password from the URL based on the expected response format
+    // Extract username and password - they should be in the response
     let extractedUsername = userParams.username;
     let extractedPassword = userParams.password;
+    let m3uUrl = '';
     
-    if (responseData.url) {
-      try {
-        const urlObj = new URL(responseData.url);
-        const urlUsername = urlObj.searchParams.get('username');
-        const urlPassword = urlObj.searchParams.get('password');
-        
-        if (urlUsername) extractedUsername = urlUsername;
-        if (urlPassword) extractedPassword = urlPassword;
-        
-        console.log(`Extracted credentials from URL: ${extractedUsername} / ${extractedPassword}`);
-      } catch (urlError) {
-        console.warn('Failed to parse URL for credentials:', urlError);
-        // Continue with original credentials if URL parsing fails
-      }
+    // Based on the documentation, the response should contain the user details
+    if (responseData.user_info) {
+      extractedUsername = responseData.user_info.username || extractedUsername;
+      extractedPassword = responseData.user_info.password || extractedPassword;
+    }
+    
+    // Generate M3U URL based on the API documentation format
+    if (responseData.server_info && responseData.user_info) {
+      const serverUrl = responseData.server_info.url || 'http://my8k.me:8080';
+      const username = responseData.user_info.username || extractedUsername;
+      const password = responseData.user_info.password || extractedPassword;
+      m3uUrl = `${serverUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`;
+    } else {
+      // Fallback M3U URL format
+      m3uUrl = `http://my8k.me:8080/get.php?username=${extractedUsername}&password=${extractedPassword}&type=m3u_plus&output=ts`;
     }
 
     console.log(`Successfully created IPTV user: ${extractedUsername}`);
+    console.log(`Generated M3U URL: ${m3uUrl}`);
     
     const createdUser = {
       username: extractedUsername,
@@ -182,10 +195,10 @@ serve(async (req) => {
       expiryDate: userParams.expiryDate,
       connections: userParams.maxConnections,
       accountType: 'M3U',
-      m3uUrl: responseData.url,
-      userId: responseData.user_id,
-      country: responseData.country,
-      notes: responseData.notes,
+      m3uUrl: m3uUrl,
+      userId: responseData.user_info?.user_id || null,
+      country: responseData.user_info?.exp_date || null,
+      notes: responseData.user_info?.active_cons || null,
       apiResponse: responseData
     }
     
@@ -195,7 +208,7 @@ serve(async (req) => {
         data: responseData,
         user: createdUser,
         message: `IPTV M3U account created successfully for ${extractedUsername}`,
-        m3uUrl: responseData.url
+        m3uUrl: m3uUrl
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
