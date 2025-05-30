@@ -126,7 +126,7 @@ serve(async (req) => {
       );
     }
 
-    // Call IPTV panel to renew user using the API key format (same as get-iptv-packages)
+    // Call IPTV panel to renew user - using exact same format as get-iptv-packages
     console.log(`📡 Calling IPTV panel to renew customer: ${customer.username} for ${planDuration} months`);
     
     const newExpiryDate = new Date();
@@ -134,9 +134,9 @@ serve(async (req) => {
     const unixTimestamp = Math.floor(newExpiryDate.getTime() / 1000);
     
     const renewUrl = new URL(panelUrl);
-    renewUrl.searchParams.append("api_key", iptvApiKey); // Use api_key parameter like get-iptv-packages
+    renewUrl.searchParams.append("api_key", iptvApiKey);
     renewUrl.searchParams.append("action", "user_edit");
-    renewUrl.searchParams.append("user_username", customer.username); // Customer's IPTV username
+    renewUrl.searchParams.append("user_username", customer.username);
     renewUrl.searchParams.append("user_expire", unixTimestamp.toString());
 
     console.log(`🔗 Renewal API URL: ${renewUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
@@ -148,10 +148,15 @@ serve(async (req) => {
 
     console.log('IPTV API Response:', iptvData);
 
-    if (!iptvResponse.ok || iptvData.error) {
+    // Check if the response indicates success
+    if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
       console.error('Failed to renew IPTV user:', iptvData);
       return new Response(
-        JSON.stringify({ error: 'Failed to renew IPTV subscription', details: iptvData }),
+        JSON.stringify({ 
+          error: 'Failed to renew IPTV subscription', 
+          details: iptvData,
+          iptvResponse: iptvData 
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
