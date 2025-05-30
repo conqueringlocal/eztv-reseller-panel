@@ -24,6 +24,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
+import { RefreshCw } from 'lucide-react';
 
 // Form schema with validation - added package selection
 const formSchema = z.object({
@@ -52,7 +53,7 @@ interface AddCustomerFormProps {
 export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { user } = useAuth();
   const { addCustomer } = useApp();
-  const { packages, isLoading: packagesLoading, error: packagesError, source, debugInfo } = useIptvPackages();
+  const { packages, isLoading: packagesLoading, error: packagesError, source, debugInfo, refetch } = useIptvPackages();
   
   // Initialize form with default values
   const form = useForm<FormData>({
@@ -106,6 +107,13 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       toast.error('An error occurred while adding the M3U customer.');
       console.error(error);
     }
+  };
+  
+  // Test connection handler
+  const handleTestConnection = async () => {
+    console.log('🧪 Manual connection test triggered');
+    toast.info('🔄 Testing IPTV connection...');
+    await refetch();
   };
   
   return (
@@ -172,11 +180,24 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
           name="packageId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>IPTV Package</FormLabel>
+              <FormLabel className="flex items-center justify-between">
+                <span>IPTV Package</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestConnection}
+                  disabled={packagesLoading}
+                  className="h-8 px-3"
+                >
+                  <RefreshCw className={`h-3 w-3 mr-1 ${packagesLoading ? 'animate-spin' : ''}`} />
+                  Test Connection
+                </Button>
+              </FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue placeholder={packagesLoading ? "Loading packages..." : "Select a package"} />
+                    <SelectValue placeholder={packagesLoading ? "Testing connection..." : "Select a package"} />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
@@ -192,30 +213,41 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                   ))}
                 </SelectContent>
               </Select>
+              
+              {/* Enhanced status indicators */}
               {packagesError && (
-                <FormDescription className="text-red-500">
-                  {packagesError}
+                <FormDescription className="text-red-500 space-y-1">
+                  <div className="font-medium">❌ Connection Failed</div>
+                  <div>{packagesError}</div>
                 </FormDescription>
               )}
+              
               {source === 'default' && (
-                <FormDescription className="text-amber-600">
-                  <div>Using default packages - IPTV API configuration needs setup</div>
+                <FormDescription className="text-amber-600 space-y-2">
+                  <div className="font-medium">⚠️ Using Fallback Packages</div>
+                  <div>IPTV API connection failed - using default options for testing</div>
                   {debugInfo && (
-                    <div className="text-xs mt-1 space-y-1">
-                      <div>Auth format: {debugInfo.auth_format}</div>
-                      <div>Endpoints tried: {debugInfo.total_endpoints_tried}</div>
+                    <div className="text-xs space-y-1 p-2 bg-amber-50 rounded border">
+                      <div><strong>Debug Info:</strong></div>
+                      <div>• Auth format: {debugInfo.auth_format}</div>
+                      <div>• Endpoints tried: {debugInfo.total_endpoints_tried}</div>
                       {debugInfo.last_error && (
-                        <div>Last error: {debugInfo.last_error}</div>
+                        <div>• Last error: {debugInfo.last_error}</div>
                       )}
                     </div>
                   )}
                 </FormDescription>
               )}
+              
               {source === 'api' && packages.length > 0 && (
                 <FormDescription className="text-green-600">
-                  ✅ Packages loaded from your IPTV panel
+                  <div className="flex items-center space-x-1">
+                    <span>✅</span>
+                    <span>Connected to your IPTV panel ({packages.length} packages loaded)</span>
+                  </div>
                 </FormDescription>
               )}
+              
               <FormMessage />
             </FormItem>
           )}
