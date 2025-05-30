@@ -185,6 +185,67 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   const addCustomer = async (customer: Omit<Customer, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
+      // Get reseller info for passing to IPTV API
+      const reseller = resellers.find(r => r.id === customer.resellerId);
+      if (!reseller) {
+        console.error('Reseller not found for customer');
+        toast.error('Reseller not found');
+        return false;
+      }
+
+      // Check if reseller has enough credits
+      if (reseller.credits < customer.planDuration * (customer.connections || 1)) {
+        toast.error('Insufficient credits');
+        return false;
+      }
+
+      // Generate IPTV credentials if not provided
+      const username = customer.username || `${customer.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().substring(0, 10)}${Math.floor(Math.random() * 1000)}`;
+      const password = customer.password || Math.random().toString(36).substring(2, 10);
+
+      // Calculate expiry date for IPTV API
+      const expiryDate = new Date(customer.expirationDate);
+
+      // Call IPTV API via edge function
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.error('No active session found');
+        toast.error('Authentication required');
+        return false;
+      }
+
+      const { data, error } = await supabase.functions.invoke('create-iptv-user', {
+        body: {
+          userParams: {
+            username,
+            password,
+            maxConnections: customer.connections || 1,
+            expiryDate: expiryDate.toISOString(),
+            isTrial: false,
+            bouquet: customer.packageId || '1',
+            output: "ts",
+            customerName: customer.name,
+            resellerName: reseller.name
+          }
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error || !data?.success) {
+        console.error('Failed to create IPTV user:', error || data);
+        toast.error('Failed to create IPTV account');
+        return false;
+      }
+
+      // Extract credentials from IPTV API response
+      const iptvCredentials = data.user || {};
+      const finalUsername = iptvCredentials.username || username;
+      const finalPassword = iptvCredentials.password || password;
+      const m3uUrl = iptvCredentials.m3uUrl || data.m3uUrl;
+
       // Transform camelCase to snake_case for database
       const dbCustomer = {
         reseller_id: customer.resellerId,
@@ -195,27 +256,56 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         plan_duration: customer.planDuration,
         start_date: customer.startDate,
         expiration_date: customer.expirationDate,
-        username: customer.username,
-        password: customer.password,
-        m3u_url: customer.m3uUrl,
+        username: finalUsername,
+        password: finalPassword,
+        m3u_url: m3uUrl,
         customer_group_id: customer.customerGroupId,
         connection_number: customer.connectionNumber,
-        total_connections: customer.totalConnections,
+        total_connections: customer.totalConnections || customer.connections,
         is_deactivated: customer.isDeactivated || false,
         cancelled_at: customer.cancelledAt,
         status: customer.status || 'active'
       };
 
-      const { data, error } = await supabase
+      const { data: insertedCustomer, error: insertError } = await supabase
         .from('customers')
         .insert([dbCustomer])
         .select()
         .single();
 
-      if (error) {
-        console.error('Error adding customer:', error);
-        toast.error('Failed to add customer');
+      if (insertError) {
+        console.error('Error adding customer:', insertError);
+        toast.error('Failed to add customer to database');
         return false;
+      }
+
+      // Deduct credits from reseller
+      const creditsToDeduct = customer.planDuration * (customer.connections || 1);
+      const { error: creditError } = await supabase
+        .from('profiles')
+        .update({ credits: reseller.credits - creditsToDeduct })
+        .eq('id', customer.resellerId);
+
+      if (creditError) {
+        console.error('Failed to deduct credits:', creditError);
+        // Customer was created but credits weren't deducted - log this issue
+        toast.error('Customer created but failed to deduct credits');
+      }
+
+      // Log the credit usage
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: customer.resellerId,
+          action: 'account_creation',
+          credits_used: creditsToDeduct,
+          customer_name: customer.name,
+          customer_id: insertedCustomer.id,
+          notes: `${customer.planDuration} month subscription with ${customer.connections || 1} connection(s)`
+        });
+
+      if (logError) {
+        console.error('Failed to log credit usage:', logError);
       }
 
       toast.success('Customer added successfully');

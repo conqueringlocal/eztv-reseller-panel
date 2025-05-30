@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
@@ -14,6 +15,8 @@ interface IPTVUserParams {
   bouquet?: string;
   output?: string;
   ip?: string;
+  customerName?: string;
+  resellerName?: string;
 }
 
 // Helper function to calculate subscription months from expiry date
@@ -99,6 +102,13 @@ serve(async (req) => {
       apiUrl.searchParams.append('sub', subscriptionMonths.toString());
       apiUrl.searchParams.append('pack', userParams.bouquet || '1');
       apiUrl.searchParams.append('api_key', API_KEY);
+      
+      // Add notes parameter with customer and reseller names
+      if (userParams.customerName && userParams.resellerName) {
+        const notes = `Customer: ${userParams.customerName} | Reseller: ${userParams.resellerName}`;
+        apiUrl.searchParams.append('notes', notes);
+        console.log(`📝 Adding notes: ${notes}`);
+      }
       
       // Optional parameters
       if (userParams.ip && userParams.ip !== '*') {

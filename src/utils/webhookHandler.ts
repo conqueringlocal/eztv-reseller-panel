@@ -86,7 +86,9 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
           maxConnections: 1,
           expiryDate: expiryDate.toISOString(),
           isTrial: false,
-          output: "ts"
+          output: "ts",
+          customerName,
+          resellerName: reseller.name
         }
       }
     });
