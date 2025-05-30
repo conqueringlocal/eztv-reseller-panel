@@ -9,7 +9,7 @@ export interface Customer {
   resellerId: string;
   name: string;
   email: string;
-  macAddress?: string; // Made optional since it's not required anymore
+  macAddress?: string;
   deviceType: string;
   planDuration: number;
   startDate: string;
@@ -22,7 +22,7 @@ export interface Customer {
   isDeactivated?: boolean;
   username?: string;
   password?: string;
-  m3uUrl?: string; // Add M3U URL field
+  m3uUrl?: string;
 }
 
 export interface CreditLog {
@@ -49,7 +49,7 @@ interface AddCustomerData {
   resellerId: string;
   name: string;
   email: string;
-  macAddress?: string; // Made optional
+  macAddress?: string;
   deviceType: string;
   planDuration: number;
   connections: number;
@@ -123,7 +123,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       resellerId: dbCustomer.reseller_id,
       name: dbCustomer.name,
       email: dbCustomer.email,
-      macAddress: dbCustomer.mac_address || '', // Handle nullable MAC address
+      macAddress: dbCustomer.mac_address || '',
       deviceType: dbCustomer.device_type,
       planDuration: dbCustomer.plan_duration,
       startDate: dbCustomer.start_date,
@@ -136,7 +136,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isDeactivated: dbCustomer.is_deactivated || false,
       username: dbCustomer.username,
       password: dbCustomer.password,
-      m3uUrl: dbCustomer.m3u_url, // Add M3U URL field
+      m3uUrl: dbCustomer.m3u_url,
     };
   };
 
@@ -555,38 +555,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return false;
       }
 
-      // In a real implementation, this would call the IPTV API to deactivate the account
-      console.log(`[DEMO] Calling IPTV API to deactivate account for user: ${customer.username}`);
+      console.log(`Deactivating customer account for user: ${customer.username}`);
       
-      // Before we update the customer status in supabase, let's run a query to check if the is_deactivated column exists
-      console.log('Checking if is_deactivated column exists in customers table');
-      
-      // For now, we'll update our approach to handle this error:
-      // Since the error is about 'is_deactivated' not existing in the type,
-      // we'll use a dynamic object to update only fields we know exist
-      const updateData: Record<string, boolean> = {};
-      
-      // Check if the column exists by attempting to read it first
-      const { data: columnInfo, error: columnError } = await supabase
-        .from('customers')
-        .select('is_deactivated')
-        .eq('id', customerId)
-        .limit(1);
-        
-      if (columnInfo && 'is_deactivated' in (columnInfo[0] || {})) {
-        // Column exists, we can use it
-        updateData.is_deactivated = true;
-      } else {
-        // Column doesn't exist, log this information
-        console.error('is_deactivated column not found in customers table');
-        toast.error('Cannot deactivate customer - database schema mismatch');
-        return false;
-      }
-      
-      // Update the customer status in supabase using our dynamic object
+      // Update the customer status in supabase
       const { error } = await supabase
         .from('customers')
-        .update(updateData)
+        .update({ is_deactivated: true })
         .eq('id', customerId);
       
       if (error) {

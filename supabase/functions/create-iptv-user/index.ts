@@ -53,16 +53,16 @@ serve(async (req) => {
     console.log(`Creating IPTV user: ${userParams.username}`)
     console.log(`Subscription days: ${sub}`)
 
-    // Use the correct API endpoint from your example
+    // Use the correct API endpoint
     const apiBaseUrl = "https://my8k.me/api/api.php"
     
-    // Build URL with query parameters using the format from your example
+    // Build URL with query parameters - using correct parameter names
     const apiUrl = new URL(apiBaseUrl);
     apiUrl.searchParams.append('action', 'new');
     apiUrl.searchParams.append('type', 'm3u');
     apiUrl.searchParams.append('sub', sub.toString());
-    apiUrl.searchParams.append('pack', userParams.bouquet || '132'); // Default package ID
-    apiUrl.searchParams.append('country', 'dk'); // Default country
+    apiUrl.searchParams.append('pack', userParams.bouquet || '1'); // Use package 1 as default
+    apiUrl.searchParams.append('country', 'us'); // Default country
     apiUrl.searchParams.append('notes', `User: ${userParams.username}`);
     apiUrl.searchParams.append('api_key', API_KEY);
     

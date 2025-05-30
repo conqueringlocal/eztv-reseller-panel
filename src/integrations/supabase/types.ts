@@ -59,45 +59,60 @@ export type Database = {
       }
       customers: {
         Row: {
+          connection_number: number | null
           created_at: string
+          customer_group_id: string | null
           device_type: string
           email: string
           expiration_date: string
           id: string
+          is_deactivated: boolean | null
+          m3u_url: string | null
           mac_address: string | null
           name: string
           password: string | null
           plan_duration: number
           reseller_id: string
           start_date: string
+          total_connections: number | null
           username: string | null
         }
         Insert: {
+          connection_number?: number | null
           created_at?: string
+          customer_group_id?: string | null
           device_type: string
           email: string
           expiration_date: string
           id?: string
+          is_deactivated?: boolean | null
+          m3u_url?: string | null
           mac_address?: string | null
           name: string
           password?: string | null
           plan_duration: number
           reseller_id: string
           start_date: string
+          total_connections?: number | null
           username?: string | null
         }
         Update: {
+          connection_number?: number | null
           created_at?: string
+          customer_group_id?: string | null
           device_type?: string
           email?: string
           expiration_date?: string
           id?: string
+          is_deactivated?: boolean | null
+          m3u_url?: string | null
           mac_address?: string | null
           name?: string
           password?: string | null
           plan_duration?: number
           reseller_id?: string
           start_date?: string
+          total_connections?: number | null
           username?: string | null
         }
         Relationships: [
