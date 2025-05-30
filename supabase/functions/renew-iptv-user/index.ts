@@ -58,7 +58,7 @@ serve(async (req) => {
       );
     }
 
-    // Get customer details
+    // Get customer details including their IPTV credentials
     const { data: customer, error: customerError } = await supabaseClient
       .from('customers')
       .select('*')
@@ -70,6 +70,15 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: 'Customer not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check if customer has IPTV credentials
+    if (!customer.username || !customer.password) {
+      console.error(`❌ Customer ${customer.name} does not have IPTV credentials`);
+      return new Response(
+        JSON.stringify({ error: 'Customer does not have IPTV credentials. Please create IPTV account first.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -128,8 +137,8 @@ serve(async (req) => {
       );
     }
 
-    // Call IPTV panel to renew user
-    console.log(`📡 Calling IPTV panel to renew user: ${customer.username}`);
+    // Call IPTV panel to renew user using customer's credentials
+    console.log(`📡 Calling IPTV panel to renew customer: ${customer.username} for ${planDuration} months`);
     
     const newExpiryDate = new Date();
     newExpiryDate.setMonth(newExpiryDate.getMonth() + planDuration);
@@ -139,8 +148,12 @@ serve(async (req) => {
     renewUrl.searchParams.append("username", iptvUsername);
     renewUrl.searchParams.append("password", iptvPassword);
     renewUrl.searchParams.append("action", "user_edit");
-    renewUrl.searchParams.append("user_username", customer.username);
+    renewUrl.searchParams.append("user_username", customer.username); // Customer's IPTV username
     renewUrl.searchParams.append("user_expire", unixTimestamp.toString());
+
+    console.log(`🔗 Renewal API URL: ${renewUrl.toString().replace(iptvPassword, '[REDACTED]')}`);
+    console.log(`👤 Renewing customer username: ${customer.username}`);
+    console.log(`📅 New expiry timestamp: ${unixTimestamp} (${newExpiryDate.toISOString()})`);
 
     const iptvResponse = await fetch(renewUrl.toString());
     const iptvData = await iptvResponse.json();
@@ -206,7 +219,7 @@ serve(async (req) => {
       // Non-critical error, continue
     }
 
-    console.log(`✅ Successfully renewed customer ${customer.name} for ${planDuration} months`);
+    console.log(`✅ Successfully renewed customer ${customer.name} (${customer.username}) for ${planDuration} months`);
 
     return new Response(
       JSON.stringify({ 
