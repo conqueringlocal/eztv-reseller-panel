@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -53,7 +52,7 @@ interface AddCustomerFormProps {
 export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { user } = useAuth();
   const { addCustomer } = useApp();
-  const { packages, isLoading: packagesLoading, error: packagesError } = useIptvPackages();
+  const { packages, isLoading: packagesLoading, error: packagesError, source } = useIptvPackages();
   
   // Initialize form with default values
   const form = useForm<FormData>({
@@ -196,6 +195,16 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
               {packagesError && (
                 <FormDescription className="text-red-500">
                   {packagesError}
+                </FormDescription>
+              )}
+              {source === 'default' && (
+                <FormDescription className="text-amber-600">
+                  Using default packages - IPTV API configuration may need adjustment
+                </FormDescription>
+              )}
+              {source === 'api' && packages.length > 0 && (
+                <FormDescription className="text-green-600">
+                  Packages loaded from your IPTV panel
                 </FormDescription>
               )}
               <FormMessage />

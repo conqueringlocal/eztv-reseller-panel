@@ -13,6 +13,7 @@ export const useIptvPackages = () => {
   const [packages, setPackages] = useState<IptvPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<'api' | 'default'>('api');
 
   const fetchPackages = async () => {
     setIsLoading(true);
@@ -41,7 +42,18 @@ export const useIptvPackages = () => {
       }
       
       setPackages(data.packages || []);
-      console.log(`Successfully loaded ${data.packages?.length || 0} packages`);
+      setSource(data.source || 'api');
+      
+      const packageCount = data.packages?.length || 0;
+      console.log(`Successfully loaded ${packageCount} packages from ${data.source || 'api'}`);
+      
+      // Show different messages based on source
+      if (data.source === 'default') {
+        console.log('Using default packages - API endpoints may need configuration');
+        // Don't show error toast for default packages, just log it
+      } else {
+        console.log('Successfully connected to IPTV API');
+      }
       
     } catch (error) {
       console.error('Unexpected error fetching packages:', error);
@@ -61,6 +73,7 @@ export const useIptvPackages = () => {
     packages,
     isLoading,
     error,
+    source,
     refetch: fetchPackages
   };
 };

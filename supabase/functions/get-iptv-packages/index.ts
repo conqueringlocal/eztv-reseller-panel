@@ -38,131 +38,174 @@ serve(async (req) => {
 
     console.log('Fetching available IPTV packages...')
 
-    // Use the correct API endpoint to get packages/bouquets
-    const apiBaseUrl = "https://my8k.me/api/api.php"
-    
-    // Build URL with query parameters to get packages list
-    const apiUrl = new URL(apiBaseUrl);
-    apiUrl.searchParams.append('action', 'packages');
-    apiUrl.searchParams.append('api_key', API_KEY);
-    
-    console.log('API Request URL:', apiUrl.toString().replace(API_KEY, '[REDACTED]'));
-    
-    // Make GET request to the API
-    const response = await fetch(apiUrl.toString(), {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'IPTV-Management-System/1.0',
+    // Try multiple API endpoints that are commonly used for package/bouquet listing
+    const endpoints = [
+      // Standard bouquet listing endpoint
+      {
+        url: "https://my8k.me/player_api.php",
+        params: { action: "get_live_categories" }
+      },
+      // Alternative endpoint for packages
+      {
+        url: "https://my8k.me/player_api.php", 
+        params: { action: "get_bouquets" }
+      },
+      // Panel API endpoint
+      {
+        url: "https://my8k.me/api/api.php",
+        params: { action: "bouquets" }
+      },
+      // Admin panel endpoint
+      {
+        url: "https://my8k.me/admin_api.php",
+        params: { action: "get_bouquets" }
       }
-    })
-    
-    const responseText = await response.text()
-    
-    console.log('API Response Status:', response.status)
-    console.log('API Response Body:', responseText)
+    ];
 
-    // Check if response is ok
-    if (!response.ok) {
-      console.error(`IPTV API returned status ${response.status}: ${response.statusText}`)
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `IPTV API error: ${response.status} ${response.statusText}`,
-          details: responseText?.substring(0, 500)
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
-      )
-    }
-
-    // Check if it's an HTML error page
-    if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-      console.error('IPTV API returned HTML instead of expected response')
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'IPTV API returned HTML instead of expected response - possible server error',
-          details: responseText.substring(0, 200)
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
-      )
-    }
-
-    // Try to parse the response as JSON
-    let data;
-    try {
-      data = JSON.parse(responseText)
-      console.log('Parsed JSON response:', data)
-    } catch (parseError) {
-      console.error('Failed to parse response as JSON:', responseText)
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Invalid response format from IPTV API',
-          details: responseText.substring(0, 200)
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
-      )
-    }
-
-    // Process the packages response
     let packages: PackageInfo[] = [];
-    
-    if (data.packages && Array.isArray(data.packages)) {
-      packages = data.packages.map((pkg: any) => ({
-        id: pkg.id || pkg.package_id || pkg.bouquet_id,
-        name: pkg.name || pkg.package_name || pkg.bouquet_name || `Package ${pkg.id}`,
-        description: pkg.description || pkg.details
-      }));
-    } else if (data.status === 'success' && data.result) {
-      // Handle different response formats
-      if (Array.isArray(data.result)) {
-        packages = data.result.map((pkg: any) => ({
-          id: pkg.id || pkg.package_id || pkg.bouquet_id,
-          name: pkg.name || pkg.package_name || pkg.bouquet_name || `Package ${pkg.id}`,
-          description: pkg.description || pkg.details
-        }));
+    let lastError = '';
+
+    // Try each endpoint until we find one that works
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`Trying endpoint: ${endpoint.url} with action: ${endpoint.params.action}`);
+        
+        const apiUrl = new URL(endpoint.url);
+        apiUrl.searchParams.append('username', API_KEY.split(':')[0] || API_KEY);
+        apiUrl.searchParams.append('password', API_KEY.split(':')[1] || API_KEY);
+        
+        // Add the action parameter
+        Object.entries(endpoint.params).forEach(([key, value]) => {
+          apiUrl.searchParams.append(key, value);
+        });
+        
+        console.log('API Request URL:', apiUrl.toString().replace(API_KEY, '[REDACTED]'));
+        
+        const response = await fetch(apiUrl.toString(), {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'IPTV-Management-System/1.0',
+          }
+        });
+        
+        const responseText = await response.text();
+        console.log(`Response Status: ${response.status}, Body length: ${responseText.length}`);
+        console.log(`Response preview: ${responseText.substring(0, 200)}`);
+
+        if (!response.ok) {
+          lastError = `HTTP ${response.status}: ${response.statusText}`;
+          continue;
+        }
+
+        // Check if it's an HTML error page
+        if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
+          lastError = 'Received HTML error page instead of API response';
+          continue;
+        }
+
+        // Try to parse as JSON
+        let data;
+        try {
+          data = JSON.parse(responseText);
+          console.log('Parsed response data:', data);
+        } catch (parseError) {
+          lastError = `JSON parse error: ${parseError.message}`;
+          continue;
+        }
+
+        // Check for API errors
+        if (data.error || data.status === 'error') {
+          lastError = data.error || data.result || 'API returned error status';
+          continue;
+        }
+
+        // Try to extract packages from different response formats
+        if (Array.isArray(data)) {
+          // Direct array response
+          packages = data.map((item: any, index: number) => ({
+            id: item.category_id || item.bouquet_id || item.id || (index + 1).toString(),
+            name: item.category_name || item.bouquet_name || item.name || `Package ${index + 1}`,
+            description: item.description || item.details || undefined
+          }));
+          break;
+        } else if (data.categories && Array.isArray(data.categories)) {
+          // Categories format
+          packages = data.categories.map((cat: any) => ({
+            id: cat.category_id || cat.id,
+            name: cat.category_name || cat.name,
+            description: cat.description
+          }));
+          break;
+        } else if (data.bouquets && Array.isArray(data.bouquets)) {
+          // Bouquets format
+          packages = data.bouquets.map((bouquet: any) => ({
+            id: bouquet.bouquet_id || bouquet.id,
+            name: bouquet.bouquet_name || bouquet.name,
+            description: bouquet.description
+          }));
+          break;
+        } else if (data.result && Array.isArray(data.result)) {
+          // Result wrapper format
+          packages = data.result.map((item: any, index: number) => ({
+            id: item.category_id || item.bouquet_id || item.id || (index + 1).toString(),
+            name: item.category_name || item.bouquet_name || item.name || `Package ${index + 1}`,
+            description: item.description
+          }));
+          break;
+        }
+        
+      } catch (error) {
+        console.error(`Error with endpoint ${endpoint.url}:`, error);
+        lastError = error.message;
+        continue;
       }
-    } else if (data.error) {
-      console.error('IPTV API returned error:', data.error)
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: data.error,
-          details: data
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
-      )
     }
 
-    // If no packages found or API doesn't support package listing, provide default packages
+    // If no packages found from any endpoint, provide default packages
     if (packages.length === 0) {
-      console.log('No packages returned by API, using default package options')
+      console.log(`No packages found from any API endpoint. Last error: ${lastError}`);
+      console.log('Using default package options');
+      
       packages = [
-        { id: '1', name: 'Basic Package', description: 'Standard IPTV package' },
-        { id: '2', name: 'Premium Package', description: 'Premium IPTV package with more channels' },
-        { id: '3', name: 'Sports Package', description: 'Sports-focused IPTV package' },
+        { 
+          id: 'basic', 
+          name: 'Basic IPTV Package', 
+          description: 'Standard channels and content' 
+        },
+        { 
+          id: 'premium', 
+          name: 'Premium IPTV Package', 
+          description: 'Premium channels with HD quality' 
+        },
+        { 
+          id: 'sports', 
+          name: 'Sports Package', 
+          description: 'Sports channels and events' 
+        },
+        { 
+          id: 'movies', 
+          name: 'Movies & Entertainment', 
+          description: 'Movie channels and on-demand content' 
+        },
+        { 
+          id: 'international', 
+          name: 'International Package', 
+          description: 'Global channels and content' 
+        }
       ];
     }
 
-    console.log(`Successfully fetched ${packages.length} packages`);
+    // Filter out any packages with invalid data
+    packages = packages.filter(pkg => pkg.id && pkg.name);
+
+    console.log(`Successfully processed ${packages.length} packages`);
     
     return new Response(
       JSON.stringify({ 
         success: true, 
         packages: packages,
-        message: `Found ${packages.length} available packages`
+        message: `Found ${packages.length} available packages`,
+        source: packages.length === 5 ? 'default' : 'api'
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
