@@ -277,7 +277,7 @@ export function CustomerTable({
               <TableHead>Connections</TableHead>
               <TableHead>Plan Length</TableHead>
               <TableHead>Expiration</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-right w-32">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -327,17 +327,17 @@ export function CustomerTable({
                     </TableCell>
                     <TableCell>{formatDate(customer.expirationDate)}</TableCell>
                     <TableCell>
-                      <div className="flex justify-end space-x-2">
-                        {/* Only show renew for expired or expiring soon customers */}
-                        {onRenew && (customer.status === 'expired' || customer.status === 'expiring_soon') && (
+                      <div className="flex justify-end gap-1">
+                        {/* Show renew for expired, expiring soon, OR cancelled customers */}
+                        {onRenew && (customer.status === 'expired' || customer.status === 'expiring_soon' || customer.status === 'cancelled') && (
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="flex items-center space-x-1"
+                            className="h-8 px-2 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800"
                             onClick={() => handleRenewClick(customer)}
                           >
-                            <Repeat size={14} />
-                            <span>Renew</span>
+                            <Repeat size={12} className="mr-1" />
+                            Renew
                           </Button>
                         )}
                         
@@ -346,11 +346,11 @@ export function CustomerTable({
                           <Button 
                             variant="outline"
                             size="sm"
-                            className="flex items-center space-x-1 text-orange-600 hover:text-orange-800 hover:bg-orange-50"
+                            className="h-8 px-2 text-xs bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 hover:text-orange-800"
                             onClick={() => handleDeactivateClick(customer.id)}
                           >
-                            <ShieldOff size={14} />
-                            <span>Deactivate</span>
+                            <ShieldOff size={12} className="mr-1" />
+                            Deactivate
                           </Button>
                         )}
                         
@@ -358,22 +358,24 @@ export function CustomerTable({
                         {onEdit && customer.status !== 'cancelled' && (
                           <Button 
                             variant="ghost" 
-                            size="icon" 
+                            size="sm"
+                            className="h-8 w-8 p-0"
                             onClick={() => handleEditClick(customer)}
                           >
-                            <Edit size={16} />
+                            <Edit size={14} />
                           </Button>
                         )}
                         
                         {/* Only show cancel for active customers */}
                         {onCancel && customer.status === 'active' && (
                           <Button 
-                            variant="ghost" 
-                            size="icon" 
+                            variant="outline" 
+                            size="sm"
+                            className="h-8 px-2 text-xs bg-red-50 text-red-700 border-red-200 hover:bg-red-100 hover:text-red-800"
                             onClick={() => handleCancelClick(customer.id)}
-                            className="text-orange-600 hover:text-orange-800 hover:bg-orange-100"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={12} className="mr-1" />
+                            Cancel
                           </Button>
                         )}
                       </div>
