@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -38,18 +37,24 @@ export default function ResellerCustomers() {
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
 
-  // Handle customer delete
+  // Handle customer delete with enhanced error handling
   const handleDeleteCustomer = async (customerId: string) => {
+    console.log(`🗑️ ResellerCustomers: Delete request for customer ID: ${customerId}`);
+    
     try {
       const success = await deleteCustomer(customerId);
+      console.log(`📊 ResellerCustomers: Delete operation result: ${success}`);
+      
       if (success) {
-        toast.success('Customer deleted successfully');
+        console.log(`✅ ResellerCustomers: Customer ${customerId} deleted successfully`);
+        // Success toast is handled by AppContext
       } else {
-        toast.error('Failed to delete customer');
+        console.error(`❌ ResellerCustomers: Delete operation failed for customer ${customerId}`);
+        toast.error('Failed to delete customer - please check logs and try again');
       }
     } catch (error) {
+      console.error('💥 ResellerCustomers: Unexpected error during customer deletion:', error);
       toast.error('An error occurred while deleting the customer');
-      console.error(error);
     }
   };
 

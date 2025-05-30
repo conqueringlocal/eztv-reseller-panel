@@ -519,32 +519,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // Delete customer - Enhanced to handle customer groups and IPTV accounts
+  // Delete customer - Enhanced with better error handling and transaction management
   const deleteCustomer = async (customerId: string): Promise<boolean> => {
-    if (!user) return false;
+    if (!user) {
+      console.error('❌ No user found for delete operation');
+      toast.error('You must be logged in to delete customers');
+      return false;
+    }
     
     try {
+      console.log(`🗑️ Starting deletion process for customer ID: ${customerId}`);
+      
       // Get the customer to delete
       const customer = customers.find(c => c.id === customerId);
       if (!customer) {
+        console.error(`❌ Customer not found: ${customerId}`);
         toast.error('Customer not found');
         return false;
       }
 
-      console.log(`Deleting customer: ${customer.name} (ID: ${customerId})`);
+      console.log(`🔍 Found customer to delete: ${customer.name} (ID: ${customerId})`);
       
       // Find all customers in the same group (if it's a multi-connection customer)
       let customersToDelete = [customer];
       if (customer.customerGroupId && customer.totalConnections && customer.totalConnections > 1) {
         customersToDelete = customers.filter(c => c.customerGroupId === customer.customerGroupId);
-        console.log(`Found ${customersToDelete.length} customers in group ${customer.customerGroupId} to delete`);
+        console.log(`👥 Found ${customersToDelete.length} customers in group ${customer.customerGroupId} to delete`);
       }
       
-      // Delete IPTV accounts for each customer connection
-      const iptvDeletionPromises = customersToDelete.map(async (customerToDelete) => {
-        if (customerToDelete.username) {
+      // Step 1: Delete IPTV accounts for each customer connection
+      console.log(`🔄 Step 1: Deleting IPTV accounts...`);
+      const iptvDeletionResults = await Promise.allSettled(
+        customersToDelete.map(async (customerToDelete) => {
+          if (!customerToDelete.username) {
+            console.log(`⚠️ No username found for customer ${customerToDelete.id}, skipping IPTV deletion`);
+            return { success: true, message: 'No IPTV account to delete' };
+          }
+
           try {
-            console.log(`Attempting to delete IPTV account: ${customerToDelete.username}`);
+            console.log(`🗑️ Attempting to delete IPTV account: ${customerToDelete.username}`);
             
             // Call IPTV API to delete the user account
             const { data, error } = await supabase.functions.invoke('delete-iptv-user', {
@@ -553,51 +566,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             });
             
+            console.log(`📡 IPTV deletion response for ${customerToDelete.username}:`, { data, error });
+            
             if (error) {
-              console.error(`Failed to delete IPTV account ${customerToDelete.username}:`, error);
-              // Don't fail the whole operation, just log the error
-            } else if (data?.success) {
-              console.log(`Successfully deleted IPTV account: ${customerToDelete.username}`);
+              console.error(`❌ Supabase function error for ${customerToDelete.username}:`, error);
+              throw new Error(`Supabase function error: ${error.message}`);
+            } 
+            
+            if (data?.success) {
+              console.log(`✅ Successfully deleted IPTV account: ${customerToDelete.username}`);
+              return { success: true, message: 'IPTV account deleted successfully' };
             } else {
-              console.warn(`IPTV account deletion may have failed for ${customerToDelete.username}:`, data);
+              console.warn(`⚠️ IPTV account deletion may have failed for ${customerToDelete.username}:`, data);
+              // Don't throw error here, continue with database deletion
+              return { success: false, message: data?.error || 'IPTV deletion failed' };
             }
           } catch (error) {
-            console.error(`Error deleting IPTV account ${customerToDelete.username}:`, error);
+            console.error(`💥 Error deleting IPTV account ${customerToDelete.username}:`, error);
             // Continue with database deletion even if IPTV deletion fails
+            return { success: false, message: error.message };
           }
+        })
+      );
+      
+      // Log IPTV deletion results
+      iptvDeletionResults.forEach((result, index) => {
+        const customerToDelete = customersToDelete[index];
+        if (result.status === 'fulfilled') {
+          if (result.value.success) {
+            console.log(`✅ IPTV deletion successful for ${customerToDelete.username}`);
+          } else {
+            console.warn(`⚠️ IPTV deletion failed for ${customerToDelete.username}: ${result.value.message}`);
+          }
+        } else {
+          console.error(`💥 IPTV deletion promise rejected for ${customerToDelete.username}:`, result.reason);
         }
       });
       
-      // Wait for all IPTV deletions to complete (but don't fail if they don't work)
-      await Promise.allSettled(iptvDeletionPromises);
-      
-      // Delete all customer records from database
+      // Step 2: Delete customer records from database
+      console.log(`🔄 Step 2: Deleting customer records from database...`);
       const customerIds = customersToDelete.map(c => c.id);
-      console.log(`Deleting customer records from database:`, customerIds);
+      console.log(`🗂️ Customer IDs to delete:`, customerIds);
       
-      const { error: deleteError } = await supabase
+      const { error: deleteError, count } = await supabase
         .from('customers')
         .delete()
         .in('id', customerIds);
       
       if (deleteError) {
-        console.error('Failed to delete customer records:', deleteError);
+        console.error('❌ Database deletion failed:', deleteError);
         toast.error(`Failed to delete customer records: ${deleteError.message}`);
         return false;
       }
       
-      // Refresh data
+      console.log(`✅ Successfully deleted ${count || customerIds.length} customer records from database`);
+      
+      // Step 3: Refresh data to update UI
+      console.log(`🔄 Step 3: Refreshing data...`);
       await refreshData();
       
+      // Success message
       if (customersToDelete.length > 1) {
+        console.log(`🎉 Successfully deleted ${customersToDelete.length} customer connections for ${customer.name}`);
         toast.success(`Successfully deleted ${customersToDelete.length} customer connections for ${customer.name}`);
       } else {
+        console.log(`🎉 Successfully deleted customer ${customer.name}`);
         toast.success(`Successfully deleted customer ${customer.name}`);
       }
       
       return true;
     } catch (error) {
-      console.error('Error deleting customer:', error);
+      console.error('💥 Unexpected error in deleteCustomer:', error);
       toast.error('An unexpected error occurred while deleting customer');
       return false;
     }

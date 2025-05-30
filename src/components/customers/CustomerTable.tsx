@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
   Table,
@@ -34,6 +33,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'react-toastify';
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -154,10 +154,34 @@ export function CustomerTable({
     setIsDeleteDialogOpen(true);
   };
 
-  // Handle confirm delete
+  // Handle customer delete with improved error handling
+  const handleDeleteCustomer = async (customerId: string) => {
+    console.log(`🗑️ CustomerTable: Initiating delete for customer ID: ${customerId}`);
+    
+    try {
+      const success = await onDelete?.(customerId);
+      console.log(`📊 CustomerTable: Delete result: ${success}`);
+      
+      if (success) {
+        console.log(`✅ CustomerTable: Customer ${customerId} deleted successfully`);
+        // Don't show toast here as AppContext already shows it
+      } else {
+        console.error(`❌ CustomerTable: Failed to delete customer ${customerId}`);
+        toast.error('Failed to delete customer - please try again');
+      }
+    } catch (error) {
+      console.error('💥 CustomerTable: Error during customer deletion:', error);
+      toast.error('An error occurred while deleting the customer');
+    }
+  };
+
+  // Handle confirm delete with better logging
   const handleConfirmDelete = () => {
-    if (customerToDelete && onDelete) {
-      onDelete(customerToDelete);
+    if (customerToDelete) {
+      console.log(`🔄 CustomerTable: Confirming deletion of customer: ${customerToDelete}`);
+      handleDeleteCustomer(customerToDelete);
+    } else {
+      console.error('❌ CustomerTable: No customer selected for deletion');
     }
     setIsDeleteDialogOpen(false);
     setCustomerToDelete(null);

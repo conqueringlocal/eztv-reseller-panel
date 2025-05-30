@@ -11,20 +11,39 @@ interface DeleteUserParams {
 }
 
 serve(async (req) => {
+  console.log(`🗑️ Delete IPTV user function called at ${new Date().toISOString()}`);
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { username }: DeleteUserParams = await req.json()
+    const requestBody = await req.json();
+    console.log(`📥 Request body:`, requestBody);
+    
+    const { username }: DeleteUserParams = requestBody;
+
+    if (!username) {
+      console.error('❌ No username provided in request');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Username is required'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        },
+      )
+    }
 
     // Get configuration from environment
     const API_KEY = Deno.env.get('IPTV_API_KEY')
     const PANEL_URL = Deno.env.get('IPTV_PANEL_URL')
     
     if (!API_KEY) {
-      console.error('❌ IPTV API key not configured')
+      console.error('❌ IPTV API key not configured');
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -38,7 +57,7 @@ serve(async (req) => {
     }
 
     if (!PANEL_URL) {
-      console.error('❌ IPTV Panel URL not configured')
+      console.error('❌ IPTV Panel URL not configured');
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -51,23 +70,23 @@ serve(async (req) => {
       )
     }
 
-    console.log(`🗑️ Deleting IPTV user: ${username}`)
-    console.log(`🌐 Panel URL: ${PANEL_URL}`)
+    console.log(`🗑️ Attempting to delete IPTV user: ${username}`);
+    console.log(`🌐 Using panel URL: ${PANEL_URL}`);
 
     let deletionSuccess = false;
     let lastError = '';
 
-    // Try different delete actions
+    // Try different delete actions with better error handling
     const deleteActions = [
       'user_delete',
-      'delete_user',
+      'delete_user', 
       'remove_user',
       'del_user'
     ];
 
     for (const action of deleteActions) {
       try {
-        console.log(`🧪 Trying delete action: ${action}`)
+        console.log(`🧪 Trying delete action: ${action}`);
         
         // Construct the URL with query parameters
         const apiUrl = new URL(PANEL_URL);
@@ -128,13 +147,13 @@ serve(async (req) => {
           }
         }
 
-        // Check for deletion success
+        // Check for deletion success with more comprehensive criteria
         const isSuccess = data.success === true || 
                          data.status === 'success' || 
                          data.message?.includes('success') || 
                          data.message?.includes('deleted') ||
                          data.message?.includes('removed') ||
-                         (!data.error && !data.status) ||
+                         (!data.error && !data.status && responseText.length < 50) ||
                          (typeof data.response === 'string' && data.response.includes('deleted'));
 
         if (isSuccess) {
@@ -167,7 +186,7 @@ serve(async (req) => {
       }
     }
 
-    // Return result
+    // Return result with better error information
     if (!deletionSuccess) {
       console.log(`❌ All deletion attempts failed for user: ${username}`);
       console.log(`🔍 Last error: ${lastError}`);
