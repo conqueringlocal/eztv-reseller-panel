@@ -22,13 +22,17 @@ function calculateSubscriptionMonths(expiryDateStr: string): number {
   const expiryDate = new Date(expiryDateStr);
   const today = new Date();
   const diffTime = expiryDate.getTime() - today.getTime();
-  const diffMonths = Math.ceil(diffTime / (1000 * 60 * 60 * 24 * 30));
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   
-  // Map to valid subscription values (1, 3, 6, 12)
+  // Convert days to months and map to valid subscription values
+  const diffMonths = Math.ceil(diffDays / 30);
+  
+  // Return exact month values based on the calculated difference
   if (diffMonths <= 1) return 1;
   if (diffMonths <= 3) return 3;
   if (diffMonths <= 6) return 6;
-  return 12;
+  if (diffMonths <= 12) return 12;
+  return 12; // Cap at 12 months for longer periods
 }
 
 serve(async (req) => {
@@ -227,20 +231,45 @@ serve(async (req) => {
         )
       }
 
-      // Process successful response
+      // Process successful response and extract credentials from URL
       let extractedUsername = userParams.username;
       let extractedPassword = userParams.password;
       let m3uUrl = '';
       
-      // Check if response contains credentials
-      if (data.username && data.password) {
-        extractedUsername = data.username;
-        extractedPassword = data.password;
+      // Extract credentials from the URL field in the API response
+      if (data.url) {
+        console.log(`🔗 Extracting credentials from URL: ${data.url}`);
+        
+        try {
+          const urlObj = new URL(data.url);
+          const urlUsername = urlObj.searchParams.get('username');
+          const urlPassword = urlObj.searchParams.get('password');
+          
+          if (urlUsername && urlPassword) {
+            extractedUsername = urlUsername;
+            extractedPassword = urlPassword;
+            console.log(`✅ Extracted credentials from URL - Username: ${extractedUsername}, Password: ${extractedPassword}`);
+          } else {
+            console.log(`⚠️ Could not extract credentials from URL, using original credentials`);
+          }
+        } catch (urlError) {
+          console.log(`⚠️ Error parsing URL for credentials: ${urlError.message}`);
+        }
+        
+        // Use the URL provided by the API as the M3U URL
+        m3uUrl = data.url;
+      } else {
+        // Fallback: Check if response contains credentials directly
+        if (data.username && data.password) {
+          extractedUsername = data.username;
+          extractedPassword = data.password;
+          console.log(`✅ Using credentials from response data - Username: ${extractedUsername}, Password: ${extractedPassword}`);
+        }
+        
+        // Generate M3U URL based on panel URL structure as fallback
+        const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
+        m3uUrl = `${baseUrl}/get.php?username=${extractedUsername}&password=${extractedPassword}&type=m3u_plus&output=ts`;
       }
-      
-      // Generate M3U URL based on panel URL structure
-      const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
-      m3uUrl = `${baseUrl}/get.php?username=${extractedUsername}&password=${extractedPassword}&type=m3u_plus&output=ts`;
 
       const createdUser = {
         username: extractedUsername,
