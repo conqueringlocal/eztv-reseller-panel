@@ -37,7 +37,10 @@ interface RenewCustomerFormProps {
 
 export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProps) {
   const { user } = useAuth();
-  const { renewCustomer } = useApp();
+  const { renewCustomer, resellers } = useApp();
+  
+  // Get current reseller to show available credits
+  const currentReseller = resellers.find(r => r.id === user?.id);
   
   // Initialize form with default values
   const form = useForm<FormData>({
@@ -47,26 +50,38 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
     },
   });
 
+  // Watch plan duration to show real-time credit calculation
+  const planDuration = form.watch('planDuration');
+
   // Handle form submission
   const onSubmit = async (data: FormData) => {
     if (!user) {
       toast.error('You need to be logged in to renew a subscription.');
       return;
     }
+
+    // Check credits before attempting renewal
+    if (currentReseller && currentReseller.credits < data.planDuration) {
+      toast.error(`Insufficient credits. You need ${data.planDuration} credits but only have ${currentReseller.credits}.`);
+      return;
+    }
     
     try {
+      console.log(`🔄 RenewCustomerForm: Starting renewal for ${customer.name}`);
+      
       const success = await renewCustomer(customer, data.planDuration);
       
       if (success) {
-        toast.success(`Subscription renewed for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'}!`);
+        console.log(`✅ RenewCustomerForm: Renewal successful for ${customer.name}`);
         form.reset();
         if (onSuccess) onSuccess();
       } else {
-        toast.error('Failed to renew subscription. Please check your credits balance.');
+        console.error(`❌ RenewCustomerForm: Renewal failed for ${customer.name}`);
+        // Error toast is already shown by AppContext
       }
     } catch (error) {
-      toast.error('An error occurred while renewing the subscription.');
-      console.error(error);
+      console.error('💥 RenewCustomerForm: Unexpected error during renewal:', error);
+      toast.error('An unexpected error occurred while renewing the subscription.');
     }
   };
   
@@ -92,8 +107,39 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
               <p className="text-xs text-gray-500">Device</p>
               <p className="text-sm">{customer.deviceType}</p>
             </div>
+            <div>
+              <p className="text-xs text-gray-500">Current Expiration</p>
+              <p className="text-sm">{new Date(customer.expirationDate).toLocaleDateString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Status</p>
+              <p className="text-sm capitalize">{customer.status}</p>
+            </div>
           </div>
         </div>
+
+        {/* Credits information */}
+        {currentReseller && (
+          <div className="rounded-md bg-blue-50 p-4 mb-4">
+            <h3 className="text-sm font-medium text-blue-900">Credit Information</h3>
+            <div className="mt-2 flex justify-between items-center">
+              <span className="text-sm text-blue-700">Available Credits:</span>
+              <span className="text-sm font-semibold text-blue-900">{currentReseller.credits}</span>
+            </div>
+            <div className="mt-1 flex justify-between items-center">
+              <span className="text-sm text-blue-700">Required Credits:</span>
+              <span className="text-sm font-semibold text-blue-900">{planDuration || 0}</span>
+            </div>
+            <div className="mt-1 flex justify-between items-center border-t border-blue-200 pt-2">
+              <span className="text-sm text-blue-700">Remaining After Renewal:</span>
+              <span className={`text-sm font-semibold ${
+                (currentReseller.credits - (planDuration || 0)) >= 0 ? 'text-green-700' : 'text-red-700'
+              }`}>
+                {currentReseller.credits - (planDuration || 0)}
+              </span>
+            </div>
+          </div>
+        )}
         
         <FormField
           control={form.control}
@@ -105,7 +151,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
                 <Input type="number" min="1" max="12" {...field} />
               </FormControl>
               <FormDescription>
-                This will consume {field.value || 0} credit{field.value !== 1 ? 's' : ''}
+                This will consume {field.value || 0} credit{field.value !== 1 ? 's' : ''} and extend the subscription accordingly.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -116,7 +162,15 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
           <Button type="button" variant="outline" onClick={onSuccess}>
             Cancel
           </Button>
-          <Button type="submit">Renew Subscription</Button>
+          <Button 
+            type="submit" 
+            disabled={currentReseller && currentReseller.credits < planDuration}
+          >
+            {currentReseller && currentReseller.credits < planDuration 
+              ? 'Insufficient Credits' 
+              : 'Renew Subscription'
+            }
+          </Button>
         </div>
       </form>
     </Form>

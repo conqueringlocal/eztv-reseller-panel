@@ -64,6 +64,43 @@ export const createUser = async (params: IPTVUserParams, resellerCredentials: IP
   }
 };
 
+// Renew a user's subscription in the IPTV system
+export const renewUser = async (username: string, planDuration: number, resellerCredentials: IPTVCredentials): Promise<boolean> => {
+  try {
+    // Calculate new expiry date (add months to current date)
+    const newExpiryDate = new Date();
+    newExpiryDate.setMonth(newExpiryDate.getMonth() + planDuration);
+    
+    // Construct the URL with parameters for renewing a user
+    const url = new URL(PANEL_URL);
+    url.searchParams.append("username", resellerCredentials.username);
+    url.searchParams.append("password", resellerCredentials.password);
+    url.searchParams.append("action", "user_edit");
+    url.searchParams.append("user_username", username);
+    url.searchParams.append("user_expire", dateToUnixTimestamp(newExpiryDate).toString());
+    
+    console.log(`Making IPTV API call to renew user: ${username} for ${planDuration} months`);
+    console.log('Renewal API URL:', url.toString().replace(resellerCredentials.password, '[REDACTED]'));
+    
+    const response = await fetch(url.toString());
+    const data = await response.json();
+    
+    console.log('IPTV Renewal API Response:', data);
+    
+    // Check if the user was renewed successfully
+    if (response.ok && data && !data.error) {
+      console.log(`Successfully renewed IPTV user: ${username}`);
+      return true;
+    } else {
+      console.error('Failed to renew IPTV user:', data);
+      return false;
+    }
+  } catch (error) {
+    console.error("Error renewing IPTV user:", error);
+    return false;
+  }
+};
+
 // Check if a user exists in the IPTV system
 export const checkUserExists = async (username: string, resellerCredentials: IPTVCredentials): Promise<boolean> => {
   try {

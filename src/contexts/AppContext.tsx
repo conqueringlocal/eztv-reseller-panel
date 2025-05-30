@@ -1,4 +1,3 @@
-
 import React, {
   createContext,
   useState,
@@ -303,33 +302,59 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   };
 
   const renewCustomer = async (customer: Customer, planDuration: number): Promise<boolean> => {
+    console.log(`🔄 AppContext: Starting renewal for customer ${customer.name} (${customer.id}) for ${planDuration} months`);
+    
     try {
-      // Calculate new expiration date
-      const currentExpiration = new Date(customer.expirationDate);
-      currentExpiration.setMonth(currentExpiration.getMonth() + planDuration);
-      const newExpirationDate = currentExpiration.toISOString().split('T')[0];
-
-      // Update customer record with new expiration date
-      const { error } = await supabase
-        .from('customers')
-        .update({ 
-          expiration_date: newExpirationDate,
-          plan_duration: planDuration // Optionally update plan duration as well
-        })
-        .eq('id', customer.id);
-
-      if (error) {
-        console.error('Error renewing customer:', error);
-        toast.error('Failed to renew customer');
+      // Get current session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.error('❌ AppContext: No active session found');
+        toast.error('Authentication required');
         return false;
       }
 
-      toast.success('Customer renewed successfully');
+      console.log(`📡 AppContext: Calling renew-iptv-user edge function`);
+      
+      // Call the edge function for renewal
+      const { data, error } = await supabase.functions.invoke('renew-iptv-user', {
+        body: {
+          customerId: customer.id,
+          planDuration: planDuration
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) {
+        console.error('❌ AppContext: Edge function error:', error);
+        toast.error('Failed to renew subscription - please try again');
+        return false;
+      }
+
+      if (data.error) {
+        console.error('❌ AppContext: Renewal failed:', data.error);
+        
+        // Handle specific error cases
+        if (data.error === 'Insufficient credits') {
+          toast.error(`Insufficient credits. Required: ${data.required}, Available: ${data.available}`);
+        } else {
+          toast.error(data.error);
+        }
+        return false;
+      }
+
+      console.log(`✅ AppContext: Customer renewal successful:`, data);
+      toast.success(data.message || `Subscription renewed for ${planDuration} ${planDuration === 1 ? 'month' : 'months'}!`);
+      
+      // Refresh data to update the UI
       await refreshData();
       return true;
+      
     } catch (error) {
-      console.error('Unexpected error renewing customer:', error);
-      toast.error('An unexpected error occurred');
+      console.error('💥 AppContext: Unexpected error during renewal:', error);
+      toast.error('An unexpected error occurred during renewal');
       return false;
     }
   };
