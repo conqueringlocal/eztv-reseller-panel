@@ -19,11 +19,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Customer } from '@/contexts/AppContext';
 
-// Form schema with validation - only allow 1, 3, 6, or 12 months
+// Form schema with validation - using numbers directly instead of enum transformation
 const formSchema = z.object({
-  planDuration: z.enum(['1', '3', '6', '12'], {
-    required_error: 'Please select a plan duration.',
-  }).transform(val => parseInt(val)),
+  planDuration: z.number().refine((val) => [1, 3, 6, 12].includes(val), {
+    message: 'Please select a valid plan duration (1, 3, 6, or 12 months).',
+  }),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -40,7 +40,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
   // Get current reseller to show available credits
   const currentReseller = resellers.find(r => r.id === user?.id);
   
-  // Initialize form with default values
+  // Initialize form with default values - using number directly
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -145,7 +145,10 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
           render={({ field }) => (
             <FormItem>
               <FormLabel>Plan Duration</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value?.toString()}>
+              <Select 
+                onValueChange={(value) => field.onChange(parseInt(value))} 
+                value={field.value?.toString()}
+              >
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder="Select plan duration" />
