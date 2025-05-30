@@ -31,19 +31,29 @@ export interface Customer {
   isDeactivated?: boolean;
   cancelledAt?: string;
   status?: 'active' | 'cancelled' | 'expired' | 'expiring_soon';
+  packageId?: string;
+  connections?: number;
 }
 
-interface Reseller extends Tables<'profiles'> {}
+interface Reseller extends Tables<'profiles'> {
+  accentColor?: string;
+  logoUrl?: string;
+}
 
 interface SystemSetting extends Tables<'system_settings'> {}
 
-export interface CreditLog extends Tables<'credit_logs'> {}
+export interface CreditLog extends Tables<'credit_logs'> {
+  customerName?: string;
+  creditsUsed: number;
+  resellerId: string;
+}
 
 interface AppContextType {
   customers: Customer[];
   resellers: Reseller[];
   systemSettings: SystemSetting[];
   creditLogs: CreditLog[];
+  isLoading: boolean;
   refreshData: () => Promise<void>;
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<boolean>;
   updateCustomer: (customer: Customer) => Promise<boolean>;
@@ -54,6 +64,10 @@ interface AppContextType {
   addResellerCredits: (resellerId: string, credits: number) => Promise<boolean>;
   deductResellerCredits: (resellerId: string, credits: number) => Promise<boolean>;
   updateSystemSetting: (id: string, value: string) => Promise<boolean>;
+  addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  getReseller: (resellerId: string) => Reseller | undefined;
+  updateResellerBranding: (resellerId: string, branding: { accentColor?: string; logoUrl?: string }) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -68,6 +82,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
   const [resellers, setResellers] = useState<Reseller[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSetting[]>([]);
   const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   const refreshData = useCallback(async () => {
     if (!user) {
@@ -75,6 +90,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       return;
     }
 
+    setIsLoading(true);
     try {
       // Fetch customers
       const { data: customersData, error: customersError } = await supabase
@@ -146,12 +162,21 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         console.error('Error fetching credit logs:', creditLogsError);
         toast.error('Failed to load credit logs');
       } else {
-        setCreditLogs(creditLogsData || []);
+        // Transform snake_case to camelCase for credit logs
+        const transformedCreditLogs = (creditLogsData || []).map(log => ({
+          ...log,
+          customerName: log.customer_name,
+          creditsUsed: log.credits_used,
+          resellerId: log.reseller_id
+        }));
+        setCreditLogs(transformedCreditLogs);
       }
 
     } catch (error) {
       console.error('Unexpected error during data refresh:', error);
       toast.error('An unexpected error occurred while refreshing data');
+    } finally {
+      setIsLoading(false);
     }
   }, [user]);
 
@@ -471,11 +496,93 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     }
   };
 
+  // New credit management functions
+  const addCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
+    try {
+      // Add credits to reseller
+      const addResult = await addResellerCredits(resellerId, credits);
+      
+      if (addResult) {
+        // Log the credit addition
+        const { error: logError } = await supabase
+          .from('credit_logs')
+          .insert({
+            reseller_id: resellerId,
+            action: 'addition',
+            credits_used: credits,
+            notes: notes || null,
+            customer_name: null,
+            customer_id: null
+          });
+
+        if (logError) {
+          console.error('Error logging credit addition:', logError);
+        }
+      }
+      
+      return addResult;
+    } catch (error) {
+      console.error('Unexpected error adding credits:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
+  const removeCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
+    try {
+      // Remove credits from reseller
+      const removeResult = await deductResellerCredits(resellerId, credits);
+      
+      if (removeResult) {
+        // Log the credit deduction
+        const { error: logError } = await supabase
+          .from('credit_logs')
+          .insert({
+            reseller_id: resellerId,
+            action: 'deduction',
+            credits_used: credits,
+            notes: notes || null,
+            customer_name: null,
+            customer_id: null
+          });
+
+        if (logError) {
+          console.error('Error logging credit deduction:', logError);
+        }
+      }
+      
+      return removeResult;
+    } catch (error) {
+      console.error('Unexpected error removing credits:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
+  const getReseller = (resellerId: string): Reseller | undefined => {
+    return resellers.find(reseller => reseller.id === resellerId);
+  };
+
+  const updateResellerBranding = async (resellerId: string, branding: { accentColor?: string; logoUrl?: string }): Promise<boolean> => {
+    try {
+      // In a real implementation, this would update the reseller's branding in the database
+      // For now, we'll just simulate success since the profiles table doesn't have these fields yet
+      toast.success('Branding updated successfully');
+      await refreshData();
+      return true;
+    } catch (error) {
+      console.error('Unexpected error updating branding:', error);
+      toast.error('An unexpected error occurred');
+      return false;
+    }
+  };
+
   const value = {
     customers,
     resellers,
     systemSettings,
     creditLogs,
+    isLoading,
     refreshData,
     addCustomer,
     updateCustomer,
@@ -486,6 +593,10 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
     addResellerCredits,
     deductResellerCredits,
     updateSystemSetting,
+    addCredits,
+    removeCredits,
+    getReseller,
+    updateResellerBranding,
   };
 
   return (

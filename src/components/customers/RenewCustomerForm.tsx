@@ -55,7 +55,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
     }
     
     try {
-      const success = await renewCustomer(customer.id, data.planDuration);
+      const success = await renewCustomer(customer, data.planDuration);
       
       if (success) {
         toast.success(`Subscription renewed for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'}!`);
