@@ -115,29 +115,33 @@ serve(async (req) => {
     }
 
     // Get IPTV panel credentials from Supabase secrets
-    const iptvApiKey = Deno.env.get('IPTV_API_KEY');
-    const panelUrl = Deno.env.get('IPTV_PANEL_URL') || 'https://my8k.me/api/api.php';
+    const iptvUsername = Deno.env.get('IPTV_USERNAME');
+    const iptvPassword = Deno.env.get('IPTV_PASSWORD');
+    const panelUrl = Deno.env.get('IPTV_PANEL_URL') || 'https://my8k.me/player_api.php';
 
-    if (!iptvApiKey) {
-      console.error('IPTV API key not configured in secrets');
+    if (!iptvUsername || !iptvPassword) {
+      console.error('IPTV reseller credentials not configured in secrets');
       return new Response(
-        JSON.stringify({ error: 'IPTV credentials not configured. Please contact administrator.' }),
+        JSON.stringify({ error: 'IPTV reseller credentials not configured. Please contact administrator.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Call IPTV panel to renew user - using the subscription time parameter instead of expire
+    // Call IPTV panel to renew user using correct API parameters
     console.log(`📡 Calling IPTV panel to renew customer: ${customer.username} for ${planDuration} months`);
     
     const renewUrl = new URL(panelUrl);
-    renewUrl.searchParams.append("api_key", iptvApiKey);
-    renewUrl.searchParams.append("action", "user_renew");
-    renewUrl.searchParams.append("user_username", customer.username);
-    renewUrl.searchParams.append("subscription_time", planDuration.toString());
+    renewUrl.searchParams.append("username", iptvUsername);
+    renewUrl.searchParams.append("password", iptvPassword);
+    renewUrl.searchParams.append("action", "renew");
+    renewUrl.searchParams.append("type", "m3u");
+    renewUrl.searchParams.append("username", customer.username);
+    renewUrl.searchParams.append("password", customer.password);
+    renewUrl.searchParams.append("sub", planDuration.toString());
 
-    console.log(`🔗 Renewal API URL: ${renewUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+    console.log(`🔗 Renewal API URL: ${renewUrl.toString().replace(iptvPassword, '[REDACTED]')}`);
     console.log(`👤 Renewing customer username: ${customer.username}`);
-    console.log(`📅 Subscription time: ${planDuration} months`);
+    console.log(`📅 Subscription duration: ${planDuration} months`);
 
     const iptvResponse = await fetch(renewUrl.toString());
     const iptvData = await iptvResponse.json();
