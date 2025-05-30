@@ -83,6 +83,12 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     // For simplicity in this demo, we'll use the first reseller ID for admin
     const resellerId = user.role === 'admin' ? '2' : user.id;
     
+    // Calculate start and expiration dates
+    const startDate = new Date().toISOString().split('T')[0];
+    const expirationDate = new Date();
+    expirationDate.setMonth(expirationDate.getMonth() + parseInt(data.planDuration));
+    const expirationDateString = expirationDate.toISOString().split('T')[0];
+    
     try {
       const success = await addCustomer({
         resellerId,
@@ -93,6 +99,8 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         packageId: data.packageId, // Include the selected package
         planDuration: parseInt(data.planDuration),
         connections: data.connections,
+        startDate,
+        expirationDate: expirationDateString,
       });
       
       if (success) {

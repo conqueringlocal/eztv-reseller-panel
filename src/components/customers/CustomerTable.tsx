@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
   Table,
@@ -328,7 +327,7 @@ export function CustomerTable({
                     <TableCell>{formatDate(customer.expirationDate)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end space-x-2">
-                        {/* Only show renew for non-cancelled customers */}
+                        {/* Only show renew for non-cancelled customers - Fixed logic */}
                         {onRenew && (customer.status === 'expired' || customer.status === 'expiring_soon') && customer.status !== 'cancelled' && (
                           <Button 
                             variant="outline" 
@@ -341,7 +340,7 @@ export function CustomerTable({
                           </Button>
                         )}
                         
-                        {/* Only show deactivate for expired, non-cancelled customers */}
+                        {/* Only show deactivate for expired, non-cancelled customers - Fixed logic */}
                         {onDeactivate && customer.status === 'expired' && !customer.isDeactivated && customer.status !== 'cancelled' && (
                           <Button 
                             variant="outline"

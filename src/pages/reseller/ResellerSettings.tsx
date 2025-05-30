@@ -61,8 +61,8 @@ export default function ResellerSettings() {
         .from(bucketName)
         .getPublicUrl(filename);
       
-      // Update reseller profile with logo URL
-      const success = await updateResellerBranding(user.id, publicUrlData.publicUrl);
+      // Update reseller profile with logo URL - Fixed function call
+      const success = await updateResellerBranding(user.id, { logoUrl: publicUrlData.publicUrl });
       
       if (success) {
         toast.success('Logo uploaded and updated successfully');
@@ -85,7 +85,8 @@ export default function ResellerSettings() {
     if (!user) return;
     
     try {
-      const success = await updateResellerBranding(user.id, undefined, accentColor);
+      // Fixed function call - pass branding object as second parameter
+      const success = await updateResellerBranding(user.id, { accentColor });
       
       if (success) {
         toast.success('Accent color updated successfully');
