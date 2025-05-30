@@ -27,10 +27,14 @@ import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
 
-// Form schema with validation - updated to only allow specific duration values
+// Form schema with validation - updated to support both M3U and MAG devices
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
+  accountType: z.enum(['m3u', 'mag'], { 
+    errorMap: () => ({ message: 'Please select an account type.' })
+  }),
+  macAddress: z.string().optional(),
   deviceType: z.string().min(1, { message: 'Please select a device type.' }),
   packageId: z.string().min(1, { message: 'Please select a package.' }),
   planDuration: z.enum(['1', '3', '6', '12'], { 
@@ -41,6 +45,15 @@ const formSchema = z.object({
     .int()
     .min(1, { message: 'Must have at least 1 connection.' })
     .max(3, { message: 'Cannot exceed 3 connections.' }),
+}).refine((data) => {
+  // MAC address is required for MAG devices
+  if (data.accountType === 'mag' && (!data.macAddress || data.macAddress.trim() === '')) {
+    return false;
+  }
+  return true;
+}, {
+  message: "MAC address is required for MAG devices",
+  path: ["macAddress"],
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -60,6 +73,8 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     defaultValues: {
       name: '',
       email: '',
+      accountType: 'm3u',
+      macAddress: '',
       deviceType: 'Smart TV',
       packageId: '',
       planDuration: '1',
@@ -67,6 +82,9 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     },
   });
 
+  // Watch account type to show/hide MAC address field
+  const watchAccountType = form.watch('accountType');
+  
   // Calculate total credits needed
   const watchPlanDuration = form.watch('planDuration');
   const watchConnections = form.watch('connections');
@@ -94,24 +112,25 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         resellerId,
         name: data.name,
         email: data.email,
-        macAddress: '', // Not required for M3U accounts
+        macAddress: data.macAddress || '', // For MAG devices, this will be required
         deviceType: data.deviceType,
-        packageId: data.packageId, // Include the selected package
+        packageId: data.packageId,
         planDuration: parseInt(data.planDuration),
         connections: data.connections,
         startDate,
         expirationDate: expirationDateString,
+        accountType: data.accountType, // New field to distinguish M3U vs MAG
       });
       
       if (success) {
-        toast.success('M3U customer added successfully!');
+        toast.success(`${data.accountType.toUpperCase()} customer added successfully!`);
         form.reset();
         if (onSuccess) onSuccess();
       } else {
-        toast.error('Failed to add M3U customer. Please check your credits balance.');
+        toast.error(`Failed to add ${data.accountType.toUpperCase()} customer. Please check your credits balance.`);
       }
     } catch (error) {
-      toast.error('An error occurred while adding the M3U customer.');
+      toast.error(`An error occurred while adding the ${data.accountType.toUpperCase()} customer.`);
       console.error(error);
     }
   };
@@ -153,6 +172,53 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name="accountType"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Account Type</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="m3u">M3U (Compatible with all devices)</SelectItem>
+                  <SelectItem value="mag">MAG (STB/MAG devices only)</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormDescription>
+                {watchAccountType === 'm3u' 
+                  ? 'M3U accounts work with any IPTV player application'
+                  : 'MAG accounts are designed for STB/MAG set-top boxes'
+                }
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {watchAccountType === 'mag' && (
+          <FormField
+            control={form.control}
+            name="macAddress"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>MAC Address *</FormLabel>
+                <FormControl>
+                  <Input placeholder="00:1A:79:XX:XX:XX" {...field} />
+                </FormControl>
+                <FormDescription>
+                  Required for MAG devices. Enter the MAC address of the STB/MAG device.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
         
         <FormField
           control={form.control}
@@ -167,14 +233,28 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="Smart TV">Smart TV</SelectItem>
-                  <SelectItem value="Android Box">Android Box</SelectItem>
-                  <SelectItem value="Apple TV">Apple TV</SelectItem>
-                  <SelectItem value="Fire TV">Fire TV</SelectItem>
-                  <SelectItem value="Mobile Device">Mobile Device</SelectItem>
-                  <SelectItem value="Tablet">Tablet</SelectItem>
-                  <SelectItem value="Computer">Computer</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {watchAccountType === 'mag' ? (
+                    <>
+                      <SelectItem value="MAG Box">MAG Box</SelectItem>
+                      <SelectItem value="STB Device">STB Device</SelectItem>
+                      <SelectItem value="MAG 254">MAG 254</SelectItem>
+                      <SelectItem value="MAG 256">MAG 256</SelectItem>
+                      <SelectItem value="MAG 322">MAG 322</SelectItem>
+                      <SelectItem value="MAG 424">MAG 424</SelectItem>
+                      <SelectItem value="Other MAG">Other MAG</SelectItem>
+                    </>
+                  ) : (
+                    <>
+                      <SelectItem value="Smart TV">Smart TV</SelectItem>
+                      <SelectItem value="Android Box">Android Box</SelectItem>
+                      <SelectItem value="Apple TV">Apple TV</SelectItem>
+                      <SelectItem value="Fire TV">Fire TV</SelectItem>
+                      <SelectItem value="Mobile Device">Mobile Device</SelectItem>
+                      <SelectItem value="Tablet">Tablet</SelectItem>
+                      <SelectItem value="Computer">Computer</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
               <FormMessage />
@@ -285,41 +365,48 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             )}
           />
           
-          <FormField
-            control={form.control}
-            name="connections"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Number of Connections</FormLabel>
-                <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value.toString()}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select connections" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="1">1 Connection</SelectItem>
-                    <SelectItem value="2">2 Connections</SelectItem>
-                    <SelectItem value="3">3 Connections</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {watchAccountType === 'm3u' && (
+            <FormField
+              control={form.control}
+              name="connections"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Number of Connections</FormLabel>
+                  <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value.toString()}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select connections" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="1">1 Connection</SelectItem>
+                      <SelectItem value="2">2 Connections</SelectItem>
+                      <SelectItem value="3">3 Connections</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
         </div>
         
         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
           <p className="text-sm text-blue-800 mb-2">
-            <strong>Account Type:</strong> M3U (Compatible with all device types)
+            <strong>Account Type:</strong> {watchAccountType.toUpperCase()} 
+            {watchAccountType === 'm3u' ? ' (Compatible with all device types)' : ' (STB/MAG devices only)'}
           </p>
           <p className="text-sm text-amber-600 font-medium">
-            This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
-            ({parseInt(watchPlanDuration)} month{parseInt(watchPlanDuration) !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})
+            This will consume {watchAccountType === 'mag' ? parseInt(watchPlanDuration) : totalCreditsNeeded} credit{(watchAccountType === 'mag' ? parseInt(watchPlanDuration) : totalCreditsNeeded) !== 1 ? 's' : ''} 
+            {watchAccountType === 'm3u' && (
+              <span> ({parseInt(watchPlanDuration)} month{parseInt(watchPlanDuration) !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})</span>
+            )}
           </p>
         </div>
         
-        <Button type="submit" className="w-full">Add M3U Customer</Button>
+        <Button type="submit" className="w-full">
+          Add {watchAccountType.toUpperCase()} Customer
+        </Button>
       </form>
     </Form>
   );

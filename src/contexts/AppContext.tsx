@@ -32,6 +32,7 @@ export interface Customer {
   status?: 'active' | 'cancelled' | 'expired' | 'expiring_soon';
   packageId?: string;
   connections?: number;
+  accountType?: 'm3u' | 'mag'; // New field to distinguish account types
 }
 
 interface Reseller extends Tables<'profiles'> {
@@ -193,20 +194,20 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         return false;
       }
 
-      // Check if reseller has enough credits
-      if (reseller.credits < customer.planDuration * (customer.connections || 1)) {
+      // Determine account type (default to m3u if not specified)
+      const accountType = customer.accountType || 'm3u';
+
+      // Check if reseller has enough credits - MAG uses 1 credit per month, M3U uses connections multiplier
+      const creditsNeeded = accountType === 'mag' 
+        ? customer.planDuration 
+        : customer.planDuration * (customer.connections || 1);
+
+      if (reseller.credits < creditsNeeded) {
         toast.error('Insufficient credits');
         return false;
       }
 
-      // Generate IPTV credentials if not provided
-      const username = customer.username || `${customer.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().substring(0, 10)}${Math.floor(Math.random() * 1000)}`;
-      const password = customer.password || Math.random().toString(36).substring(2, 10);
-
-      // Calculate expiry date for IPTV API
-      const expiryDate = new Date(customer.expirationDate);
-
-      // Call IPTV API via edge function
+      // Get current session
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -215,36 +216,88 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         return false;
       }
 
-      const { data, error } = await supabase.functions.invoke('create-iptv-user', {
-        body: {
-          userParams: {
-            username,
-            password,
-            maxConnections: customer.connections || 1,
-            expiryDate: expiryDate.toISOString(),
-            isTrial: false,
-            bouquet: customer.packageId || '1',
-            output: "ts",
-            customerName: customer.name,
-            resellerName: reseller.name
-          }
-        },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+      let data, error;
+
+      if (accountType === 'mag') {
+        // Create MAG account
+        console.log(`Creating MAG account for ${customer.name} with MAC: ${customer.macAddress}`);
+        
+        if (!customer.macAddress) {
+          toast.error('MAC address is required for MAG devices');
+          return false;
+        }
+
+        // Calculate expiry date for IPTV API
+        const expiryDate = new Date(customer.expirationDate);
+
+        const response = await supabase.functions.invoke('create-mag-user', {
+          body: {
+            userParams: {
+              macAddress: customer.macAddress,
+              maxConnections: 1, // MAG devices typically use 1 connection
+              expiryDate: expiryDate.toISOString(),
+              isTrial: false,
+              bouquet: customer.packageId || '1',
+              customerName: customer.name,
+              resellerName: reseller.name
+            }
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        data = response.data;
+        error = response.error;
+      } else {
+        // Create M3U account (existing logic)
+        console.log(`Creating M3U account for ${customer.name}`);
+        
+        // Generate IPTV credentials if not provided
+        const username = customer.username || `${customer.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase().substring(0, 10)}${Math.floor(Math.random() * 1000)}`;
+        const password = customer.password || Math.random().toString(36).substring(2, 10);
+
+        // Calculate expiry date for IPTV API
+        const expiryDate = new Date(customer.expirationDate);
+
+        const response = await supabase.functions.invoke('create-iptv-user', {
+          body: {
+            userParams: {
+              username,
+              password,
+              maxConnections: customer.connections || 1,
+              expiryDate: expiryDate.toISOString(),
+              isTrial: false,
+              bouquet: customer.packageId || '1',
+              output: "ts",
+              customerName: customer.name,
+              resellerName: reseller.name
+            }
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        data = response.data;
+        error = response.error;
+      }
 
       if (error || !data?.success) {
-        console.error('Failed to create IPTV user:', error || data);
-        toast.error('Failed to create IPTV account');
+        console.error(`Failed to create ${accountType.toUpperCase()} user:`, error || data);
+        toast.error(`Failed to create ${accountType.toUpperCase()} account`);
         return false;
       }
 
-      // Extract credentials from IPTV API response
-      const iptvCredentials = data.user || {};
-      const finalUsername = iptvCredentials.username || username;
-      const finalPassword = iptvCredentials.password || password;
-      const m3uUrl = iptvCredentials.m3uUrl || data.m3uUrl;
+      // Extract credentials from API response
+      let finalUsername, finalPassword, m3uUrl;
+      
+      if (accountType === 'm3u') {
+        const iptvCredentials = data.user || {};
+        finalUsername = iptvCredentials.username || customer.username;
+        finalPassword = iptvCredentials.password || customer.password;
+        m3uUrl = iptvCredentials.m3uUrl || data.m3uUrl;
+      }
 
       // Transform camelCase to snake_case for database
       const dbCustomer = {
@@ -256,9 +309,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         plan_duration: customer.planDuration,
         start_date: customer.startDate,
         expiration_date: customer.expirationDate,
-        username: finalUsername,
-        password: finalPassword,
-        m3u_url: m3uUrl,
+        username: finalUsername || null,
+        password: finalPassword || null,
+        m3u_url: m3uUrl || null,
         customer_group_id: customer.customerGroupId,
         connection_number: customer.connectionNumber,
         total_connections: customer.totalConnections || customer.connections,
@@ -280,10 +333,9 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       }
 
       // Deduct credits from reseller
-      const creditsToDeduct = customer.planDuration * (customer.connections || 1);
       const { error: creditError } = await supabase
         .from('profiles')
-        .update({ credits: reseller.credits - creditsToDeduct })
+        .update({ credits: reseller.credits - creditsNeeded })
         .eq('id', customer.resellerId);
 
       if (creditError) {
@@ -298,17 +350,17 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         .insert({
           reseller_id: customer.resellerId,
           action: 'account_creation',
-          credits_used: creditsToDeduct,
+          credits_used: creditsNeeded,
           customer_name: customer.name,
           customer_id: insertedCustomer.id,
-          notes: `${customer.planDuration} month subscription with ${customer.connections || 1} connection(s)`
+          notes: `${accountType.toUpperCase()} ${customer.planDuration} month subscription${accountType === 'm3u' ? ` with ${customer.connections || 1} connection(s)` : ''}`
         });
 
       if (logError) {
         console.error('Failed to log credit usage:', logError);
       }
 
-      toast.success('Customer added successfully');
+      toast.success(`${accountType.toUpperCase()} customer added successfully`);
       await refreshData();
       return true;
     } catch (error) {
@@ -404,10 +456,14 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         return false;
       }
 
-      console.log(`📡 AppContext: Calling renew-iptv-user edge function`);
+      // Determine if this is a MAG or M3U account based on presence of MAC address and username
+      const isMAGAccount = customer.macAddress && !customer.username;
+      const functionName = isMAGAccount ? 'renew-mag-user' : 'renew-iptv-user';
+
+      console.log(`📡 AppContext: Calling ${functionName} edge function`);
       
-      // Call the edge function for renewal
-      const { data, error } = await supabase.functions.invoke('renew-iptv-user', {
+      // Call the appropriate edge function for renewal
+      const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
           customerId: customer.id,
           planDuration: planDuration
