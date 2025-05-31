@@ -34,10 +34,10 @@ serve(async (req) => {
     
     const endpointSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET") || "";
     
-    // Verify the event using the signature and secret
+    // Verify the event using the signature and secret (ASYNC VERSION)
     let event;
     try {
-      event = stripe.webhooks.constructEvent(body, signature, endpointSecret);
+      event = await stripe.webhooks.constructEventAsync(body, signature, endpointSecret);
     } catch (err) {
       return new Response(JSON.stringify({ error: `Webhook Error: ${err.message}` }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
