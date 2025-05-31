@@ -3,3 +3,6 @@ project_id = "hddnqgggjjlildufirof"
 
 [functions.create-role-type]
 verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
