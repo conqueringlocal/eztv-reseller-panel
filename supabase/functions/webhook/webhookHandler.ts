@@ -65,15 +65,15 @@ async function getDefaultPackageId(): Promise<string> {
       .single();
 
     if (error || !data) {
-      console.log('⚠️ Default package ID not found in system settings, using fallback value "1"');
-      return '1'; // Fallback to package ID "1"
+      console.log('⚠️ Default package ID not found in system settings, using fallback value "14826"');
+      return '14826'; // Fallback to package ID "14826"
     }
 
     console.log(`📦 Using default package ID from settings: ${data.value}`);
     return data.value;
   } catch (error) {
     console.error('❌ Error fetching default package ID:', error);
-    return '1'; // Fallback to package ID "1"
+    return '14826'; // Fallback to package ID "14826"
   }
 }
 
