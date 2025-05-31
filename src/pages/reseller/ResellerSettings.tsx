@@ -6,6 +6,10 @@ import { ApiKeyManager } from '@/components/api-keys/ApiKeyManager';
 import { Separator } from '@/components/ui/separator';
 
 export default function ResellerSettings() {
+  // Get the Supabase project URL for the webhook endpoint
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const webhookUrl = `${supabaseUrl}/functions/v1/webhook`;
+
   return (
     <DashboardLayout>
       <div className="mb-6">
@@ -25,8 +29,8 @@ export default function ResellerSettings() {
           <div className="space-y-4">
             <div className="bg-gray-50 p-4 rounded-lg">
               <h4 className="font-medium mb-2">Webhook URL</h4>
-              <code className="text-sm bg-white p-2 rounded border w-full block">
-                {window.location.origin}/webhook
+              <code className="text-sm bg-white p-2 rounded border w-full block break-all">
+                {webhookUrl}
               </code>
               <p className="text-sm text-gray-600 mt-2">
                 Use this URL in your HighLevel automation workflows
@@ -39,7 +43,9 @@ export default function ResellerSettings() {
                 <li>Create an API key above and copy it</li>
                 <li>In your HighLevel funnel, add a webhook action</li>
                 <li>Set the webhook URL to the one shown above</li>
-                <li>Include your API key and customer data in the payload</li>
+                <li>Set the method to <strong>POST</strong></li>
+                <li>Set content type to <strong>application/json</strong></li>
+                <li>Include your API key and customer data in the JSON payload</li>
                 <li>Test the integration to ensure customers are created automatically</li>
               </ol>
             </div>
@@ -58,6 +64,17 @@ export default function ResellerSettings() {
   }
 }`}
               </pre>
+            </div>
+
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+              <h4 className="font-medium text-yellow-900 mb-2">HighLevel Setup Tips</h4>
+              <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
+                <li>Make sure to use <strong>POST</strong> method, not GET</li>
+                <li>Set Content-Type header to <strong>application/json</strong></li>
+                <li>Use the exact JSON structure shown above</li>
+                <li>Test your webhook in HighLevel's test mode first</li>
+                <li>Check the webhook logs if accounts aren't being created</li>
+              </ul>
             </div>
           </div>
         </DashboardCard>
