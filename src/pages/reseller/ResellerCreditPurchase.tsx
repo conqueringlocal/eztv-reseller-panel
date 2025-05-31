@@ -13,10 +13,10 @@ import { useEffect } from 'react';
 import { useApp } from '@/contexts/AppContext';
 
 const creditPackages = [
-  { id: 'prod_SPTCJTX53FYiCA', name: '5 Credits', price: '$15', description: 'Basic package for small needs' },
-  { id: 'prod_SPTDalEPErdJEh', name: '10 Credits', price: '$30', description: 'Standard package, most popular' },
-  { id: 'prod_SPTDaHwo44Pq9O', name: '20 Credits', price: '$60', description: 'Premium package with better value' },
-  { id: 'prod_SPTDaXJCOMZ4X7', name: '50 Credits', price: '$150', description: 'Bulk package for best value' }
+  { id: 'price_1QbmlAJXvKvS7b3xJKFjrx8e', name: '5 Credits', price: '$15', description: 'Basic package for small needs' },
+  { id: 'price_1QbmlqJXvKvS7b3xY4kaNhRF', name: '10 Credits', price: '$30', description: 'Standard package, most popular' },
+  { id: 'price_1QbmmJJXvKvS7b3xVAj7lJl2', name: '20 Credits', price: '$60', description: 'Premium package with better value' },
+  { id: 'price_1QbmmhJXvKvS7b3xY6mKJNtg', name: '50 Credits', price: '$150', description: 'Bulk package for best value' }
 ];
 
 export default function ResellerCreditPurchase() {

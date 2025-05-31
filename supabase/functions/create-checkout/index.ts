@@ -110,12 +110,12 @@ serve(async (req) => {
 
     console.log('Profile found for user:', profile.email, 'Role:', profile.role);
 
-    // Credit amounts per price ID
+    // Credit amounts per price ID (using the correct Stripe price IDs)
     const creditAmounts: Record<string, number> = {
-      "prod_SPTCJTX53FYiCA": 5,
-      "prod_SPTDalEPErdJEh": 10,
-      "prod_SPTDaHwo44Pq9O": 20,
-      "prod_SPTDaXJCOMZ4X7": 50,
+      "price_1QbmlAJXvKvS7b3xJKFjrx8e": 5,   // 5 Credits - $15
+      "price_1QbmlqJXvKvS7b3xY4kaNhRF": 10,  // 10 Credits - $30
+      "price_1QbmmJJXvKvS7b3xVAj7lJl2": 20,  // 20 Credits - $60
+      "price_1QbmmhJXvKvS7b3xY6mKJNtg": 50,  // 50 Credits - $150
     };
 
     // Validate the price ID
