@@ -33,6 +33,7 @@ export interface WebhookPayload {
     mac: string;
     device_type: string;
     plan_duration_months: number;
+    package_id?: string; // Optional package ID
   };
   // Support for older format for backwards compatibility
   customerName?: string;
@@ -40,6 +41,7 @@ export interface WebhookPayload {
   macAddress?: string;
   deviceType?: string;
   planDuration?: number;
+  packageId?: string; // Optional package ID for legacy format
 }
 
 // Generate IPTV credentials
@@ -51,6 +53,28 @@ function generateUsername(customerName: string): string {
 
 function generatePassword(): string {
   return Math.random().toString(36).substring(2, 10);
+}
+
+// Get default package ID from system settings
+async function getDefaultPackageId(): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('id', 'default_package_id')
+      .single();
+
+    if (error || !data) {
+      console.log('⚠️ Default package ID not found in system settings, using fallback value "1"');
+      return '1'; // Fallback to package ID "1"
+    }
+
+    console.log(`📦 Using default package ID from settings: ${data.value}`);
+    return data.value;
+  } catch (error) {
+    console.error('❌ Error fetching default package ID:', error);
+    return '1'; // Fallback to package ID "1"
+  }
 }
 
 // Process incoming webhook
@@ -118,12 +142,16 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     const deviceType = payload.customer?.device_type || payload.deviceType || 'Smart TV';
     const planDuration = payload.customer?.plan_duration_months || payload.planDuration;
     
+    // Extract package ID from payload or use default
+    const packageId = payload.customer?.package_id || payload.packageId;
+    
     console.log(`👤 Customer data extracted:`, { 
       customerName, 
       customerEmail, 
       macAddress, 
       deviceType, 
-      planDuration 
+      planDuration,
+      packageId 
     });
     
     // Validate payload
@@ -176,6 +204,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
 
     console.log(`📅 Subscription dates - Start: ${startDate}, Expiry: ${expirationDate}`);
 
+    // Get the package ID to use (from payload or default)
+    const finalPackageId = packageId || await getDefaultPackageId();
+    console.log(`📦 Using package ID: ${finalPackageId}`);
+
     // Call IPTV API via edge function
     console.log('📡 Creating IPTV user via edge function');
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
@@ -186,6 +218,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
           maxConnections: 1,
           expiryDate: expiryDate.toISOString(),
           isTrial: false,
+          bouquet: finalPackageId, // Use the determined package ID
           output: "ts",
           customerName,
           resellerName: reseller.name
@@ -259,7 +292,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         credits_used: planDuration,
         customer_id: customer.id,
         customer_name: customerName,
-        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'}`
+        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId})`
       });
 
     if (logError) {

@@ -60,10 +60,23 @@ export default function ResellerSettings() {
     "email": "john@example.com", 
     "mac": "00:11:22:33:44:55",
     "device_type": "Smart TV",
-    "plan_duration_months": 12
+    "plan_duration_months": 12,
+    "package_id": "1"
   }
 }`}
               </pre>
+              <p className="text-xs text-gray-600 mt-2">
+                <strong>package_id</strong> is optional. If not provided, the system will use the default package configured by the admin.
+              </p>
+            </div>
+
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <h4 className="font-medium text-green-900 mb-2">Package ID Options</h4>
+              <ul className="text-sm text-green-800 space-y-1 list-disc list-inside">
+                <li><strong>Default Package:</strong> If you don't specify a package_id, the system uses the default package configured by your admin</li>
+                <li><strong>Custom Package:</strong> Include "package_id" in your customer object to use a specific package</li>
+                <li><strong>Contact Admin:</strong> Contact your system administrator to learn about available package IDs and set up the default package</li>
+              </ul>
             </div>
 
             <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
@@ -74,6 +87,7 @@ export default function ResellerSettings() {
                 <li>Use the exact JSON structure shown above</li>
                 <li>Test your webhook in HighLevel's test mode first</li>
                 <li>Check the webhook logs if accounts aren't being created</li>
+                <li>The package_id field is optional - omit it to use the default package</li>
               </ul>
             </div>
           </div>
