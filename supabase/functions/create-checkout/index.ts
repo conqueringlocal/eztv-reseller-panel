@@ -29,23 +29,20 @@ serve(async (req) => {
       });
     }
 
-    // Create a Supabase client with the auth token
+    // Extract the token from the authorization header
+    const token = authHeader.replace('Bearer ', '');
+    console.log('Token extracted, length:', token.length);
+
+    // Create a Supabase client with standard configuration
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      {
-        global: {
-          headers: {
-            Authorization: authHeader,
-          },
-        },
-      }
+      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
-    console.log('Supabase client created, getting user...');
+    console.log('Supabase client created, getting user with token...');
 
-    // Get the user from the auth token
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    // Get the user from the auth token by passing the token directly
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
     
     if (userError) {
       console.error('Error getting user:', userError);
@@ -56,14 +53,14 @@ serve(async (req) => {
     }
     
     if (!user) {
-      console.error('No user found');
+      console.error('No user found from token');
       return new Response(JSON.stringify({ error: "User not authenticated" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 401,
       });
     }
 
-    console.log('User authenticated:', user.id);
+    console.log('User authenticated successfully:', user.id, user.email);
 
     // Get the request body
     const { priceId } = await req.json();
@@ -77,6 +74,7 @@ serve(async (req) => {
     }
 
     // Get the user's profile
+    console.log('Fetching user profile from database...');
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('*')
@@ -99,7 +97,7 @@ serve(async (req) => {
       });
     }
 
-    console.log('Profile found for user:', profile.email);
+    console.log('Profile found for user:', profile.email, 'Role:', profile.role);
 
     // Credit amounts per price ID
     const creditAmounts: Record<string, number> = {
@@ -159,7 +157,8 @@ serve(async (req) => {
       ],
     });
 
-    console.log('Checkout session created:', session.id);
+    console.log('Checkout session created successfully:', session.id);
+    console.log('Session URL:', session.url);
     console.log('=== CREATE CHECKOUT FUNCTION SUCCESS ===');
 
     return new Response(JSON.stringify({ url: session.url }), {
@@ -169,6 +168,8 @@ serve(async (req) => {
   } catch (error) {
     console.error('=== CREATE CHECKOUT FUNCTION ERROR ===');
     console.error('Error details:', error);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,
