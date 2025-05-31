@@ -112,10 +112,10 @@ serve(async (req) => {
 
     // Credit amounts per price ID (using the correct Stripe price IDs)
     const creditAmounts: Record<string, number> = {
-      "price_1QbmlAJXvKvS7b3xJKFjrx8e": 5,   // 5 Credits - $15
-      "price_1QbmlqJXvKvS7b3xY4kaNhRF": 10,  // 10 Credits - $30
-      "price_1QbmmJJXvKvS7b3xVAj7lJl2": 20,  // 20 Credits - $60
-      "price_1QbmmhJXvKvS7b3xY6mKJNtg": 50,  // 50 Credits - $150
+      "price_1RUeGZDUqLxD4hMqrbZxgfR0": 5,   // 5 Credits - $15
+      "price_1RUeGrDUqLxD4hMqBk7JdjJH": 10,  // 10 Credits - $30
+      "price_1RUeHFDUqLxD4hMqwhdgyVa8": 20,  // 20 Credits - $60
+      "price_1RUeHXDUqLxD4hMqkX5XE0PR": 50,  // 50 Credits - $150
     };
 
     // Validate the price ID
