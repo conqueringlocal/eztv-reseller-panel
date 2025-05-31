@@ -5,7 +5,10 @@ import { generateUsername, generatePassword, dateToUnixTimestamp } from "./iptvA
 
 // Define webhook payload structure to match HighLevel format
 export interface WebhookPayload {
-  resellerId: string;
+  // API key for reseller identification
+  api_key?: string;
+  // Legacy reseller ID for backwards compatibility
+  resellerId?: string;
   customer?: {
     name: string;
     email: string;
@@ -28,8 +31,52 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
   customer?: Omit<Customer, 'id' | 'createdAt'>;
 }> => {
   try {
-    // Extract data - supporting both new and old formats
-    const resellerId = payload.resellerId;
+    let resellerId: string;
+
+    // Try to identify reseller by API key first, then fall back to direct reseller ID
+    if (payload.api_key) {
+      console.log('Looking up reseller by API key');
+      
+      // Find the reseller by API key
+      const { data: apiKeyData, error: apiKeyError } = await supabase
+        .from('reseller_api_keys')
+        .select('reseller_id, is_active, usage_count')
+        .eq('api_key', payload.api_key)
+        .eq('is_active', true)
+        .single();
+
+      if (apiKeyError || !apiKeyData) {
+        return {
+          success: false,
+          message: "Invalid or inactive API key"
+        };
+      }
+
+      resellerId = apiKeyData.reseller_id;
+
+      // Update API key usage
+      const { error: updateError } = await supabase
+        .from('reseller_api_keys')
+        .update({ 
+          usage_count: apiKeyData.usage_count + 1,
+          last_used_at: new Date().toISOString()
+        })
+        .eq('api_key', payload.api_key);
+
+      if (updateError) {
+        console.error('Failed to update API key usage:', updateError);
+      }
+    } else if (payload.resellerId) {
+      // Legacy support for direct reseller ID
+      resellerId = payload.resellerId;
+    } else {
+      return {
+        success: false,
+        message: "Missing API key or reseller ID in webhook payload"
+      };
+    }
+
+    // Extract customer data - supporting both new and old formats
     const customerName = payload.customer?.name || payload.customerName;
     const customerEmail = payload.customer?.email || payload.customerEmail;
     const macAddress = payload.customer?.mac || payload.macAddress;
@@ -37,10 +84,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     const planDuration = payload.customer?.plan_duration_months || payload.planDuration;
     
     // Validate payload
-    if (!resellerId || !customerName || !customerEmail || !macAddress || !planDuration) {
+    if (!customerName || !customerEmail || !macAddress || !planDuration) {
       return {
         success: false,
-        message: "Missing required fields in webhook payload"
+        message: "Missing required customer fields in webhook payload"
       };
     }
 
@@ -149,7 +196,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         credits_used: planDuration,
         customer_id: customer.id,
         customer_name: customerName,
-        notes: `${planDuration} month subscription via webhook`
+        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'}`
       });
 
     if (logError) {

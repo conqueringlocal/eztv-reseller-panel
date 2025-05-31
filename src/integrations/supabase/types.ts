@@ -158,6 +158,47 @@ export type Database = {
         }
         Relationships: []
       }
+      reseller_api_keys: {
+        Row: {
+          api_key: string
+          created_at: string
+          id: string
+          is_active: boolean
+          last_used_at: string | null
+          name: string
+          reseller_id: string
+          usage_count: number
+        }
+        Insert: {
+          api_key: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name: string
+          reseller_id: string
+          usage_count?: number
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name?: string
+          reseller_id?: string
+          usage_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reseller_api_keys_reseller_id_fkey"
+            columns: ["reseller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       system_settings: {
         Row: {
           description: string | null
@@ -184,6 +225,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      generate_api_key: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       is_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
