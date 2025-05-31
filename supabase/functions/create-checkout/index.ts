@@ -8,8 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const STRIPE_PUBLIC_KEY = "pk_live_51NNaY9DUqLxD4hMqy5XCJLUoNsBt0P5SQc6t363vcrsuEKqTAb9G4EZitEFvkBA0GFEW8AHp7ANJ8zL5LlrX0o57008rl6V5A6";
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
@@ -17,13 +15,15 @@ serve(async (req) => {
   }
 
   try {
-    // Get the request body
-    const { priceId } = await req.json();
-
+    console.log('=== CREATE CHECKOUT FUNCTION START ===');
+    
     // Get the authorization header from the request
     const authHeader = req.headers.get("Authorization");
+    console.log('Authorization header present:', !!authHeader);
+    
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: "No authorization header" }), {
+      console.error('No authorization header found');
+      return new Response(JSON.stringify({ error: "No authorization header provided" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 401,
       });
@@ -42,12 +42,37 @@ serve(async (req) => {
       }
     );
 
+    console.log('Supabase client created, getting user...');
+
     // Get the user from the auth token
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    
+    if (userError) {
+      console.error('Error getting user:', userError);
+      return new Response(JSON.stringify({ error: "Authentication failed: " + userError.message }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 401,
+      });
+    }
+    
+    if (!user) {
+      console.error('No user found');
+      return new Response(JSON.stringify({ error: "User not authenticated" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
+
+    console.log('User authenticated:', user.id);
+
+    // Get the request body
+    const { priceId } = await req.json();
+    console.log('Price ID received:', priceId);
+
+    if (!priceId) {
+      return new Response(JSON.stringify({ error: "Price ID is required" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400,
       });
     }
 
@@ -58,12 +83,23 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    if (profileError || !profile) {
-      return new Response(JSON.stringify({ error: "Profile not found" }), {
+    if (profileError) {
+      console.error('Error fetching profile:', profileError);
+      return new Response(JSON.stringify({ error: "Failed to fetch user profile: " + profileError.message }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 404,
       });
     }
+
+    if (!profile) {
+      console.error('No profile found for user:', user.id);
+      return new Response(JSON.stringify({ error: "User profile not found" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 404,
+      });
+    }
+
+    console.log('Profile found for user:', profile.email);
 
     // Credit amounts per price ID
     const creditAmounts: Record<string, number> = {
@@ -75,18 +111,31 @@ serve(async (req) => {
 
     // Validate the price ID
     if (!Object.keys(creditAmounts).includes(priceId)) {
-      return new Response(JSON.stringify({ error: "Invalid price ID" }), {
+      console.error('Invalid price ID:', priceId);
+      return new Response(JSON.stringify({ error: "Invalid price ID: " + priceId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,
       });
     }
 
     // Initialize Stripe
-    const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+    if (!stripeSecretKey) {
+      console.error('Stripe secret key not configured');
+      return new Response(JSON.stringify({ error: "Stripe not configured" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500,
+      });
+    }
+
+    const stripe = new Stripe(stripeSecretKey, {
       apiVersion: "2023-10-16",
     });
 
+    console.log('Stripe initialized, creating checkout session...');
+
     const origin = req.headers.get("origin") || "http://localhost:3000";
+    console.log('Origin:', origin);
 
     // Create a Stripe Checkout session
     const session = await stripe.checkout.sessions.create({
@@ -110,11 +159,16 @@ serve(async (req) => {
       ],
     });
 
+    console.log('Checkout session created:', session.id);
+    console.log('=== CREATE CHECKOUT FUNCTION SUCCESS ===');
+
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
   } catch (error) {
+    console.error('=== CREATE CHECKOUT FUNCTION ERROR ===');
+    console.error('Error details:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -54,23 +55,59 @@ export default function ResellerCreditPurchase() {
     }
     
     setIsLoading(priceId);
+    
     try {
+      console.log('Starting purchase for price ID:', priceId);
+      console.log('User authenticated:', !!user);
+      
+      // Get the current session to ensure we have a valid auth token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error('Session error:', sessionError);
+        throw new Error('Authentication session error: ' + sessionError.message);
+      }
+      
+      if (!session?.access_token) {
+        console.error('No access token found');
+        throw new Error('No valid authentication session found. Please log in again.');
+      }
+      
+      console.log('Valid session found, calling create-checkout function...');
+      
       const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { priceId }
+        body: { priceId },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        }
       });
       
       if (error) {
-        throw new Error(error.message);
+        console.error('Function invocation error:', error);
+        throw new Error(error.message || 'Failed to create checkout session');
       }
       
+      console.log('Function response:', data);
+      
       if (data?.url) {
+        console.log('Redirecting to Stripe checkout:', data.url);
         window.location.href = data.url;
       } else {
-        throw new Error('No checkout URL returned');
+        throw new Error('No checkout URL returned from server');
       }
-    } catch (error) {
-      console.error('Failed to create checkout session:', error);
-      toast.error('Failed to create checkout session');
+    } catch (error: any) {
+      console.error('Purchase error details:', error);
+      
+      // Provide more specific error messages
+      if (error.message?.includes('Authentication')) {
+        toast.error('Authentication error. Please log out and log back in.');
+      } else if (error.message?.includes('Invalid price ID')) {
+        toast.error('Invalid product selected. Please try again.');
+      } else if (error.message?.includes('Stripe not configured')) {
+        toast.error('Payment system is not configured. Please contact support.');
+      } else {
+        toast.error('Failed to start checkout: ' + (error.message || 'Unknown error'));
+      }
     } finally {
       setIsLoading(null);
     }
