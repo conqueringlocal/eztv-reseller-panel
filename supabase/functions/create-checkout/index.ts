@@ -33,16 +33,16 @@ serve(async (req) => {
     const token = authHeader.replace('Bearer ', '');
     console.log('Token extracted, length:', token.length);
 
-    // Create a Supabase client with standard configuration
-    const supabaseClient = createClient(
+    // Create a Supabase client for user authentication (using anon key)
+    const supabaseAuth = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? ""
     );
 
-    console.log('Supabase client created, getting user with token...');
+    console.log('Supabase auth client created, getting user with token...');
 
     // Get the user from the auth token by passing the token directly
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser(token);
     
     if (userError) {
       console.error('Error getting user:', userError);
@@ -73,9 +73,20 @@ serve(async (req) => {
       });
     }
 
-    // Get the user's profile
-    console.log('Fetching user profile from database...');
-    const { data: profile, error: profileError } = await supabaseClient
+    // Create a separate Supabase client for database operations (using service role key to bypass RLS)
+    const supabaseService = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      {
+        auth: {
+          persistSession: false,
+        },
+      }
+    );
+
+    // Get the user's profile using service role client
+    console.log('Fetching user profile from database using service role...');
+    const { data: profile, error: profileError } = await supabaseService
       .from('profiles')
       .select('*')
       .eq('id', user.id)
