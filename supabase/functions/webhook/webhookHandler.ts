@@ -188,11 +188,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       };
     }
 
-    // Generate IPTV credentials
-    const username = generateUsername(customerName);
-    const password = generatePassword();
+    // Generate IPTV credentials (used as fallback if API doesn't return credentials)
+    const fallbackUsername = generateUsername(customerName);
+    const fallbackPassword = generatePassword();
 
-    console.log(`🔑 Generated credentials - Username: ${username}, Password: ${password}`);
+    console.log(`🔑 Generated fallback credentials - Username: ${fallbackUsername}, Password: ${fallbackPassword}`);
 
     // Calculate dates
     const today = new Date();
@@ -213,8 +213,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
       body: {
         userParams: {
-          username,
-          password,
+          username: fallbackUsername,
+          password: fallbackPassword,
           maxConnections: 1,
           expiryDate: expiryDate.toISOString(),
           isTrial: false,
@@ -236,7 +236,20 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
 
     console.log('✅ IPTV user created successfully');
 
-    // Create customer record in database
+    // Extract the actual credentials from the API response
+    let finalUsername = fallbackUsername;
+    let finalPassword = fallbackPassword;
+
+    // Check if the API returned actual credentials
+    if (data.user && data.user.username && data.user.password) {
+      finalUsername = data.user.username;
+      finalPassword = data.user.password;
+      console.log(`🔑 Using actual credentials from API - Username: ${finalUsername}, Password: ${finalPassword}`);
+    } else {
+      console.log(`⚠️ API did not return credentials, using fallback - Username: ${finalUsername}, Password: ${finalPassword}`);
+    }
+
+    // Create customer record in database with the actual credentials
     const customerData = {
       reseller_id: resellerId,
       name: customerName,
@@ -246,11 +259,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       plan_duration: planDuration,
       start_date: startDate,
       expiration_date: expirationDate,
-      username,
-      password
+      username: finalUsername,  // Use actual credentials from API
+      password: finalPassword   // Use actual credentials from API
     };
 
-    console.log('💾 Inserting customer into database');
+    console.log('💾 Inserting customer into database with actual credentials');
     const { data: customer, error: customerError } = await supabase
       .from('customers')
       .insert(customerData)
@@ -283,7 +296,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     }
 
     // Log the transaction
-    console.log('📝 Logging credit transaction');
+    console.log('📝 Logging credit transaction with actual credentials');
     const { error: logError } = await supabase
       .from('credit_logs')
       .insert({
@@ -292,7 +305,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         credits_used: planDuration,
         customer_id: customer.id,
         customer_name: customerName,
-        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId})`
+        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId}) - Credentials: ${finalUsername}/${finalPassword}`
       });
 
     if (logError) {
