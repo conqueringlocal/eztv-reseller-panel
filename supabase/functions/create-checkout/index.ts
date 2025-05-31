@@ -67,10 +67,10 @@ serve(async (req) => {
 
     // Credit amounts per price ID
     const creditAmounts: Record<string, number> = {
-      "price_5credits": 5,
-      "price_10credits": 10,
-      "price_20credits": 20,
-      "price_50credits": 50,
+      "prod_SPTCJTX53FYiCA": 5,
+      "prod_SPTDalEPErdJEh": 10,
+      "prod_SPTDaHwo44Pq9O": 20,
+      "prod_SPTDaXJCOMZ4X7": 50,
     };
 
     // Validate the price ID
