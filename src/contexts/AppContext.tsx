@@ -1,3 +1,4 @@
+
 import React, {
   createContext,
   useState,
@@ -365,18 +366,23 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
       // NEW: Create HighLevel contact and send credentials
       console.log('🎯 Starting HighLevel contact creation and SMS sending process');
       
+      // Declare hlSettings variable outside the try-catch block
+      let hlSettings = null;
+      let hlIntegrationSuccessful = false;
+      
       try {
         // Get reseller's HighLevel settings
-        const { data: hlSettings, error: hlError } = await supabase
+        const { data: hlSettingsData, error: hlError } = await supabase
           .from('reseller_highlevel_settings')
           .select('*')
           .eq('reseller_id', customer.resellerId)
           .eq('is_active', true)
           .single();
 
-        if (hlError || !hlSettings) {
+        if (hlError || !hlSettingsData) {
           console.log('⚠️ No HighLevel settings found for reseller, skipping HighLevel integration');
         } else {
+          hlSettings = hlSettingsData;
           console.log('✅ Found HighLevel settings for reseller, proceeding with contact creation');
           
           // Create HighLevel contact
@@ -434,6 +440,7 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
               toast.error('Customer created but failed to send credentials via SMS');
             } else {
               console.log('✅ Credentials sent successfully via HighLevel SMS');
+              hlIntegrationSuccessful = true;
               toast.success(`${accountType.toUpperCase()} customer added and credentials sent via SMS!`);
             }
           }
@@ -443,7 +450,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         // Don't fail the entire customer creation process due to HighLevel integration issues
       }
 
-      if (!hlSettings) {
+      // Show success message if HighLevel integration wasn't successful
+      if (!hlIntegrationSuccessful) {
         toast.success(`${accountType.toUpperCase()} customer added successfully`);
       }
       
