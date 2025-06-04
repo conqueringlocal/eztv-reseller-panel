@@ -66,6 +66,7 @@ export type Database = {
           device_type: string
           email: string
           expiration_date: string
+          highlevel_contact_id: string | null
           id: string
           is_deactivated: boolean | null
           m3u_url: string | null
@@ -87,6 +88,7 @@ export type Database = {
           device_type: string
           email: string
           expiration_date: string
+          highlevel_contact_id?: string | null
           id?: string
           is_deactivated?: boolean | null
           m3u_url?: string | null
@@ -108,6 +110,7 @@ export type Database = {
           device_type?: string
           email?: string
           expiration_date?: string
+          highlevel_contact_id?: string | null
           id?: string
           is_deactivated?: boolean | null
           m3u_url?: string | null
@@ -136,6 +139,8 @@ export type Database = {
           created_at: string
           credits: number
           email: string
+          highlevel_api_key: string | null
+          highlevel_location_id: string | null
           id: string
           name: string
           role: Database["public"]["Enums"]["user_role"]
@@ -144,6 +149,8 @@ export type Database = {
           created_at?: string
           credits?: number
           email: string
+          highlevel_api_key?: string | null
+          highlevel_location_id?: string | null
           id: string
           name: string
           role?: Database["public"]["Enums"]["user_role"]
@@ -152,6 +159,8 @@ export type Database = {
           created_at?: string
           credits?: number
           email?: string
+          highlevel_api_key?: string | null
+          highlevel_location_id?: string | null
           id?: string
           name?: string
           role?: Database["public"]["Enums"]["user_role"]
@@ -194,6 +203,44 @@ export type Database = {
             foreignKeyName: "reseller_api_keys_reseller_id_fkey"
             columns: ["reseller_id"]
             isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reseller_highlevel_settings: {
+        Row: {
+          api_key: string
+          created_at: string
+          id: string
+          is_active: boolean
+          location_id: string
+          reseller_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          location_id: string
+          reseller_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          location_id?: string
+          reseller_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reseller_highlevel_settings_reseller_id_fkey"
+            columns: ["reseller_id"]
+            isOneToOne: true
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },

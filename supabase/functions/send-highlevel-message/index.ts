@@ -14,6 +14,8 @@ interface SendMessageRequest {
   m3uUrl?: string;
   resellerId: string;
   messageType?: 'SMS' | 'Email';
+  apiKey?: string;  // Reseller's HighLevel API key
+  locationId?: string;  // Reseller's HighLevel location ID
 }
 
 serve(async (req) => {
@@ -31,24 +33,35 @@ serve(async (req) => {
       password, 
       m3uUrl, 
       resellerId,
-      messageType = 'SMS' 
+      messageType = 'SMS',
+      apiKey: providedApiKey,
+      locationId: providedLocationId
     }: SendMessageRequest = await req.json();
 
     console.log('📋 Request data:', { contactId, customerName, username, resellerId, messageType });
 
-    // Get HighLevel API key and location ID from Supabase secrets
-    const highLevelApiKey = Deno.env.get('HIGHLEVEL_API_KEY');
-    const highLevelLocationId = Deno.env.get('HIGHLEVEL_LOCATION_ID');
+    let highLevelApiKey = providedApiKey;
+    let highLevelLocationId = providedLocationId;
 
+    // If credentials are not provided in the request, fall back to global credentials
     if (!highLevelApiKey || !highLevelLocationId) {
-      console.error('❌ Missing HighLevel API credentials');
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'HighLevel API credentials not configured' 
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.log('⚠️ No reseller-specific HighLevel credentials provided, falling back to global credentials');
+      
+      highLevelApiKey = Deno.env.get('HIGHLEVEL_API_KEY');
+      highLevelLocationId = Deno.env.get('HIGHLEVEL_LOCATION_ID');
+
+      if (!highLevelApiKey || !highLevelLocationId) {
+        console.error('❌ No HighLevel API credentials available (neither reseller-specific nor global)');
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'HighLevel API credentials not configured for this reseller' 
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      console.log('✅ Using reseller-specific HighLevel credentials');
     }
 
     // Format the credentials message

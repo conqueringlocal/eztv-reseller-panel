@@ -51,7 +51,32 @@ const getDefaultPackageId = async (): Promise<string> => {
   }
 };
 
-// Send credentials via HighLevel (if contact ID is provided)
+// Get reseller's HighLevel credentials
+const getResellerHighLevelCredentials = async (resellerId: string): Promise<{
+  apiKey: string | null;
+  locationId: string | null;
+}> => {
+  try {
+    const { data, error } = await supabase
+      .from('reseller_highlevel_settings')
+      .select('api_key, location_id')
+      .eq('reseller_id', resellerId)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !data) {
+      console.log('No HighLevel settings found for reseller:', resellerId);
+      return { apiKey: null, locationId: null };
+    }
+
+    return { apiKey: data.api_key, locationId: data.location_id };
+  } catch (error) {
+    console.error('Error fetching HighLevel credentials:', error);
+    return { apiKey: null, locationId: null };
+  }
+};
+
+// Send credentials via HighLevel (if contact ID is provided and credentials are available)
 const sendHighLevelCredentials = async (
   contactId: string,
   customerName: string,
@@ -61,7 +86,17 @@ const sendHighLevelCredentials = async (
   m3uUrl?: string
 ): Promise<void> => {
   try {
-    console.log('📨 Sending credentials via HighLevel to contact:', contactId);
+    console.log('📨 Attempting to send credentials via HighLevel to contact:', contactId);
+
+    // Get reseller's HighLevel credentials
+    const { apiKey, locationId } = await getResellerHighLevelCredentials(resellerId);
+
+    if (!apiKey || !locationId) {
+      console.log('⚠️ No HighLevel credentials configured for reseller:', resellerId);
+      return;
+    }
+
+    console.log('✅ Found HighLevel credentials for reseller, sending message');
 
     const { data, error } = await supabase.functions.invoke('send-highlevel-message', {
       body: {
@@ -71,7 +106,9 @@ const sendHighLevelCredentials = async (
         password,
         m3uUrl,
         resellerId,
-        messageType: 'SMS'
+        messageType: 'SMS',
+        apiKey,  // Pass reseller's API key
+        locationId  // Pass reseller's location ID
       }
     });
 
@@ -244,7 +281,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       start_date: startDate,
       expiration_date: expirationDate,
       username: finalUsername,  // Use actual credentials from API
-      password: finalPassword   // Use actual credentials from API
+      password: finalPassword,   // Use actual credentials from API
+      highlevel_contact_id: contactId  // Store the HighLevel contact ID
     };
 
     const { data: customer, error: customerError } = await supabase
@@ -291,7 +329,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
 
     // Send credentials via HighLevel if contact ID is provided
     if (contactId) {
-      console.log('🎯 HighLevel contact ID provided, sending credentials via HighLevel');
+      console.log('🎯 HighLevel contact ID provided, attempting to send credentials via HighLevel');
       await sendHighLevelCredentials(
         contactId,
         customerName,
