@@ -9,6 +9,7 @@ import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { CustomerTable } from '@/components/customers/CustomerTable';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
+import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -88,6 +89,7 @@ export default function AdminResellerDetail() {
         <TabsList className="mb-6">
           <TabsTrigger value="customers">Customers</TabsTrigger>
           <TabsTrigger value="credits">Credit History</TabsTrigger>
+          <TabsTrigger value="highlevel">HighLevel Integration</TabsTrigger>
         </TabsList>
         <TabsContent value="customers">
           <DashboardCard
@@ -104,6 +106,9 @@ export default function AdminResellerDetail() {
           >
             <CreditLogTable logs={resellerLogs} />
           </DashboardCard>
+        </TabsContent>
+        <TabsContent value="highlevel">
+          <HighLevelSettings resellerId={reseller.id} isAdminView={true} />
         </TabsContent>
       </Tabs>
       

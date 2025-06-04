@@ -24,7 +24,7 @@ export default function ResellerSettings() {
         
         <DashboardCard
           title="Webhook Integration"
-          description="Use your API keys to integrate with HighLevel funnels"
+          description="Use your API keys to integrate with external systems"
         >
           <div className="space-y-4">
             <div className="bg-gray-50 p-4 rounded-lg">
@@ -33,7 +33,7 @@ export default function ResellerSettings() {
                 {webhookUrl}
               </code>
               <p className="text-sm text-gray-600 mt-2">
-                Use this URL in your HighLevel automation workflows
+                Use this URL in your automation workflows
               </p>
             </div>
             
@@ -41,7 +41,7 @@ export default function ResellerSettings() {
               <h4 className="font-medium text-blue-900 mb-2">Integration Instructions</h4>
               <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
                 <li>Create an API key above and copy it</li>
-                <li>In your HighLevel funnel, add a webhook action</li>
+                <li>In your automation platform, add a webhook action</li>
                 <li>Set the webhook URL to the one shown above</li>
                 <li>Set the method to <strong>POST</strong></li>
                 <li>Set content type to <strong>application/json</strong></li>
@@ -55,6 +55,7 @@ export default function ResellerSettings() {
               <pre className="text-xs bg-white p-3 rounded border overflow-x-auto">
 {`{
   "api_key": "your_api_key_here",
+  "contact_id": "contact_id_for_sms_delivery",
   "customer": {
     "name": "John Doe",
     "email": "john@example.com", 
@@ -67,6 +68,8 @@ export default function ResellerSettings() {
               </pre>
               <p className="text-xs text-gray-600 mt-2">
                 <strong>package_id</strong> is optional. If not provided, the system will use package ID 14826 (US no XXX) as the default.
+                <br />
+                <strong>contact_id</strong> is optional but recommended for SMS delivery of credentials.
               </p>
             </div>
 
@@ -80,14 +83,15 @@ export default function ResellerSettings() {
             </div>
 
             <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-              <h4 className="font-medium text-yellow-900 mb-2">HighLevel Setup Tips</h4>
+              <h4 className="font-medium text-yellow-900 mb-2">Automation Setup Tips</h4>
               <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
                 <li>Make sure to use <strong>POST</strong> method, not GET</li>
                 <li>Set Content-Type header to <strong>application/json</strong></li>
                 <li>Use the exact JSON structure shown above</li>
-                <li>Test your webhook in HighLevel's test mode first</li>
+                <li>Test your webhook in your platform's test mode first</li>
                 <li>Check the webhook logs if accounts aren't being created</li>
                 <li>The package_id field is optional - omit it to use the default package (14826)</li>
+                <li>Include contact_id for automatic SMS delivery of credentials</li>
               </ul>
             </div>
           </div>

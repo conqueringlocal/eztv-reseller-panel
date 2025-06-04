@@ -27,9 +27,10 @@ type HighLevelSettingsFormData = z.infer<typeof highLevelSettingsSchema>;
 
 interface HighLevelSettingsProps {
   resellerId: string;
+  isAdminView?: boolean;
 }
 
-export function HighLevelSettings({ resellerId }: HighLevelSettingsProps) {
+export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevelSettingsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasSettings, setHasSettings] = useState(false);
 
@@ -126,13 +127,45 @@ export function HighLevelSettings({ resellerId }: HighLevelSettingsProps) {
     }
   };
 
+  const getCardTitle = () => {
+    return isAdminView ? 'SMS Integration Settings' : 'HighLevel Integration';
+  };
+
+  const getCardDescription = () => {
+    if (isAdminView) {
+      return 'Configure SMS delivery credentials for this reseller. Customer credentials will be automatically sent via SMS when accounts are created.';
+    }
+    return 'Configure your HighLevel API credentials to automatically send customer credentials via SMS. Each reseller can have their own HighLevel sub-account.';
+  };
+
+  const getApiKeyLabel = () => {
+    return isAdminView ? 'SMS Service API Key' : 'HighLevel API Key';
+  };
+
+  const getLocationIdLabel = () => {
+    return isAdminView ? 'SMS Service Location ID' : 'HighLevel Location ID';
+  };
+
+  const getApiKeyDescription = () => {
+    if (isAdminView) {
+      return 'API key for the SMS service integration';
+    }
+    return 'Your HighLevel API key from your sub-account settings';
+  };
+
+  const getLocationIdDescription = () => {
+    if (isAdminView) {
+      return 'Location identifier for the SMS service';
+    }
+    return 'The Location ID from your HighLevel sub-account';
+  };
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>HighLevel Integration</CardTitle>
+        <CardTitle>{getCardTitle()}</CardTitle>
         <CardDescription>
-          Configure your HighLevel API credentials to automatically send customer credentials via SMS.
-          Each reseller can have their own HighLevel sub-account.
+          {getCardDescription()}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -143,16 +176,16 @@ export function HighLevelSettings({ resellerId }: HighLevelSettingsProps) {
               name="apiKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>HighLevel API Key</FormLabel>
+                  <FormLabel>{getApiKeyLabel()}</FormLabel>
                   <FormControl>
                     <Input 
                       type="password" 
-                      placeholder="Enter your HighLevel API key" 
+                      placeholder={`Enter ${isAdminView ? 'SMS service' : 'HighLevel'} API key`}
                       {...field} 
                     />
                   </FormControl>
                   <FormDescription>
-                    Your HighLevel API key from your sub-account settings
+                    {getApiKeyDescription()}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -164,12 +197,12 @@ export function HighLevelSettings({ resellerId }: HighLevelSettingsProps) {
               name="locationId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>HighLevel Location ID</FormLabel>
+                  <FormLabel>{getLocationIdLabel()}</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your HighLevel Location ID" {...field} />
+                    <Input placeholder={`Enter ${isAdminView ? 'SMS service' : 'HighLevel'} Location ID`} {...field} />
                   </FormControl>
                   <FormDescription>
-                    The Location ID from your HighLevel sub-account
+                    {getLocationIdDescription()}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
