@@ -9,6 +9,8 @@ export interface WebhookPayload {
   api_key?: string;
   // Legacy reseller ID for backwards compatibility
   resellerId?: string;
+  // HighLevel contact ID for sending credentials
+  contact_id?: string;
   customer?: {
     name: string;
     email: string;
@@ -24,6 +26,7 @@ export interface WebhookPayload {
   deviceType?: string;
   planDuration?: number;
   packageId?: string; // Optional package ID for legacy format
+  contactId?: string; // Legacy support for contact ID
 }
 
 // Get default package ID from system settings
@@ -45,6 +48,40 @@ const getDefaultPackageId = async (): Promise<string> => {
   } catch (error) {
     console.error('Error fetching default package ID:', error);
     return '14826'; // Fallback to package ID "14826"
+  }
+};
+
+// Send credentials via HighLevel (if contact ID is provided)
+const sendHighLevelCredentials = async (
+  contactId: string,
+  customerName: string,
+  username: string,
+  password: string,
+  resellerId: string,
+  m3uUrl?: string
+): Promise<void> => {
+  try {
+    console.log('📨 Sending credentials via HighLevel to contact:', contactId);
+
+    const { data, error } = await supabase.functions.invoke('send-highlevel-message', {
+      body: {
+        contactId,
+        customerName,
+        username,
+        password,
+        m3uUrl,
+        resellerId,
+        messageType: 'SMS'
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to send HighLevel message:', error || data);
+    } else {
+      console.log('✅ HighLevel credentials sent successfully:', data);
+    }
+  } catch (error) {
+    console.error('💥 Error sending HighLevel credentials:', error);
   }
 };
 
@@ -109,6 +146,9 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     
     // Extract package ID from payload or use default
     const packageId = payload.customer?.package_id || payload.packageId;
+    
+    // Extract HighLevel contact ID for sending credentials
+    const contactId = payload.contact_id || payload.contactId;
     
     // Validate payload
     if (!customerName || !customerEmail || !macAddress || !planDuration) {
@@ -247,6 +287,21 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
 
     if (logError) {
       console.error("Failed to log transaction:", logError);
+    }
+
+    // Send credentials via HighLevel if contact ID is provided
+    if (contactId) {
+      console.log('🎯 HighLevel contact ID provided, sending credentials via HighLevel');
+      await sendHighLevelCredentials(
+        contactId,
+        customerName,
+        finalUsername,
+        finalPassword,
+        resellerId,
+        data.user?.m3u_url
+      );
+    } else {
+      console.log('ℹ️ No HighLevel contact ID provided, skipping HighLevel integration');
     }
 
     // Return success with customer data (using actual credentials)
