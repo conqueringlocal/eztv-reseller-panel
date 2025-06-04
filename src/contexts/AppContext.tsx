@@ -186,6 +186,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
 
   const addCustomer = async (customer: Omit<Customer, 'id' | 'createdAt'>): Promise<boolean> => {
     try {
+      console.log(`🔄 AppContext: Adding customer ${customer.name} for reseller ${customer.resellerId}`);
+      
       // Get reseller info for passing to IPTV API
       const reseller = resellers.find(r => r.id === customer.resellerId);
       if (!reseller) {
@@ -360,7 +362,91 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
         console.error('Failed to log credit usage:', logError);
       }
 
-      toast.success(`${accountType.toUpperCase()} customer added successfully`);
+      // NEW: Create HighLevel contact and send credentials
+      console.log('🎯 Starting HighLevel contact creation and SMS sending process');
+      
+      try {
+        // Get reseller's HighLevel settings
+        const { data: hlSettings, error: hlError } = await supabase
+          .from('reseller_highlevel_settings')
+          .select('*')
+          .eq('reseller_id', customer.resellerId)
+          .eq('is_active', true)
+          .single();
+
+        if (hlError || !hlSettings) {
+          console.log('⚠️ No HighLevel settings found for reseller, skipping HighLevel integration');
+        } else {
+          console.log('✅ Found HighLevel settings for reseller, proceeding with contact creation');
+          
+          // Create HighLevel contact
+          const { data: contactData, error: contactError } = await supabase.functions.invoke('create-highlevel-contact', {
+            body: {
+              customerName: customer.name,
+              customerEmail: customer.email,
+              resellerId: customer.resellerId,
+              apiKey: hlSettings.api_key,
+              locationId: hlSettings.location_id
+            },
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
+
+          if (contactError || !contactData?.success) {
+            console.error('❌ Failed to create HighLevel contact:', contactError || contactData);
+            toast.error('Customer created but failed to create HighLevel contact');
+          } else {
+            console.log('✅ HighLevel contact created successfully:', contactData);
+            
+            // Update customer with HighLevel contact ID
+            const { error: updateError } = await supabase
+              .from('customers')
+              .update({ highlevel_contact_id: contactData.contactId })
+              .eq('id', insertedCustomer.id);
+
+            if (updateError) {
+              console.error('Failed to update customer with HighLevel contact ID:', updateError);
+            }
+
+            // Send credentials via HighLevel SMS
+            console.log('📱 Sending credentials via HighLevel SMS');
+            
+            const { data: smsData, error: smsError } = await supabase.functions.invoke('send-highlevel-message', {
+              body: {
+                contactId: contactData.contactId,
+                customerName: customer.name,
+                username: finalUsername || 'N/A',
+                password: finalPassword || 'N/A',
+                m3uUrl: accountType === 'm3u' ? m3uUrl : undefined,
+                resellerId: customer.resellerId,
+                messageType: 'SMS',
+                apiKey: hlSettings.api_key,
+                locationId: hlSettings.location_id
+              },
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            });
+
+            if (smsError || !smsData?.success) {
+              console.error('❌ Failed to send HighLevel SMS:', smsError || smsData);
+              toast.error('Customer created but failed to send credentials via SMS');
+            } else {
+              console.log('✅ Credentials sent successfully via HighLevel SMS');
+              toast.success(`${accountType.toUpperCase()} customer added and credentials sent via SMS!`);
+            }
+          }
+        }
+      } catch (hlIntegrationError) {
+        console.error('💥 Unexpected error in HighLevel integration:', hlIntegrationError);
+        // Don't fail the entire customer creation process due to HighLevel integration issues
+      }
+
+      if (!hlSettings) {
+        toast.success(`${accountType.toUpperCase()} customer added successfully`);
+      }
+      
       await refreshData();
       return true;
     } catch (error) {
