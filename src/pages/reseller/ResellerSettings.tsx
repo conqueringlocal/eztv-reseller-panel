@@ -2,7 +2,6 @@
 import React from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
-import { ApiKeyManager } from '@/components/api-keys/ApiKeyManager';
 import { Separator } from '@/components/ui/separator';
 
 export default function ResellerSettings() {
@@ -18,13 +17,9 @@ export default function ResellerSettings() {
       </div>
       
       <div className="space-y-6">
-        <ApiKeyManager />
-        
-        <Separator />
-        
         <DashboardCard
           title="Webhook Integration"
-          description="Use your API keys to integrate with external systems"
+          description="API keys and webhook integration are now managed by your administrator"
         >
           <div className="space-y-4">
             <div className="bg-gray-50 p-4 rounded-lg">
@@ -40,7 +35,7 @@ export default function ResellerSettings() {
             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
               <h4 className="font-medium text-blue-900 mb-2">Integration Instructions</h4>
               <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-                <li>Create an API key above and copy it</li>
+                <li>Contact your administrator to get an API key for your account</li>
                 <li>In your automation platform, add a webhook action</li>
                 <li>Set the webhook URL to the one shown above</li>
                 <li>Set the method to <strong>POST</strong></li>
@@ -92,6 +87,7 @@ export default function ResellerSettings() {
                 <li>Check the webhook logs if accounts aren't being created</li>
                 <li>The package_id field is optional - omit it to use the default package (14826)</li>
                 <li>Include contact_id for automatic SMS delivery of credentials</li>
+                <li>Contact your administrator if you need additional API keys</li>
               </ul>
             </div>
           </div>

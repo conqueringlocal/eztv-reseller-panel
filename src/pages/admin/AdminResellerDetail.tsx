@@ -10,7 +10,9 @@ import { CustomerTable } from '@/components/customers/CustomerTable';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
+import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
 import { SsoTokenManager } from '@/components/sso/SsoTokenManager';
+import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -110,7 +112,13 @@ export default function AdminResellerDetail() {
           </DashboardCard>
         </TabsContent>
         <TabsContent value="highlevel">
-          <HighLevelSettings resellerId={reseller.id} isAdminView={true} />
+          <div className="space-y-6">
+            <HighLevelSettings resellerId={reseller.id} isAdminView={true} />
+            
+            <Separator />
+            
+            <AdminApiKeyManager resellerId={reseller.id} resellerName={reseller.name} />
+          </div>
         </TabsContent>
         <TabsContent value="sso">
           <SsoTokenManager />
