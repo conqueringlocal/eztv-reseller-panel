@@ -1,11 +1,12 @@
+
 import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
+import { GlobalHighLevelSettings } from '@/components/admin/GlobalHighLevelSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Eye, EyeOff, Save, Webhook, MessageSquare, Info } from 'lucide-react';
+import { Eye, EyeOff, Save, Webhook } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -18,9 +19,6 @@ interface SystemSetting {
 export default function AdminSettings() {
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
-  const [highLevelApiKey, setHighLevelApiKey] = useState("");
-  const [showHighLevelApiKey, setShowHighLevelApiKey] = useState(false);
-  const [highLevelLocationId, setHighLevelLocationId] = useState("");
   const [defaultPackageId, setDefaultPackageId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -35,7 +33,7 @@ export default function AdminSettings() {
         const { data, error } = await supabase
           .from('system_settings')
           .select('*')
-          .in('id', ['iptv_api_key', 'highlevel_api_key', 'highlevel_location_id', 'default_package_id']);
+          .in('id', ['iptv_api_key', 'default_package_id']);
         
         if (error) throw error;
         
@@ -44,12 +42,6 @@ export default function AdminSettings() {
           switch (setting.id) {
             case 'iptv_api_key':
               setApiKey(setting.value);
-              break;
-            case 'highlevel_api_key':
-              setHighLevelApiKey(setting.value);
-              break;
-            case 'highlevel_location_id':
-              setHighLevelLocationId(setting.value);
               break;
             case 'default_package_id':
               setDefaultPackageId(setting.value);
@@ -99,27 +91,6 @@ export default function AdminSettings() {
         toast.success('IPTV API Key saved successfully');
       } else {
         toast.error('Failed to save IPTV API Key');
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const saveHighLevelSettings = async () => {
-    if (!highLevelApiKey.trim() || !highLevelLocationId.trim()) {
-      toast.error('Both HighLevel API Key and Location ID are required');
-      return;
-    }
-    
-    setIsSaving(true);
-    try {
-      const apiKeySuccess = await saveSetting('highlevel_api_key', highLevelApiKey, 'HighLevel Agency API key for sending messages');
-      const locationSuccess = await saveSetting('highlevel_location_id', highLevelLocationId, 'HighLevel Location ID for message context');
-      
-      if (apiKeySuccess && locationSuccess) {
-        toast.success('HighLevel settings saved successfully');
-      } else {
-        toast.error('Failed to save HighLevel settings');
       }
     } finally {
       setIsSaving(false);
@@ -247,102 +218,8 @@ export default function AdminSettings() {
           </div>
         </DashboardCard>
 
-        {/* HighLevel Integration Settings */}
-        <DashboardCard
-          title="HighLevel Integration"
-          description="Configure HighLevel Agency API for automatic credential delivery"
-        >
-          <div className="space-y-4">
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Important:</strong> Use an <strong>Agency API Key</strong> (not a Location API Key) for proper authentication. 
-                Agency API Keys provide access to multiple locations and use Bearer token authentication.
-              </AlertDescription>
-            </Alert>
-
-            <div>
-              <p className="text-sm font-medium mb-1.5">HighLevel Agency API Key</p>
-              <div className="flex gap-2">
-                <Input 
-                  value={highLevelApiKey} 
-                  onChange={(e) => setHighLevelApiKey(e.target.value)}
-                  type={showHighLevelApiKey ? "text" : "password"} 
-                  className="flex-1"
-                  placeholder="Enter your HighLevel Agency API key" 
-                  disabled={isLoading}
-                />
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowHighLevelApiKey(!showHighLevelApiKey)}
-                  disabled={isLoading}
-                >
-                  {showHighLevelApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                Agency API Key from your HighLevel Agency settings (requires Bearer authentication)
-              </p>
-            </div>
-            
-            <div>
-              <p className="text-sm font-medium mb-1.5">Location ID</p>
-              <Input 
-                value={highLevelLocationId} 
-                onChange={(e) => setHighLevelLocationId(e.target.value)}
-                placeholder="Enter your HighLevel Location ID" 
-                disabled={isLoading}
-              />
-              <p className="text-xs text-muted-foreground mt-1.5">
-                The Location ID for scoping operations to the correct HighLevel location
-              </p>
-            </div>
-
-            <Button 
-              onClick={saveHighLevelSettings}
-              disabled={isLoading || isSaving}
-              className="w-full"
-            >
-              {isSaving ? (
-                <>
-                  <span className="animate-spin mr-2">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24">
-                      <circle 
-                        className="opacity-25" 
-                        cx="12" 
-                        cy="12" 
-                        r="10" 
-                        stroke="currentColor" 
-                        strokeWidth="4"
-                      ></circle>
-                      <path 
-                        className="opacity-75" 
-                        fill="currentColor" 
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
-                  </span>
-                  Saving HighLevel Settings...
-                </>
-              ) : (
-                <>
-                  <MessageSquare size={16} className="mr-2" />
-                  Save HighLevel Settings
-                </>
-              )}
-            </Button>
-
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-blue-800 mt-4">
-              <p className="text-sm font-medium">Integration Status</p>
-              <p className="text-xs mt-1">
-                {highLevelApiKey && highLevelLocationId 
-                  ? '✅ HighLevel Agency API integration is configured and ready'
-                  : '⚠️ HighLevel integration requires both Agency API Key and Location ID'
-                }
-              </p>
-            </div>
-          </div>
-        </DashboardCard>
+        {/* Global HighLevel Settings */}
+        <GlobalHighLevelSettings />
         
         {/* Webhook Settings */}
         <DashboardCard
