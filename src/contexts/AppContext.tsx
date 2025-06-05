@@ -1,4 +1,3 @@
-
 import React, {
   createContext,
   useState,
@@ -34,6 +33,7 @@ export interface Customer {
   packageId?: string;
   connections?: number;
   accountType?: 'm3u' | 'mag'; // New field to distinguish account types
+  highlevelContactId?: string; // Added HighLevel contact ID
 }
 
 interface Reseller extends Tables<'profiles'> {
@@ -123,7 +123,8 @@ export const AppProvider: React.FC<AppProviderProps> = ({ children }) => {
           totalConnections: customer.total_connections,
           isDeactivated: customer.is_deactivated,
           cancelledAt: customer.cancelled_at,
-          status: customer.status as 'active' | 'cancelled' | 'expired' | 'expiring_soon'
+          status: customer.status as 'active' | 'cancelled' | 'expired' | 'expiring_soon',
+          highlevelContactId: customer.highlevel_contact_id // Added HighLevel contact ID mapping
         }));
         setCustomers(transformedCustomers);
       }
