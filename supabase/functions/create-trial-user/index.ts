@@ -128,43 +128,28 @@ serve(async (req) => {
       )
     }
 
-    console.log('🎯 Creating trial IPTV user via player_api.php endpoint')
+    console.log('🎯 Creating trial IPTV user via direct API call')
 
-    // Generate trial credentials
-    const username = customerData.name
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .toLowerCase()
-      .substring(0, 10) + Math.floor(Math.random() * 1000)
-    
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    let password = ""
-    for (let i = 0; i < 8; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length))
+    // Prepare trial API data using the exact structure you provided
+    const trialData = {
+      mac: generatedMacAddress,
+      sub_id: "8", // Trial subscription ID as specified
+      comment: `Trial - ${customerData.name} | Reseller: ${resellerData.name}`,
+      bouq_list: [],
+      type: "lines",
+      bouq_custom: packageId,
+      country: "ALL"
     }
 
-    console.log(`🔐 Generated trial credentials: ${username} / ${password}`)
-
-    // Calculate expiry timestamp (24 hours from now)
-    const expiryTimestamp = Math.floor((Date.now() + (24 * 60 * 60 * 1000)) / 1000)
+    console.log('📋 Trial API data:', trialData)
 
     try {
-      // Use the player_api.php endpoint for trial creation with proper authentication
+      // Construct the trial API URL using the exact format you provided
       const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '')
-      const apiUrl = new URL(`${baseUrl}/player_api.php`)
-      
-      // Add authentication and action parameters
-      apiUrl.searchParams.append('username', API_KEY.split(':')[0] || API_KEY)
-      apiUrl.searchParams.append('password', API_KEY.split(':')[1] || API_KEY)
-      apiUrl.searchParams.append('action', 'user_add')
-      
-      // Add user details
-      apiUrl.searchParams.append('user_username', username)
-      apiUrl.searchParams.append('user_password', password)
-      apiUrl.searchParams.append('user_expire', expiryTimestamp.toString())
-      apiUrl.searchParams.append('user_max_connections', '1')
-      apiUrl.searchParams.append('user_is_trial', '1')
-      apiUrl.searchParams.append('user_bouquet', packageId)
-      apiUrl.searchParams.append('user_output', 'ts')
+      const apiUrl = new URL(`${baseUrl}/api.php`)
+      apiUrl.searchParams.append('action', 'add_new')
+      apiUrl.searchParams.append('data', JSON.stringify(trialData))
+      apiUrl.searchParams.append('api_key', API_KEY)
       
       console.log(`🔗 Trial API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`)
       
@@ -201,76 +186,88 @@ serve(async (req) => {
         )
       }
 
-      // Try to parse the response
-      let trialApiResult
+      // Check if the trial creation was successful
+      if (responseText.includes('error') || responseText.includes('fail')) {
+        console.log(`❌ Trial API Error in response: ${responseText}`)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Trial API Error: ${responseText}`,
+            debug_info: {
+              panel_url: PANEL_URL,
+              package_id: packageId,
+              api_response: responseText
+            }
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        )
+      }
+
+      console.log('✅ Trial account created successfully')
+
+      // Now retrieve the credentials using the search API
+      console.log('🔍 Retrieving trial account credentials...')
+      
+      const searchUrl = new URL(`${baseUrl}/api_table.php`)
+      searchUrl.searchParams.append('search[value]', generatedMacAddress)
+      searchUrl.searchParams.append('id', 'lines')
+      searchUrl.searchParams.append('filter', '15')
+      searchUrl.searchParams.append('state', '0')
+      
+      console.log(`🔗 Credential search URL: ${searchUrl.toString()}`)
+      
+      const credentialResponse = await fetch(searchUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'IPTV-Management-System/1.0',
+          'Accept': 'application/json, text/plain, */*',
+          'Cache-Control': 'no-cache',
+        },
+        signal: AbortSignal.timeout(30000),
+      })
+      
+      const credentialResponseText = await credentialResponse.text()
+      console.log(`📡 Credential API Response Status: ${credentialResponse.status}`)
+      console.log(`📡 Credential API Response: ${credentialResponseText}`)
+
+      if (!credentialResponse.ok) {
+        console.log(`❌ Credential API HTTP Error: ${credentialResponse.status}`)
+        // Continue with fallback credentials since account was created
+      }
+
+      // Parse credential response and extract username/password
+      let finalUsername = generatedMacAddress // Fallback to MAC address
+      let finalPassword = generatedMacAddress // Fallback to MAC address
+      
       try {
-        trialApiResult = JSON.parse(responseText)
-        console.log(`📋 Parsed trial API response:`, trialApiResult)
-      } catch (parseError) {
-        console.log(`❌ Failed to parse trial API response as JSON: ${parseError}`)
+        const credentialData = JSON.parse(credentialResponseText)
+        console.log(`📋 Parsed credential data:`, credentialData)
         
-        // If we get HTML response, it means authentication failed
-        if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: 'Authentication failed - received login page instead of API response. Please check IPTV API credentials.',
-              debug_info: {
-                panel_url: PANEL_URL,
-                package_id: packageId,
-                response_preview: responseText.substring(0, 200) + '...'
-              }
-            }),
-            { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 401,
-            },
-          )
+        // Extract credentials from the API response
+        if (credentialData.data && credentialData.data.length > 0) {
+          const accountData = credentialData.data[0]
+          if (accountData.username) {
+            finalUsername = accountData.username
+          }
+          if (accountData.password) {
+            finalPassword = accountData.password
+          }
+          console.log(`✅ Retrieved credentials from API - Username: ${finalUsername}, Password: ${finalPassword}`)
+        } else {
+          console.log(`⚠️ No account data found in credential response, using MAC address as fallback`)
         }
-        
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Invalid trial API response format: ${responseText.substring(0, 100)}`,
-            debug_info: {
-              panel_url: PANEL_URL,
-              package_id: packageId,
-              full_response: responseText
-            }
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        )
+      } catch (parseError) {
+        console.log(`⚠️ Could not parse credential response, using MAC address as fallback: ${parseError}`)
       }
 
-      // Check for API errors
-      if (trialApiResult.error || trialApiResult.status === 'error') {
-        const errorMsg = trialApiResult.error || trialApiResult.message || 'Trial API returned error status'
-        console.log(`❌ Trial API Error: ${errorMsg}`)
-        
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Trial API Error: ${errorMsg}`,
-            debug_info: {
-              panel_url: PANEL_URL,
-              package_id: packageId,
-              api_response: trialApiResult
-            }
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        )
-      }
+      // Generate M3U URL using the retrieved or fallback credentials
+      const m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`
 
-      console.log('✅ Trial API call successful')
-
-      // Generate M3U URL
-      const m3uUrl = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`
+      console.log(`🔐 Final trial credentials - Username: ${finalUsername}, Password: ${finalPassword}`)
+      console.log(`🔗 M3U URL: ${m3uUrl}`)
 
       // Create HighLevel contact with trial credentials if needed
       let contactId = null
@@ -285,8 +282,8 @@ serve(async (req) => {
               customerEmail: customerData.email,
               resellerId: resellerId,
               iptvCredentials: {
-                username: username,
-                password: password,
+                username: finalUsername,
+                password: finalPassword,
                 m3uUrl: m3uUrl
               }
             }
@@ -313,8 +310,8 @@ serve(async (req) => {
           plan_duration: 1, // Duration is not relevant for trials, but keep it as 1
           start_date: startDate,
           expiration_date: expirationDate,
-          username: username,
-          password: password,
+          username: finalUsername,
+          password: finalPassword,
           m3u_url: m3uUrl,
           highlevel_contact_id: contactId,
           status: 'active',
@@ -349,8 +346,8 @@ serve(async (req) => {
             body: {
               contactId,
               customerName: customerData.name,
-              username: username,
-              password: password,
+              username: finalUsername,
+              password: finalPassword,
               m3uUrl: m3uUrl,
               resellerId: resellerId,
               messageType: 'SMS'
@@ -370,8 +367,8 @@ serve(async (req) => {
           message: '24-hour trial account created successfully',
           customer: {
             id: customer.id,
-            username: username,
-            password: password,
+            username: finalUsername,
+            password: finalPassword,
             expirationDate: expirationDate,
             m3uUrl: m3uUrl,
             isTrial: true,
