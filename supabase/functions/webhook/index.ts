@@ -63,13 +63,16 @@ serve(async (req) => {
       payload = {
         api_key: searchParams.get('api_key') || searchParams.get('apiKey') || '',
         resellerId: searchParams.get('resellerId') || '',
+        action: searchParams.get('action') as 'create' | 'renew' || 'create', // Support action parameter
         customer: {
           name: searchParams.get('name') || searchParams.get('customerName') || '',
           email: searchParams.get('email') || searchParams.get('customerEmail') || '',
           mac: searchParams.get('mac') || searchParams.get('macAddress') || '',
           device_type: searchParams.get('device_type') || searchParams.get('deviceType') || 'Smart TV',
-          plan_duration_months: parseInt(searchParams.get('plan_duration_months') || searchParams.get('planDuration') || '0', 10)
-        }
+          plan_duration_months: parseInt(searchParams.get('plan_duration_months') || searchParams.get('planDuration') || '0', 10),
+          package_id: searchParams.get('package_id') || searchParams.get('packageId') || undefined
+        },
+        contact_id: searchParams.get('contact_id') || searchParams.get('contactId') || undefined
       }
       console.log(`🔗 Query Params Payload:`, payload)
     } else {

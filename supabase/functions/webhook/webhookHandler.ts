@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Initialize Supabase client
@@ -29,11 +28,13 @@ export interface WebhookPayload {
   resellerId?: string;
   // HighLevel contact ID for sending credentials
   contact_id?: string;
+  // Action type to differentiate between create and renew
+  action?: 'create' | 'renew';
   customer?: {
     name: string;
     email: string;
-    mac: string;
-    device_type: string;
+    mac?: string; // Optional for renewals
+    device_type?: string; // Optional for renewals
     plan_duration_months: number;
     package_id?: string; // Optional package ID
   };
@@ -103,6 +104,188 @@ async function getResellerHighLevelCredentials(resellerId: string): Promise<{
   } catch (error) {
     console.error('❌ Error fetching HighLevel credentials:', error);
     return { apiKey: null, locationId: null };
+  }
+}
+
+// Find existing customer by name and email
+async function findCustomerByNameAndEmail(
+  customerName: string,
+  customerEmail: string,
+  resellerId: string
+): Promise<any | null> {
+  try {
+    console.log(`🔍 Looking for existing customer: ${customerName} (${customerEmail}) for reseller: ${resellerId}`);
+    
+    const { data: customers, error } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('reseller_id', resellerId)
+      .eq('name', customerName)
+      .eq('email', customerEmail)
+      .in('status', ['active', 'expired', 'expiring_soon']) // Include expired customers that can be renewed
+      .limit(1);
+
+    if (error) {
+      console.error('❌ Error searching for customer:', error);
+      return null;
+    }
+
+    if (!customers || customers.length === 0) {
+      console.log('⚠️ No matching customer found');
+      return null;
+    }
+
+    const customer = customers[0];
+    console.log(`✅ Found matching customer: ${customer.id}`);
+    return customer;
+  } catch (error) {
+    console.error('💥 Error in findCustomerByNameAndEmail:', error);
+    return null;
+  }
+}
+
+// Process customer renewal
+async function processCustomerRenewal(
+  customer: any,
+  additionalMonths: number,
+  resellerId: string,
+  contactId?: string
+): Promise<{
+  success: boolean;
+  message: string;
+}> {
+  try {
+    console.log(`🔄 Processing renewal for customer: ${customer.id} (${additionalMonths} months)`);
+
+    // Check if reseller has enough credits
+    const { data: reseller, error: resellerError } = await supabase
+      .from('profiles')
+      .select('credits, name')
+      .eq('id', resellerId)
+      .single();
+
+    if (resellerError || !reseller) {
+      console.error('❌ Error fetching reseller data:', resellerError);
+      return {
+        success: false,
+        message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
+      };
+    }
+
+    if (reseller.credits < additionalMonths) {
+      console.error('❌ Insufficient credits for renewal');
+      return {
+        success: false,
+        message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${additionalMonths} are required`
+      };
+    }
+
+    // Call IPTV panel renewal API
+    console.log('🎯 Calling IPTV panel renewal API');
+    const { data, error } = await supabase.functions.invoke('renew-iptv-user', {
+      body: {
+        customerId: customer.id,
+        additionalMonths
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to renew IPTV user:', error || data);
+      return {
+        success: false,
+        message: "Failed to renew IPTV user in panel"
+      };
+    }
+
+    console.log('✅ IPTV user renewed successfully');
+
+    // Calculate new expiration date
+    const currentExpiry = new Date(customer.expiration_date);
+    const newExpiry = new Date(currentExpiry);
+    newExpiry.setMonth(newExpiry.getMonth() + additionalMonths);
+    const newExpirationDate = newExpiry.toISOString().split('T')[0];
+
+    console.log(`📅 New expiration date: ${newExpirationDate}`);
+
+    // Update customer record in database
+    const { error: updateError } = await supabase
+      .from('customers')
+      .update({ 
+        expiration_date: newExpirationDate,
+        is_deactivated: false, // Reactivate if deactivated
+        status: 'active' // Set status back to active
+      })
+      .eq('id', customer.id);
+
+    if (updateError) {
+      console.error('❌ Error updating customer record:', updateError);
+      return {
+        success: false,
+        message: `Failed to update customer record: ${updateError.message}`
+      };
+    }
+
+    console.log('✅ Customer record updated successfully');
+
+    // Deduct credits from reseller
+    const { error: creditError } = await supabase
+      .from('profiles')
+      .update({ credits: reseller.credits - additionalMonths })
+      .eq('id', resellerId);
+
+    if (creditError) {
+      console.error('❌ Error deducting credits:', creditError);
+      return {
+        success: false,
+        message: `Failed to deduct credits: ${creditError.message}`
+      };
+    }
+
+    console.log('💳 Credits deducted successfully');
+
+    // Log the transaction
+    const { error: logError } = await supabase
+      .from('credit_logs')
+      .insert({
+        reseller_id: resellerId,
+        action: 'deduction',
+        credits_used: additionalMonths,
+        customer_id: customer.id,
+        customer_name: customer.name,
+        notes: `${additionalMonths} month renewal via webhook - Customer: ${customer.username}`
+      });
+
+    if (logError) {
+      console.error('⚠️ Failed to log renewal transaction:', logError);
+    }
+
+    // Send renewal confirmation via HighLevel if contact ID is available
+    if (contactId || customer.highlevel_contact_id) {
+      const finalContactId = contactId || customer.highlevel_contact_id;
+      console.log('📨 Sending renewal confirmation via HighLevel');
+      
+      await sendHighLevelCredentials(
+        finalContactId,
+        customer.name,
+        customer.username || '',
+        customer.password || '',
+        resellerId,
+        customer.m3u_url
+      );
+    }
+
+    console.log('🎉 Customer renewal completed successfully');
+
+    return {
+      success: true,
+      message: `Customer ${customer.name} renewed successfully for ${additionalMonths} months`
+    };
+  } catch (error) {
+    console.error('💥 Error in processCustomerRenewal:', error);
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Unknown error during renewal"
+    };
   }
 }
 
@@ -266,9 +449,52 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     // Extract customer data - supporting both new and old formats
     const customerName = payload.customer?.name || payload.customerName;
     const customerEmail = payload.customer?.email || payload.customerEmail;
+    const planDuration = payload.customer?.plan_duration_months || payload.planDuration;
+    
+    // Determine action type (default to 'create' for backward compatibility)
+    const action = payload.action || 'create';
+    
+    console.log(`🎯 Processing ${action} action for customer: ${customerName} (${customerEmail})`);
+    
+    // Validate payload
+    if (!customerName || !customerEmail || !planDuration) {
+      console.error('❌ Missing required customer fields');
+      return {
+        success: false,
+        message: "Missing required customer fields in webhook payload"
+      };
+    }
+
+    // Handle renewal action
+    if (action === 'renew') {
+      console.log('🔄 Processing renewal request');
+      
+      // Find existing customer
+      const existingCustomer = await findCustomerByNameAndEmail(customerName, customerEmail, resellerId);
+      
+      if (!existingCustomer) {
+        return {
+          success: false,
+          message: `No customer found with name "${customerName}" and email "${customerEmail}"`
+        };
+      }
+
+      // Process the renewal
+      const renewalResult = await processCustomerRenewal(
+        existingCustomer,
+        planDuration,
+        resellerId,
+        payload.contact_id || payload.contactId
+      );
+
+      return renewalResult;
+    }
+
+    // Handle create action (existing logic)
+    console.log('➕ Processing customer creation request');
+    
     const macAddress = payload.customer?.mac || payload.macAddress;
     const deviceType = payload.customer?.device_type || payload.deviceType || 'Smart TV';
-    const planDuration = payload.customer?.plan_duration_months || payload.planDuration;
     
     // Extract package ID from payload or use default
     const packageId = payload.customer?.package_id || payload.packageId;
@@ -286,12 +512,12 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       contactId 
     });
     
-    // Validate payload
-    if (!customerName || !customerEmail || !macAddress || !planDuration) {
-      console.error('❌ Missing required customer fields');
+    // Validate required fields for creation
+    if (!macAddress) {
+      console.error('❌ MAC address is required for customer creation');
       return {
         success: false,
-        message: "Missing required customer fields in webhook payload"
+        message: "MAC address is required for customer creation"
       };
     }
 
@@ -378,7 +604,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       finalPassword = data.user.password;
       console.log(`🔑 Using actual credentials from API - Username: ${finalUsername}, Password: ${finalPassword}`);
     } else {
-      console.log(`⚠️ API did not return credentials, using fallback - Username: ${finalUsername}, Password: ${finalPassword}`);
+      console.log(`⚠️ API did not return credentials, using fallback - Username: ${finalUsername}, Password: ${fallbackPassword}`);
     }
 
     // Create customer record in database with the actual credentials
