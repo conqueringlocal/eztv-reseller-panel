@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Initialize Supabase client
@@ -30,6 +31,8 @@ export interface WebhookPayload {
   contact_id?: string;
   // Action type to differentiate between create and renew
   action?: 'create' | 'renew';
+  // Trial account flag
+  is_trial?: boolean;
   customer?: {
     name: string;
     email: string;
@@ -454,7 +457,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     // Determine action type (default to 'create' for backward compatibility)
     const action = payload.action || 'create';
     
-    console.log(`🎯 Processing ${action} action for customer: ${customerName} (${customerEmail})`);
+    // Check if this is a trial account
+    const isTrialAccount = payload.is_trial || false;
+    
+    console.log(`🎯 Processing ${action} action for customer: ${customerName} (${customerEmail}) - Trial: ${isTrialAccount}`);
     
     // Validate payload
     if (!customerName || !customerEmail || !planDuration) {
@@ -490,7 +496,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       return renewalResult;
     }
 
-    // Handle create action (existing logic)
+    // Handle create action (existing logic with trial support)
     console.log('➕ Processing customer creation request');
     
     const macAddress = payload.customer?.mac || payload.macAddress;
@@ -509,7 +515,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       deviceType, 
       planDuration,
       packageId,
-      contactId 
+      contactId,
+      isTrialAccount
     });
     
     // Validate required fields for creation
@@ -521,29 +528,48 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       };
     }
 
-    // Check if reseller exists and has enough credits
-    const { data: reseller, error: resellerError } = await supabase
-      .from('profiles')
-      .select('credits, name')
-      .eq('id', resellerId)
-      .single();
+    // Check if reseller exists and has enough credits (skip for trial accounts)
+    if (!isTrialAccount) {
+      const { data: reseller, error: resellerError } = await supabase
+        .from('profiles')
+        .select('credits, name')
+        .eq('id', resellerId)
+        .single();
 
-    if (resellerError || !reseller) {
-      console.error('❌ Reseller not found:', resellerError?.message);
-      return {
-        success: false,
-        message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
-      };
-    }
+      if (resellerError || !reseller) {
+        console.error('❌ Reseller not found:', resellerError?.message);
+        return {
+          success: false,
+          message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
+        };
+      }
 
-    console.log(`💰 Reseller credits: ${reseller.credits}, required: ${planDuration}`);
+      console.log(`💰 Reseller credits: ${reseller.credits}, required: ${planDuration}`);
 
-    if (reseller.credits < planDuration) {
-      console.error('❌ Insufficient credits');
-      return {
-        success: false,
-        message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${planDuration} are required`
-      };
+      if (reseller.credits < planDuration) {
+        console.error('❌ Insufficient credits');
+        return {
+          success: false,
+          message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${planDuration} are required`
+        };
+      }
+    } else {
+      console.log('🆓 Trial account - skipping credit check');
+      
+      // Get reseller info for trial account
+      const { data: reseller, error: resellerError } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', resellerId)
+        .single();
+
+      if (resellerError || !reseller) {
+        console.error('❌ Reseller not found:', resellerError?.message);
+        return {
+          success: false,
+          message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
+        };
+      }
     }
 
     // Generate IPTV credentials (used as fallback if API doesn't return credentials)
@@ -575,11 +601,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
           password: fallbackPassword,
           maxConnections: 1,
           expiryDate: expiryDate.toISOString(),
-          isTrial: false,
+          isTrial: isTrialAccount,
           bouquet: finalPackageId, // Use the determined package ID
           output: "ts",
           customerName,
-          resellerName: reseller.name
+          resellerName: "Trial Account" // For trial accounts
         }
       }
     });
@@ -604,11 +630,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       finalPassword = data.user.password;
       console.log(`🔑 Using actual credentials from API - Username: ${finalUsername}, Password: ${finalPassword}`);
     } else {
-      console.log(`⚠️ API did not return credentials, using fallback - Username: ${finalUsername}, Password: ${fallbackPassword}`);
+      console.log(`⚠️ API did not return credentials, using fallback - Username: ${finalUsername}, Password: ${finalPassword}`);
     }
 
     // Create customer record in database with the actual credentials
-    const customerData = {
+    const customerData: any = {
       reseller_id: resellerId,
       name: customerName,
       email: customerEmail,
@@ -619,7 +645,9 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       expiration_date: expirationDate,
       username: finalUsername,  // Use actual credentials from API
       password: finalPassword,   // Use actual credentials from API
-      highlevel_contact_id: contactId  // Store the HighLevel contact ID
+      highlevel_contact_id: contactId,  // Store the HighLevel contact ID
+      is_trial: isTrialAccount,
+      trial_created_at: isTrialAccount ? new Date().toISOString() : null
     };
 
     console.log('💾 Inserting customer into database with actual credentials');
@@ -639,36 +667,40 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
 
     console.log('✅ Customer added to database with ID:', customer.id);
 
-    // Deduct credits from reseller
-    console.log('💳 Deducting credits from reseller');
-    const { error: creditError } = await supabase
-      .from('profiles')
-      .update({ credits: reseller.credits - planDuration })
-      .eq('id', resellerId);
+    // Deduct credits from reseller only if not a trial account
+    if (!isTrialAccount) {
+      console.log('💳 Deducting credits from reseller');
+      const { error: creditError } = await supabase
+        .from('profiles')
+        .update({ credits: reseller.credits - planDuration })
+        .eq('id', resellerId);
 
-    if (creditError) {
-      console.error('❌ Failed to deduct credits:', creditError);
-      return {
-        success: false,
-        message: `Failed to deduct credits: ${creditError.message}`
-      };
-    }
+      if (creditError) {
+        console.error('❌ Failed to deduct credits:', creditError);
+        return {
+          success: false,
+          message: `Failed to deduct credits: ${creditError.message}`
+        };
+      }
 
-    // Log the transaction
-    console.log('📝 Logging credit transaction with actual credentials');
-    const { error: logError } = await supabase
-      .from('credit_logs')
-      .insert({
-        reseller_id: resellerId,
-        action: 'account_creation',
-        credits_used: planDuration,
-        customer_id: customer.id,
-        customer_name: customerName,
-        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId}) - Credentials: ${finalUsername}/${finalPassword}`
-      });
+      // Log the transaction
+      console.log('📝 Logging credit transaction with actual credentials');
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'account_creation',
+          credits_used: planDuration,
+          customer_id: customer.id,
+          customer_name: customerName,
+          notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId}) - Credentials: ${finalUsername}/${finalPassword}`
+        });
 
-    if (logError) {
-      console.error("⚠️ Failed to log transaction:", logError);
+      if (logError) {
+        console.error("⚠️ Failed to log transaction:", logError);
+      }
+    } else {
+      console.log('🆓 Trial account - skipping credit deduction and logging');
     }
 
     // Update HighLevel contact with IPTV data and send credentials if contact ID is provided
@@ -703,7 +735,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     // Return success with customer data
     return {
       success: true,
-      message: "Customer provisioned successfully",
+      message: isTrialAccount ? "Trial account created successfully" : "Customer provisioned successfully",
       customer: {
         resellerId,
         name: customerName,

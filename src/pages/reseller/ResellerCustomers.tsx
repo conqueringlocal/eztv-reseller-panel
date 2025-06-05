@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -18,6 +17,7 @@ import { Customer } from '@/contexts/AppContext';
 import { toast } from 'sonner';
 import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
 import { CrmContactManager } from '@/components/crm/CrmContactManager';
+import { CreateTrialForm } from '@/components/customers/CreateTrialForm';
 import { supabase } from '@/integrations/supabase/client';
 
 export default function ResellerCustomers() {
@@ -26,6 +26,7 @@ export default function ResellerCustomers() {
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
   const [isCrmManagerOpen, setIsCrmManagerOpen] = useState(false);
+  const [isCreateTrialOpen, setIsCreateTrialOpen] = useState(false);
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
   const [selectedCustomerForCrm, setSelectedCustomerForCrm] = useState<Customer | null>(null);
   
@@ -152,12 +153,20 @@ export default function ResellerCustomers() {
           <h1 className="text-2xl font-bold mb-2">Customers</h1>
           <p className="text-gray-500">Manage all your IPTV customers</p>
         </div>
-        <Button 
-          onClick={() => setIsAddCustomerOpen(true)}
-          className="mt-4 sm:mt-0"
-        >
-          Add Customer
-        </Button>
+        <div className="flex space-x-2 mt-4 sm:mt-0">
+          <Button 
+            onClick={() => setIsCreateTrialOpen(true)}
+            variant="outline"
+            className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+          >
+            Create Trial
+          </Button>
+          <Button 
+            onClick={() => setIsAddCustomerOpen(true)}
+          >
+            Add Customer
+          </Button>
+        </div>
       </div>
       
       {/* Stats Cards */}
@@ -223,6 +232,19 @@ export default function ResellerCustomers() {
             </DialogDescription>
           </DialogHeader>
           <AddCustomerForm onSuccess={() => setIsAddCustomerOpen(false)} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Trial Dialog */}
+      <Dialog open={isCreateTrialOpen} onOpenChange={setIsCreateTrialOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Trial Account</DialogTitle>
+            <DialogDescription>
+              Create a free 30-day trial account for a potential customer. No credits will be consumed.
+            </DialogDescription>
+          </DialogHeader>
+          <CreateTrialForm onSuccess={() => setIsCreateTrialOpen(false)} />
         </DialogContent>
       </Dialog>
 

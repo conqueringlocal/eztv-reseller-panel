@@ -69,6 +69,7 @@ export type Database = {
           highlevel_contact_id: string | null
           id: string
           is_deactivated: boolean | null
+          is_trial: boolean | null
           m3u_url: string | null
           mac_address: string | null
           name: string
@@ -78,6 +79,7 @@ export type Database = {
           start_date: string
           status: string | null
           total_connections: number | null
+          trial_created_at: string | null
           username: string | null
         }
         Insert: {
@@ -91,6 +93,7 @@ export type Database = {
           highlevel_contact_id?: string | null
           id?: string
           is_deactivated?: boolean | null
+          is_trial?: boolean | null
           m3u_url?: string | null
           mac_address?: string | null
           name: string
@@ -100,6 +103,7 @@ export type Database = {
           start_date: string
           status?: string | null
           total_connections?: number | null
+          trial_created_at?: string | null
           username?: string | null
         }
         Update: {
@@ -113,6 +117,7 @@ export type Database = {
           highlevel_contact_id?: string | null
           id?: string
           is_deactivated?: boolean | null
+          is_trial?: boolean | null
           m3u_url?: string | null
           mac_address?: string | null
           name?: string
@@ -122,6 +127,7 @@ export type Database = {
           start_date?: string
           status?: string | null
           total_connections?: number | null
+          trial_created_at?: string | null
           username?: string | null
         }
         Relationships: [

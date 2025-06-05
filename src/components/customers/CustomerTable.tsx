@@ -1,4 +1,9 @@
+
 import React, { useState } from 'react';
+import { Customer } from '@/contexts/AppContext';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -7,510 +12,248 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Customer } from '@/contexts/AppContext';
-import { EmptyState } from '@/components/dashboard/EmptyState';
-import { Users, Edit, Trash2, Clock, ShieldOff, Repeat, Settings, RefreshCw } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { format } from 'date-fns';
-import { Badge } from '@/components/ui/badge';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { EditCustomerForm } from '@/components/customers/EditCustomerForm';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
+import { MoreVertical, Eye, RotateCcw, UserX, Settings, Sync, Crown } from 'lucide-react';
+import { formatDate, isExpiringSoon } from '@/lib/utils';
 
 interface CustomerTableProps {
   customers: Customer[];
-  onAddClick?: () => void;
-  onEdit?: (customer: Customer) => void;
-  onCancel?: (customerId: string) => void;
-  onRenew?: (customer: Customer) => void;
-  onDeactivate?: (customerId: string) => void;
+  onAddClick: () => void;
+  onCancel: (customerId: string) => void;
+  onRenew: (customer: Customer) => void;
+  onDeactivate: (customerId: string) => void;
   onManageCrm?: (customer: Customer) => void;
   onSyncToCrm?: (customer: Customer) => void;
 }
 
-type FilterStatus = 'all' | 'active' | 'expiring_soon' | 'expired';
-
 export function CustomerTable({ 
   customers, 
   onAddClick, 
-  onEdit,
-  onCancel,
-  onRenew,
+  onCancel, 
+  onRenew, 
   onDeactivate,
   onManageCrm,
   onSyncToCrm
 }: CustomerTableProps) {
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
-  const [isDeactivateDialogOpen, setIsDeactivateDialogOpen] = useState(false);
-  const [customerToCancel, setCustomerToCancel] = useState<string | null>(null);
-  const [customerToDeactivate, setCustomerToDeactivate] = useState<string | null>(null);
-  const [syncingCustomers, setSyncingCustomers] = useState<Set<string>>(new Set());
-  
-  // Filter customers based on search and status
-  const filteredCustomers = customers.filter(
-    (customer) => {
-      // Search filter
-      const matchesSearch = 
-        customer.name.toLowerCase().includes(search.toLowerCase()) ||
-        customer.email.toLowerCase().includes(search.toLowerCase()) ||
-        customer.macAddress.toLowerCase().includes(search.toLowerCase());
-      
-      // Status filter
-      const matchesStatus = 
-        statusFilter === 'all' || 
-        customer.status === statusFilter;
-      
-      return matchesSearch && matchesStatus;
-    }
-  );
-  
-  // Group customers by customer group ID for multi-connection display
-  const groupedCustomers = filteredCustomers.reduce((acc, customer) => {
-    if (customer.customerGroupId) {
-      if (!acc[customer.customerGroupId]) {
-        acc[customer.customerGroupId] = [];
-      }
-      acc[customer.customerGroupId].push(customer);
-    } else {
-      // For legacy data without group ID
-      const singleGroupId = `single-${customer.id}`;
-      acc[singleGroupId] = [customer];
-    }
-    return acc;
-  }, {} as Record<string, Customer[]>);
-  
-  // Format date to be more readable
-  const formatDate = (dateString: string) => {
-    try {
-      return format(new Date(dateString), 'MMM dd, yyyy');
-    } catch (e) {
-      return dateString;
-    }
-  };
+  const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
 
-  // Get status badge for customer
+  // Filter customers based on search
+  const filteredCustomers = customers.filter(
+    (customer) =>
+      customer.name.toLowerCase().includes(search.toLowerCase()) ||
+      customer.email.toLowerCase().includes(search.toLowerCase()) ||
+      customer.deviceType.toLowerCase().includes(search.toLowerCase())
+  );
+
   const getStatusBadge = (customer: Customer) => {
     if (customer.isDeactivated) {
-      return (
-        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200 flex items-center space-x-1">
-          <ShieldOff size={12} />
-          <span>Deactivated</span>
-        </Badge>
-      );
+      return <Badge variant="secondary">Deactivated</Badge>;
     }
     
     if (customer.status === 'cancelled') {
-      return (
-        <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200 flex items-center space-x-1">
-          <Clock size={12} />
-          <span>Cancelled</span>
-        </Badge>
-      );
+      return <Badge variant="destructive">Cancelled</Badge>;
     }
     
-    switch (customer.status) {
-      case 'expired':
-        return (
-          <Badge variant="destructive" className="flex items-center space-x-1">
-            <Clock size={12} />
-            <span>Expired</span>
-          </Badge>
-        );
-      case 'expiring_soon':
-        return (
-          <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200 flex items-center space-x-1">
-            <Clock size={12} />
-            <span>Expiring Soon</span>
-          </Badge>
-        );
-      case 'active':
-      default:
-        return (
-          <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200 flex items-center space-x-1">
-            <Clock size={12} />
-            <span>Active</span>
-          </Badge>
-        );
+    if (customer.status === 'expired') {
+      return <Badge variant="destructive">Expired</Badge>;
     }
+    
+    if (isExpiringSoon(customer.expirationDate)) {
+      return <Badge variant="outline" className="border-yellow-500 text-yellow-700">Expiring Soon</Badge>;
+    }
+    
+    return <Badge variant="default" className="bg-green-600">Active</Badge>;
   };
 
-  // Handle sync to CRM
-  const handleSyncToCrm = async (customer: Customer) => {
-    if (!onSyncToCrm) return;
-    
-    setSyncingCustomers(prev => new Set([...prev, customer.id]));
-    
-    try {
-      await onSyncToCrm(customer);
-    } finally {
-      setSyncingCustomers(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(customer.id);
-        return newSet;
-      });
-    }
-  };
-
-  // Handle edit button click
-  const handleEditClick = (customer: Customer) => {
+  const handleViewCredentials = (customer: Customer) => {
     setSelectedCustomer(customer);
-    setIsEditDialogOpen(true);
+    setIsCredentialsOpen(true);
   };
 
-  // Handle cancel button click
-  const handleCancelClick = (customerId: string) => {
-    setCustomerToCancel(customerId);
-    setIsCancelDialogOpen(true);
+  const handleRenew = (customer: Customer) => {
+    onRenew(customer);
   };
 
-  // Handle customer cancel
-  const handleCancelCustomer = async (customerId: string) => {
-    console.log(`🚫 CustomerTable: Initiating cancel for customer ID: ${customerId}`);
-    
-    try {
-      if (onCancel) {
-        await onCancel(customerId);
-        console.log(`✅ CustomerTable: Customer ${customerId} cancelled successfully`);
-      }
-    } catch (error) {
-      console.error('💥 CustomerTable: Error during customer cancellation:', error);
-      toast.error('An error occurred while cancelling the customer account');
-    }
+  const handleDeactivate = (customerId: string) => {
+    onDeactivate(customerId);
   };
 
-  // Handle confirm cancel
-  const handleConfirmCancel = () => {
-    if (customerToCancel) {
-      console.log(`🔄 CustomerTable: Confirming cancellation of customer: ${customerToCancel}`);
-      handleCancelCustomer(customerToCancel);
-    } else {
-      console.error('❌ CustomerTable: No customer selected for cancellation');
-    }
-    setIsCancelDialogOpen(false);
-    setCustomerToCancel(null);
-  };
-
-  // Handle deactivate button click
-  const handleDeactivateClick = (customerId: string) => {
-    setCustomerToDeactivate(customerId);
-    setIsDeactivateDialogOpen(true);
-  };
-
-  // Handle confirm deactivate
-  const handleConfirmDeactivate = () => {
-    if (customerToDeactivate && onDeactivate) {
-      onDeactivate(customerToDeactivate);
-    }
-    setIsDeactivateDialogOpen(false);
-    setCustomerToDeactivate(null);
-  };
-
-  // Handle renew subscription
-  const handleRenewClick = (customer: Customer) => {
-    if (onRenew) {
-      onRenew(customer);
-    }
-  };
-
-  // Handle CRM contact management
-  const handleManageCrmClick = (customer: Customer) => {
-    if (onManageCrm) {
-      onManageCrm(customer);
-    }
+  const handleCancel = (customerId: string) => {
+    onCancel(customerId);
   };
 
   if (customers.length === 0) {
     return (
-      <EmptyState
-        title="No customers yet"
-        description="Add your first customer to get started"
-        icon={<Users size={40} />}
-        action={
-          onAddClick && (
-            <Button onClick={onAddClick} className="mt-2">
-              Add Customer
-            </Button>
-          )
-        }
-      />
+      <div className="text-center py-8">
+        <p className="text-gray-500 mb-4">No customers found. Start by adding your first customer.</p>
+        <Button onClick={onAddClick}>Add Customer</Button>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="w-full sm:max-w-sm">
-          <Input
-            placeholder="Search customers..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full"
-          />
-        </div>
-        
-        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-          <Select
-            value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value as FilterStatus)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Customers</SelectItem>
-              <SelectItem value="active">Active Only</SelectItem>
-              <SelectItem value="expiring_soon">Expiring Soon</SelectItem>
-              <SelectItem value="expired">Expired</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          {onAddClick && (
-            <Button onClick={onAddClick} size="sm">
-              Add Customer
-            </Button>
-          )}
-        </div>
-      </div>
+      <Input
+        placeholder="Search customers..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="max-w-sm"
+      />
       
       <div className="border rounded-md overflow-hidden">
         <Table>
           <TableHeader className="bg-gray-50">
             <TableRow>
+              <TableHead>Customer</TableHead>
+              <TableHead>Device</TableHead>
+              <TableHead>Plan</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>MAC Address</TableHead>
-              <TableHead>Connections</TableHead>
-              <TableHead>Plan Length</TableHead>
               <TableHead>Expiration</TableHead>
-              <TableHead className="text-right w-32">Actions</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {Object.entries(groupedCustomers).length === 0 ? (
+            {filteredCustomers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-6 text-gray-500">
+                <TableCell colSpan={6} className="text-center py-6 text-gray-500">
                   No customers found matching your search.
                 </TableCell>
               </TableRow>
             ) : (
-              Object.entries(groupedCustomers).flatMap(([groupId, groupCustomers]) => (
-                groupCustomers.map((customer, index) => (
-                  <TableRow 
-                    key={customer.id} 
-                    className={
-                      index > 0 && index < groupCustomers.length 
-                        ? "hover:bg-gray-50 border-t-0" 
-                        : "hover:bg-gray-50"
-                    }
-                  >
-                    <TableCell>{getStatusBadge(customer)}</TableCell>
-                    <TableCell className="font-medium">
-                      {customer.name}
-                      {customer.totalConnections && customer.totalConnections > 1 && (
-                        <div className="text-xs text-gray-500">
-                          Connection {customer.connectionNumber} of {customer.totalConnections}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">
-                        {customer.macAddress}
-                      </code>
-                    </TableCell>
-                    <TableCell>
-                      {customer.username && (
-                        <div className="text-xs">
-                          <div className="font-medium">Username: {customer.username}</div>
-                          <div className="font-medium">Password: {customer.password}</div>
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="bg-eztv-50 text-eztv-700 border-eztv-200">
-                        {customer.planDuration} {customer.planDuration === 1 ? 'Month' : 'Months'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{formatDate(customer.expirationDate)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-1">
-                        {/* Show renew for expired, expiring soon, OR cancelled customers */}
-                        {onRenew && (customer.status === 'expired' || customer.status === 'expiring_soon' || customer.status === 'cancelled') && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="h-8 px-2 text-xs bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800"
-                            onClick={() => handleRenewClick(customer)}
-                          >
-                            <Repeat size={12} className="mr-1" />
-                            Renew
-                          </Button>
-                        )}
-                        
-                        {/* Only show deactivate for expired, non-deactivated customers */}
-                        {onDeactivate && customer.status === 'expired' && !customer.isDeactivated && (
-                          <Button 
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2 text-xs bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 hover:text-orange-800"
-                            onClick={() => handleDeactivateClick(customer.id)}
-                          >
-                            <ShieldOff size={12} className="mr-1" />
-                            Deactivate
-                          </Button>
-                        )}
-                        
-                        {/* Sync to CRM button - show for all customers that don't have a CRM contact ID */}
-                        {onSyncToCrm && !customer.highlevelContactId && (
-                          <Button 
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2 text-xs bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:text-purple-800"
-                            onClick={() => handleSyncToCrm(customer)}
-                            disabled={syncingCustomers.has(customer.id)}
-                          >
-                            {syncingCustomers.has(customer.id) ? (
-                              <RefreshCw size={12} className="mr-1 animate-spin" />
-                            ) : (
-                              <RefreshCw size={12} className="mr-1" />
-                            )}
-                            Sync to CRM
-                          </Button>
-                        )}
-                        
-                        {/* CRM management button - show for customers with CRM contact ID */}
-                        {onManageCrm && customer.highlevelContactId && (
-                          <Button 
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-2 text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800"
-                            onClick={() => handleManageCrmClick(customer)}
-                          >
-                            <Settings size={12} className="mr-1" />
-                            Manage CRM
-                          </Button>
-                        )}
-                        
-                        {/* Only show edit for non-cancelled customers */}
-                        {onEdit && customer.status !== 'cancelled' && (
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => handleEditClick(customer)}
-                          >
-                            <Edit size={14} />
-                          </Button>
-                        )}
-                        
-                        {/* Only show cancel for active customers */}
-                        {onCancel && customer.status === 'active' && (
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            className="h-8 px-2 text-xs bg-red-50 text-red-700 border-red-200 hover:bg-red-100 hover:text-red-800"
-                            onClick={() => handleCancelClick(customer.id)}
-                          >
-                            <Trash2 size={12} className="mr-1" />
-                            Cancel
-                          </Button>
+              filteredCustomers.map((customer) => (
+                <TableRow key={customer.id} className="hover:bg-gray-50">
+                  <TableCell>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <div className="font-medium">{customer.name}</div>
+                        {customer.isTrial && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                            <Crown className="h-3 w-3 mr-1" />
+                            Trial
+                          </Badge>
                         )}
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))
+                      <div className="text-sm text-gray-500">{customer.email}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{customer.deviceType}</div>
+                      {customer.macAddress && (
+                        <div className="text-sm text-gray-500">{customer.macAddress}</div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div>
+                      <div className="font-medium">{customer.planDuration} month{customer.planDuration !== 1 ? 's' : ''}</div>
+                      <div className="text-sm text-gray-500">Started {formatDate(customer.startDate)}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {getStatusBadge(customer)}
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm">
+                      {formatDate(customer.expirationDate)}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem 
+                          onClick={() => handleViewCredentials(customer)}
+                          className="cursor-pointer"
+                        >
+                          <Eye className="mr-2 h-4 w-4" />
+                          View Credentials
+                        </DropdownMenuItem>
+                        
+                        {!customer.isDeactivated && customer.status !== 'cancelled' && (
+                          <>
+                            <DropdownMenuItem 
+                              onClick={() => handleRenew(customer)}
+                              className="cursor-pointer"
+                            >
+                              <RotateCcw className="mr-2 h-4 w-4" />
+                              Renew
+                            </DropdownMenuItem>
+                            
+                            {customer.highlevelContactId && onManageCrm && (
+                              <DropdownMenuItem 
+                                onClick={() => onManageCrm(customer)}
+                                className="cursor-pointer"
+                              >
+                                <Settings className="mr-2 h-4 w-4" />
+                                Manage CRM
+                              </DropdownMenuItem>
+                            )}
+                            
+                            {!customer.highlevelContactId && onSyncToCrm && (
+                              <DropdownMenuItem 
+                                onClick={() => onSyncToCrm(customer)}
+                                className="cursor-pointer"
+                              >
+                                <Sync className="mr-2 h-4 w-4" />
+                                Sync to CRM
+                              </DropdownMenuItem>
+                            )}
+                            
+                            <DropdownMenuSeparator />
+                            
+                            <DropdownMenuItem 
+                              onClick={() => handleDeactivate(customer.id)}
+                              className="cursor-pointer text-orange-600"
+                            >
+                              <UserX className="mr-2 h-4 w-4" />
+                              Deactivate
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuItem 
+                              onClick={() => handleCancel(customer.id)}
+                              className="cursor-pointer text-red-600"
+                            >
+                              <UserX className="mr-2 h-4 w-4" />
+                              Cancel
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </div>
 
-      {/* Edit Customer Dialog */}
       {selectedCustomer && (
-        <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Customer</DialogTitle>
-              <DialogDescription>
-                Update customer details. Note that changes to plan duration will not extend the subscription.
-              </DialogDescription>
-            </DialogHeader>
-            <EditCustomerForm 
-              customer={selectedCustomer} 
-              onSuccess={() => {
-                setIsEditDialogOpen(false);
-                setSelectedCustomer(null);
-              }} 
-            />
-          </DialogContent>
-        </Dialog>
+        <CustomerCredentialsDialog
+          customer={selectedCustomer}
+          isOpen={isCredentialsOpen}
+          onClose={() => {
+            setIsCredentialsOpen(false);
+            setSelectedCustomer(null);
+          }}
+        />
       )}
-
-      {/* Cancel Confirmation Dialog */}
-      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cancel this customer's account?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will cancel the customer's account and stop any future billing or renewals. 
-              The customer will keep access until their current subscription expires.
-              This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleConfirmCancel}
-              className="bg-orange-600 hover:bg-orange-700"
-            >
-              Cancel Account
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Deactivate Confirmation Dialog */}
-      <AlertDialog open={isDeactivateDialogOpen} onOpenChange={setIsDeactivateDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Deactivate this account?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will disable the customer's IPTV service access. They can be reactivated later by renewing their subscription.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleConfirmDeactivate}
-              className="bg-orange-600 hover:bg-orange-700"
-            >
-              Deactivate
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
