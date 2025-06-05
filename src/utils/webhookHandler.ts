@@ -51,28 +51,33 @@ const getDefaultPackageId = async (): Promise<string> => {
   }
 };
 
-// Get reseller's HighLevel credentials
-const getResellerHighLevelCredentials = async (resellerId: string): Promise<{
-  apiKey: string | null;
-  locationId: string | null;
-}> => {
+// Create HighLevel contact for customer
+const createHighLevelContact = async (
+  customerName: string,
+  customerEmail: string,
+  resellerId: string
+): Promise<string | null> => {
   try {
-    const { data, error } = await supabase
-      .from('reseller_highlevel_settings')
-      .select('api_key, location_id')
-      .eq('reseller_id', resellerId)
-      .eq('is_active', true)
-      .single();
+    console.log('🎯 Creating HighLevel contact for customer:', customerName);
 
-    if (error || !data) {
-      console.log('No HighLevel settings found for reseller:', resellerId);
-      return { apiKey: null, locationId: null };
+    const { data, error } = await supabase.functions.invoke('create-highlevel-contact', {
+      body: {
+        customerName,
+        customerEmail,
+        resellerId
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to create HighLevel contact:', error || data);
+      return null;
     }
 
-    return { apiKey: data.api_key, locationId: data.location_id };
+    console.log('✅ HighLevel contact created successfully:', data.contactId);
+    return data.contactId;
   } catch (error) {
-    console.error('Error fetching HighLevel credentials:', error);
-    return { apiKey: null, locationId: null };
+    console.error('💥 Error creating HighLevel contact:', error);
+    return null;
   }
 };
 
@@ -88,16 +93,6 @@ const sendHighLevelCredentials = async (
   try {
     console.log('📨 Attempting to send credentials via HighLevel to contact:', contactId);
 
-    // Get reseller's HighLevel credentials
-    const { apiKey, locationId } = await getResellerHighLevelCredentials(resellerId);
-
-    if (!apiKey || !locationId) {
-      console.log('⚠️ No HighLevel credentials configured for reseller:', resellerId);
-      return;
-    }
-
-    console.log('✅ Found HighLevel credentials for reseller, sending message');
-
     const { data, error } = await supabase.functions.invoke('send-highlevel-message', {
       body: {
         contactId,
@@ -106,9 +101,7 @@ const sendHighLevelCredentials = async (
         password,
         m3uUrl,
         resellerId,
-        messageType: 'SMS',
-        apiKey,  // Pass reseller's API key
-        locationId  // Pass reseller's location ID
+        messageType: 'SMS'
       }
     });
 
@@ -185,7 +178,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     const packageId = payload.customer?.package_id || payload.packageId;
     
     // Extract HighLevel contact ID for sending credentials
-    const contactId = payload.contact_id || payload.contactId;
+    let contactId = payload.contact_id || payload.contactId;
     
     // Validate payload
     if (!customerName || !customerEmail || !macAddress || !planDuration) {
@@ -214,6 +207,18 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         success: false,
         message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${planDuration} are required`
       };
+    }
+
+    // Create HighLevel contact if not provided and reseller has HighLevel configured
+    if (!contactId) {
+      console.log('🔄 No contact ID provided, attempting to create HighLevel contact...');
+      contactId = await createHighLevelContact(customerName, customerEmail, resellerId);
+      
+      if (contactId) {
+        console.log('✅ HighLevel contact created with ID:', contactId);
+      } else {
+        console.log('ℹ️ HighLevel contact creation failed or not configured, continuing without HighLevel integration');
+      }
     }
 
     // Generate IPTV credentials (used as fallback if API doesn't return credentials)
@@ -320,16 +325,16 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         credits_used: planDuration,
         customer_id: customer.id,
         customer_name: customerName,
-        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId}) - Credentials: ${finalUsername}/${finalPassword}`
+        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId}) - Credentials: ${finalUsername}/${finalPassword}${contactId ? ` - HL Contact: ${contactId}` : ''}`
       });
 
     if (logError) {
       console.error("Failed to log transaction:", logError);
     }
 
-    // Send credentials via HighLevel if contact ID is provided
+    // Send credentials via HighLevel if contact ID is available
     if (contactId) {
-      console.log('🎯 HighLevel contact ID provided, attempting to send credentials via HighLevel');
+      console.log('🎯 HighLevel contact ID available, attempting to send credentials via HighLevel');
       await sendHighLevelCredentials(
         contactId,
         customerName,
@@ -339,7 +344,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         data.user?.m3u_url
       );
     } else {
-      console.log('ℹ️ No HighLevel contact ID provided, skipping HighLevel integration');
+      console.log('ℹ️ No HighLevel contact ID available, skipping HighLevel integration');
     }
 
     // Return success with customer data (using actual credentials)
