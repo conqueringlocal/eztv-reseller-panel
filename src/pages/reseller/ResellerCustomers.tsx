@@ -16,32 +16,23 @@ import {
 import { AddCustomerForm } from '@/components/customers/AddCustomerForm';
 import { Customer } from '@/contexts/AppContext';
 import { toast } from 'sonner';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
-import { HighLevelContactManager } from '@/components/highlevel/HighLevelContactManager';
+import { CrmContactManager } from '@/components/crm/CrmContactManager';
+import { supabase } from '@/integrations/supabase/client';
 
 export default function ResellerCustomers() {
   const { user } = useAuth();
-  const { customers, cancelCustomer, deactivateCustomer } = useApp();
+  const { customers, cancelCustomer, deactivateCustomer, refreshData } = useApp();
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
-  const [isHighLevelManagerOpen, setIsHighLevelManagerOpen] = useState(false);
+  const [isCrmManagerOpen, setIsCrmManagerOpen] = useState(false);
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
-  const [selectedCustomerForHL, setSelectedCustomerForHL] = useState<Customer | null>(null);
+  const [selectedCustomerForCrm, setSelectedCustomerForCrm] = useState<Customer | null>(null);
   
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
 
-  // Handle customer cancel - updated from handleDeleteCustomer
+  // Handle customer cancel
   const handleCancelCustomer = async (customerId: string) => {
     console.log(`🚫 ResellerCustomers: Cancel request for customer ID: ${customerId}`);
     
@@ -83,21 +74,58 @@ export default function ResellerCustomers() {
     setIsRenewCustomerOpen(true);
   };
 
-  // Handle HighLevel contact management
-  const handleManageHighLevelContact = (customer: Customer) => {
-    // Check if customer has highlevelContactId property, using type assertion with fallback
-    const customerWithHL = customer as Customer & { highlevelContactId?: string };
-    
-    if (!customerWithHL.highlevelContactId) {
-      toast.error('This customer does not have a HighLevel contact ID');
+  // Handle CRM contact management
+  const handleManageCrmContact = (customer: Customer) => {
+    // Check if customer has highlevelContactId property
+    if (!customer.highlevelContactId) {
+      toast.error('This customer does not have a CRM contact ID');
       return;
     }
     
-    setSelectedCustomerForHL(customer);
-    setIsHighLevelManagerOpen(true);
+    setSelectedCustomerForCrm(customer);
+    setIsCrmManagerOpen(true);
+  };
+
+  // Handle sync to CRM
+  const handleSyncToCrm = async (customer: Customer) => {
+    console.log('🔄 Syncing customer to CRM:', customer.name);
+    
+    try {
+      // Call the sync-customer-to-crm edge function
+      const { data, error } = await supabase.functions.invoke('sync-customer-to-crm', {
+        body: {
+          customerId: customer.id,
+          resellerId: user?.id
+        }
+      });
+
+      if (error) {
+        console.error('❌ Error syncing customer to CRM:', error);
+        toast.error('Failed to sync customer to CRM');
+        return;
+      }
+
+      if (!data.success) {
+        console.error('❌ CRM sync failed:', data.error);
+        toast.error(data.error || 'Failed to sync customer to CRM');
+        return;
+      }
+
+      if (data.skipped) {
+        toast.info('Customer is already synced to CRM');
+      } else {
+        toast.success('Customer successfully synced to CRM');
+        // Refresh data to show updated customer with CRM contact ID
+        await refreshData();
+      }
+      
+    } catch (error) {
+      console.error('💥 Unexpected error during CRM sync:', error);
+      toast.error('An error occurred while syncing to CRM');
+    }
   };
   
-  // Get customer counts by status - updated to handle cancelled status
+  // Get customer counts by status
   const activeCount = resellerCustomers.filter(c => c.status === 'active' && !c.isDeactivated).length;
   const expiringSoonCount = resellerCustomers.filter(c => c.status === 'expiring_soon' && !c.isDeactivated).length;
   const expiredCount = resellerCustomers.filter(c => c.status === 'expired' && !c.isDeactivated).length;
@@ -132,7 +160,7 @@ export default function ResellerCustomers() {
         </Button>
       </div>
       
-      {/* Stats Cards - updated to include cancelled count */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <DashboardCard title="Active Connections">
           <div className="p-4">
@@ -177,10 +205,11 @@ export default function ResellerCustomers() {
         <CustomerTable 
           customers={resellerCustomers}
           onAddClick={() => setIsAddCustomerOpen(true)}
-          onCancel={handleCancelCustomer} // Changed from onDelete to onCancel
+          onCancel={handleCancelCustomer}
           onRenew={handleRenewCustomer}
           onDeactivate={handleDeactivateCustomer}
-          onManageHighLevel={handleManageHighLevelContact} // Updated prop name
+          onManageCrm={handleManageCrmContact}
+          onSyncToCrm={handleSyncToCrm}
         />
       </DashboardCard>
       
@@ -218,24 +247,24 @@ export default function ResellerCustomers() {
         </Dialog>
       )}
 
-      {/* HighLevel Contact Manager Dialog */}
-      {selectedCustomerForHL && (
-        <Dialog open={isHighLevelManagerOpen} onOpenChange={setIsHighLevelManagerOpen}>
+      {/* CRM Contact Manager Dialog */}
+      {selectedCustomerForCrm && (
+        <Dialog open={isCrmManagerOpen} onOpenChange={setIsCrmManagerOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Manage HighLevel Contact</DialogTitle>
+              <DialogTitle>Manage CRM Contact</DialogTitle>
               <DialogDescription>
-                Update custom fields, add notes, and manage tags for {selectedCustomerForHL.name} in HighLevel
+                Update custom fields, add notes, and manage tags for {selectedCustomerForCrm.name} in your CRM system
               </DialogDescription>
             </DialogHeader>
-            <HighLevelContactManager
-              contactId={(selectedCustomerForHL as any).highlevelContactId || ''}
+            <CrmContactManager
+              contactId={selectedCustomerForCrm.highlevelContactId || ''}
               resellerId={user?.id || ''}
-              customerName={selectedCustomerForHL.name}
+              customerName={selectedCustomerForCrm.name}
               onUpdate={() => {
-                setIsHighLevelManagerOpen(false);
-                setSelectedCustomerForHL(null);
-                toast.success('HighLevel contact updated successfully!');
+                setIsCrmManagerOpen(false);
+                setSelectedCustomerForCrm(null);
+                toast.success('CRM contact updated successfully!');
               }}
             />
           </DialogContent>

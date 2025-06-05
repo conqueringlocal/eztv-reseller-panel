@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/table';
 import { Customer } from '@/contexts/AppContext';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import { Users, Edit, Trash2, Clock, ShieldOff, Repeat, Settings } from 'lucide-react';
+import { Users, Edit, Trash2, Clock, ShieldOff, Repeat, Settings, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
@@ -34,15 +34,17 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface CustomerTableProps {
   customers: Customer[];
   onAddClick?: () => void;
   onEdit?: (customer: Customer) => void;
-  onCancel?: (customerId: string) => void; // Changed from onDelete to onCancel
+  onCancel?: (customerId: string) => void;
   onRenew?: (customer: Customer) => void;
   onDeactivate?: (customerId: string) => void;
-  onManageHighLevel?: (customer: Customer) => void; // Added this prop
+  onManageCrm?: (customer: Customer) => void;
+  onSyncToCrm?: (customer: Customer) => void;
 }
 
 type FilterStatus = 'all' | 'active' | 'expiring_soon' | 'expired';
@@ -51,19 +53,21 @@ export function CustomerTable({
   customers, 
   onAddClick, 
   onEdit,
-  onCancel, // Changed from onDelete to onCancel
+  onCancel,
   onRenew,
   onDeactivate,
-  onManageHighLevel // Added this prop
+  onManageCrm,
+  onSyncToCrm
 }: CustomerTableProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false); // Changed from isDeleteDialogOpen
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
   const [isDeactivateDialogOpen, setIsDeactivateDialogOpen] = useState(false);
-  const [customerToCancel, setCustomerToCancel] = useState<string | null>(null); // Changed from customerToDelete
+  const [customerToCancel, setCustomerToCancel] = useState<string | null>(null);
   const [customerToDeactivate, setCustomerToDeactivate] = useState<string | null>(null);
+  const [syncingCustomers, setSyncingCustomers] = useState<Set<string>>(new Set());
   
   // Filter customers based on search and status
   const filteredCustomers = customers.filter(
@@ -107,7 +111,7 @@ export function CustomerTable({
     }
   };
 
-  // Get status badge for customer - updated to handle cancelled status
+  // Get status badge for customer
   const getStatusBadge = (customer: Customer) => {
     if (customer.isDeactivated) {
       return (
@@ -153,19 +157,36 @@ export function CustomerTable({
     }
   };
 
+  // Handle sync to CRM
+  const handleSyncToCrm = async (customer: Customer) => {
+    if (!onSyncToCrm) return;
+    
+    setSyncingCustomers(prev => new Set([...prev, customer.id]));
+    
+    try {
+      await onSyncToCrm(customer);
+    } finally {
+      setSyncingCustomers(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(customer.id);
+        return newSet;
+      });
+    }
+  };
+
   // Handle edit button click
   const handleEditClick = (customer: Customer) => {
     setSelectedCustomer(customer);
     setIsEditDialogOpen(true);
   };
 
-  // Handle cancel button click - updated from handleDeleteClick
+  // Handle cancel button click
   const handleCancelClick = (customerId: string) => {
     setCustomerToCancel(customerId);
     setIsCancelDialogOpen(true);
   };
 
-  // Handle customer cancel - updated from handleDeleteCustomer
+  // Handle customer cancel
   const handleCancelCustomer = async (customerId: string) => {
     console.log(`🚫 CustomerTable: Initiating cancel for customer ID: ${customerId}`);
     
@@ -173,7 +194,6 @@ export function CustomerTable({
       if (onCancel) {
         await onCancel(customerId);
         console.log(`✅ CustomerTable: Customer ${customerId} cancelled successfully`);
-        // Don't show toast here as AppContext already shows it
       }
     } catch (error) {
       console.error('💥 CustomerTable: Error during customer cancellation:', error);
@@ -181,7 +201,7 @@ export function CustomerTable({
     }
   };
 
-  // Handle confirm cancel - updated from handleConfirmDelete
+  // Handle confirm cancel
   const handleConfirmCancel = () => {
     if (customerToCancel) {
       console.log(`🔄 CustomerTable: Confirming cancellation of customer: ${customerToCancel}`);
@@ -215,10 +235,10 @@ export function CustomerTable({
     }
   };
 
-  // Handle HighLevel contact management
-  const handleManageHighLevelClick = (customer: Customer) => {
-    if (onManageHighLevel) {
-      onManageHighLevel(customer);
+  // Handle CRM contact management
+  const handleManageCrmClick = (customer: Customer) => {
+    if (onManageCrm) {
+      onManageCrm(customer);
     }
   };
 
@@ -362,16 +382,34 @@ export function CustomerTable({
                           </Button>
                         )}
                         
-                        {/* HighLevel management button */}
-                        {onManageHighLevel && customer.highlevelContactId && (
+                        {/* Sync to CRM button - show for all customers that don't have a CRM contact ID */}
+                        {onSyncToCrm && !customer.highlevelContactId && (
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100 hover:text-purple-800"
+                            onClick={() => handleSyncToCrm(customer)}
+                            disabled={syncingCustomers.has(customer.id)}
+                          >
+                            {syncingCustomers.has(customer.id) ? (
+                              <RefreshCw size={12} className="mr-1 animate-spin" />
+                            ) : (
+                              <RefreshCw size={12} className="mr-1" />
+                            )}
+                            Sync to CRM
+                          </Button>
+                        )}
+                        
+                        {/* CRM management button - show for customers with CRM contact ID */}
+                        {onManageCrm && customer.highlevelContactId && (
                           <Button 
                             variant="outline"
                             size="sm"
                             className="h-8 px-2 text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800"
-                            onClick={() => handleManageHighLevelClick(customer)}
+                            onClick={() => handleManageCrmClick(customer)}
                           >
                             <Settings size={12} className="mr-1" />
-                            HighLevel
+                            Manage CRM
                           </Button>
                         )}
                         
@@ -430,7 +468,7 @@ export function CustomerTable({
         </Dialog>
       )}
 
-      {/* Cancel Confirmation Dialog - updated from Delete Confirmation Dialog */}
+      {/* Cancel Confirmation Dialog */}
       <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
