@@ -77,20 +77,20 @@ serve(async (req) => {
       });
     }
 
-    // Get reseller's CRM credentials
-    console.log('🔍 Fetching reseller CRM credentials...');
+    // Get reseller's location ID from HighLevel settings
+    console.log('🔍 Fetching reseller HighLevel settings...');
     const { data: crmSettings, error: crmError } = await supabase
       .from('reseller_highlevel_settings')
-      .select('api_key, location_id, is_active')
+      .select('location_id, is_active')
       .eq('reseller_id', resellerId)
       .eq('is_active', true)
       .single();
 
     if (crmError || !crmSettings) {
-      console.error('❌ No CRM settings found for reseller:', resellerId, crmError);
+      console.error('❌ No HighLevel settings found for reseller:', resellerId, crmError);
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'CRM credentials not configured for this reseller',
+        error: 'HighLevel integration not configured for this reseller',
         details: crmError?.message || 'No active HighLevel settings found'
       }), {
         status: 400,
@@ -98,11 +98,9 @@ serve(async (req) => {
       });
     }
 
-    console.log('🔐 CRM settings found:', { 
-      hasApiKey: !!crmSettings.api_key, 
+    console.log('🔐 HighLevel settings found:', { 
       hasLocationId: !!crmSettings.location_id,
-      apiKeyFormat: crmSettings.api_key?.startsWith('eyJ') ? 'JWT' : 'Bearer',
-      apiKeyLength: crmSettings.api_key?.length || 0
+      locationId: crmSettings.location_id
     });
 
     // Create contact in CRM using the create-highlevel-contact function
@@ -112,9 +110,7 @@ serve(async (req) => {
       body: {
         customerName: customer.name,
         customerEmail: customer.email,
-        resellerId: resellerId,
-        apiKey: crmSettings.api_key,
-        locationId: crmSettings.location_id
+        resellerId: resellerId
       }
     });
 
