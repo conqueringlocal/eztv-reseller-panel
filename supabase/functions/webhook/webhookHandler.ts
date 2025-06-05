@@ -106,6 +106,59 @@ async function getResellerHighLevelCredentials(resellerId: string): Promise<{
   }
 }
 
+// Update HighLevel contact with IPTV custom fields and tags
+async function updateHighLevelContact(
+  contactId: string,
+  customerData: any,
+  resellerId: string
+): Promise<void> {
+  try {
+    console.log('🔄 Updating HighLevel contact with IPTV data:', contactId);
+
+    // Prepare custom fields
+    const customFields = [
+      { key: 'iptv_username', value: customerData.username || '' },
+      { key: 'iptv_password', value: customerData.password || '' },
+      { key: 'iptv_plan_duration', value: customerData.planDuration?.toString() || '' },
+      { key: 'iptv_device_type', value: customerData.deviceType || '' },
+      { key: 'iptv_mac_address', value: customerData.macAddress || '' },
+      { key: 'iptv_expiration_date', value: customerData.expirationDate || '' },
+      { key: 'iptv_status', value: 'active' }
+    ];
+
+    // Prepare tags
+    const tags = ['IPTV Customer'];
+    if (customerData.planDuration) {
+      tags.push(`${customerData.planDuration} Month Plan`);
+    }
+    if (customerData.deviceType) {
+      tags.push(customerData.deviceType);
+    }
+    tags.push('Status: Active');
+
+    const { data, error } = await supabase.functions.invoke('update-highlevel-contact', {
+      body: {
+        contactId,
+        resellerId,
+        customFields,
+        tagsToAdd: tags,
+        notes: [{
+          body: `IPTV account created successfully. Username: ${customerData.username}, Password: ${customerData.password}. Plan duration: ${customerData.planDuration} months.`,
+          type: 'general'
+        }]
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to update HighLevel contact:', error || data);
+    } else {
+      console.log('✅ HighLevel contact updated with IPTV data successfully');
+    }
+  } catch (error) {
+    console.error('💥 Error updating HighLevel contact:', error);
+  }
+}
+
 // Send credentials via HighLevel (if contact ID is provided and credentials are available)
 async function sendHighLevelCredentials(
   contactId: string,
@@ -392,9 +445,21 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.error("⚠️ Failed to log transaction:", logError);
     }
 
-    // Send credentials via HighLevel if contact ID is provided
+    // Update HighLevel contact with IPTV data and send credentials if contact ID is provided
     if (contactId) {
-      console.log('🎯 HighLevel contact ID provided, attempting to send credentials via HighLevel');
+      console.log('🎯 HighLevel contact ID provided, updating contact and sending credentials');
+      
+      // Update contact with custom fields and tags
+      await updateHighLevelContact(contactId, {
+        username: finalUsername,
+        password: finalPassword,
+        planDuration,
+        deviceType,
+        macAddress,
+        expirationDate
+      }, resellerId);
+      
+      // Send credentials
       await sendHighLevelCredentials(
         contactId,
         customerName,

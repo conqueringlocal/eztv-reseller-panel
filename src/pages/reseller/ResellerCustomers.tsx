@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -26,13 +27,16 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
+import { HighLevelContactManager } from '@/components/highlevel/HighLevelContactManager';
 
 export default function ResellerCustomers() {
   const { user } = useAuth();
   const { customers, cancelCustomer, deactivateCustomer } = useApp();
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
+  const [isHighLevelManagerOpen, setIsHighLevelManagerOpen] = useState(false);
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
+  const [selectedCustomerForHL, setSelectedCustomerForHL] = useState<Customer | null>(null);
   
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
@@ -77,6 +81,12 @@ export default function ResellerCustomers() {
   const handleRenewCustomer = (customer: Customer) => {
     setCustomerToRenew(customer);
     setIsRenewCustomerOpen(true);
+  };
+
+  // Handle HighLevel contact management
+  const handleManageHighLevelContact = (customer: Customer) => {
+    setSelectedCustomerForHL(customer);
+    setIsHighLevelManagerOpen(true);
   };
   
   // Get customer counts by status - updated to handle cancelled status
@@ -162,6 +172,7 @@ export default function ResellerCustomers() {
           onCancel={handleCancelCustomer} // Changed from onDelete to onCancel
           onRenew={handleRenewCustomer}
           onDeactivate={handleDeactivateCustomer}
+          onManageHighLevel={handleManageHighLevelContact} // New prop for HighLevel management
         />
       </DashboardCard>
       
@@ -194,6 +205,30 @@ export default function ResellerCustomers() {
                 setIsRenewCustomerOpen(false);
                 setCustomerToRenew(null);
               }} 
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* HighLevel Contact Manager Dialog */}
+      {selectedCustomerForHL && (
+        <Dialog open={isHighLevelManagerOpen} onOpenChange={setIsHighLevelManagerOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Manage HighLevel Contact</DialogTitle>
+              <DialogDescription>
+                Update custom fields, add notes, and manage tags for {selectedCustomerForHL.name} in HighLevel
+              </DialogDescription>
+            </DialogHeader>
+            <HighLevelContactManager
+              contactId={selectedCustomerForHL.highLevelContactId || ''}
+              resellerId={user?.id || ''}
+              customerName={selectedCustomerForHL.name}
+              onUpdate={() => {
+                setIsHighLevelManagerOpen(false);
+                setSelectedCustomerForHL(null);
+                toast.success('HighLevel contact updated successfully!');
+              }}
             />
           </DialogContent>
         </Dialog>
