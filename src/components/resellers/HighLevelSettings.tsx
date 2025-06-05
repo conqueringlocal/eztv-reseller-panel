@@ -21,7 +21,6 @@ import {
 } from '@/components/ui/form';
 
 const highLevelSettingsSchema = z.object({
-  apiKey: z.string().min(1, 'HighLevel Agency API key is required'),
   locationId: z.string().min(1, 'HighLevel Location ID is required'),
 });
 
@@ -37,14 +36,34 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
   const [hasSettings, setHasSettings] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<{ valid: boolean; error?: string } | null>(null);
+  const [hasGlobalApiKey, setHasGlobalApiKey] = useState(false);
 
   const form = useForm<HighLevelSettingsFormData>({
     resolver: zodResolver(highLevelSettingsSchema),
     defaultValues: {
-      apiKey: '',
       locationId: '',
     },
   });
+
+  // Check if global API key is configured
+  useEffect(() => {
+    const checkGlobalApiKey = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('system_settings')
+          .select('value')
+          .eq('id', 'highlevel_agency_api_key')
+          .single();
+
+        setHasGlobalApiKey(!error && !!data?.value);
+      } catch (error) {
+        console.error('Error checking global API key:', error);
+        setHasGlobalApiKey(false);
+      }
+    };
+
+    checkGlobalApiKey();
+  }, []);
 
   // Load existing settings
   useEffect(() => {
@@ -52,13 +71,12 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
       try {
         const { data, error } = await supabase
           .from('reseller_highlevel_settings')
-          .select('api_key, location_id, is_active')
+          .select('location_id, is_active')
           .eq('reseller_id', resellerId)
           .single();
 
         if (data && !error) {
           setHasSettings(true);
-          form.setValue('apiKey', data.api_key);
           form.setValue('locationId', data.location_id);
         }
       } catch (error) {
@@ -69,12 +87,16 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
     loadSettings();
   }, [resellerId, form]);
 
-  const validateApiKey = async () => {
-    const apiKey = form.getValues('apiKey');
+  const validateLocationId = async () => {
     const locationId = form.getValues('locationId');
 
-    if (!apiKey || !locationId) {
-      toast.error('Please enter both API Key and Location ID before validating');
+    if (!locationId) {
+      toast.error('Please enter a Location ID before validating');
+      return;
+    }
+
+    if (!hasGlobalApiKey) {
+      toast.error('Global Agency API Key is not configured. Please contact your administrator.');
       return;
     }
 
@@ -82,11 +104,27 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
     setValidationResult(null);
 
     try {
-      // Test the API key using the HighLevel API service
+      // Get the global API key from system settings
+      const { data: systemSettings, error: systemError } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('id', 'highlevel_agency_api_key')
+        .single();
+
+      if (systemError || !systemSettings?.value) {
+        setValidationResult({
+          valid: false,
+          error: 'Global Agency API Key not found'
+        });
+        toast.error('Global Agency API Key not configured');
+        return;
+      }
+
+      // Test the location access with the API key
       const testResponse = await fetch('https://rest.gohighlevel.com/v1/locations/', {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${systemSettings.value}`,
           'Content-Type': 'application/json'
         }
       });
@@ -96,7 +134,7 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
           valid: false,
           error: 'Invalid Agency API Key - authentication failed'
         });
-        toast.error('API Key validation failed: Invalid credentials');
+        toast.error('Global Agency API Key validation failed');
         return;
       }
 
@@ -106,7 +144,7 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
           valid: false,
           error: `API validation failed: ${testResponse.status} - ${errorText}`
         });
-        toast.error('API Key validation failed');
+        toast.error('API validation failed');
         return;
       }
 
@@ -117,22 +155,22 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
       if (!locationExists) {
         setValidationResult({
           valid: false,
-          error: `Location ID ${locationId} not accessible with this Agency API Key`
+          error: `Location ID ${locationId} not accessible with the configured Agency API Key`
         });
         toast.error('Location ID not found or not accessible');
         return;
       }
 
       setValidationResult({ valid: true });
-      toast.success('API Key and Location ID validated successfully!');
+      toast.success('Location ID validated successfully!');
 
     } catch (error) {
-      console.error('Error validating API key:', error);
+      console.error('Error validating location ID:', error);
       setValidationResult({
         valid: false,
         error: error instanceof Error ? error.message : 'Unknown validation error'
       });
-      toast.error('API Key validation failed');
+      toast.error('Location ID validation failed');
     } finally {
       setIsValidating(false);
     }
@@ -146,7 +184,6 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
         const { error } = await supabase
           .from('reseller_highlevel_settings')
           .update({
-            api_key: data.apiKey,
             location_id: data.locationId,
             is_active: true,
           })
@@ -159,7 +196,6 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
           .from('reseller_highlevel_settings')
           .insert({
             reseller_id: resellerId,
-            api_key: data.apiKey,
             location_id: data.locationId,
             is_active: true,
           });
@@ -169,7 +205,7 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
       }
 
       toast.success('HighLevel settings saved successfully');
-      setValidationResult(null); // Reset validation after save
+      setValidationResult(null);
     } catch (error) {
       console.error('Error saving HighLevel settings:', error);
       toast.error('Failed to save HighLevel settings');
@@ -203,36 +239,14 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
   };
 
   const getCardTitle = () => {
-    return isAdminView ? 'SMS Integration Settings' : 'HighLevel Integration';
+    return isAdminView ? 'CRM Location Settings' : 'HighLevel Integration';
   };
 
   const getCardDescription = () => {
     if (isAdminView) {
-      return 'Configure SMS delivery credentials for this reseller. Customer credentials will be automatically sent via SMS when accounts are created.';
+      return 'Configure the HighLevel Location ID for this reseller. The global Agency API Key is managed at the system level.';
     }
-    return 'Configure your HighLevel Agency API credentials to automatically send customer credentials via SMS. This integration requires an Agency API Key from your HighLevel account.';
-  };
-
-  const getApiKeyLabel = () => {
-    return isAdminView ? 'SMS Service API Key' : 'HighLevel Agency API Key';
-  };
-
-  const getLocationIdLabel = () => {
-    return isAdminView ? 'SMS Service Location ID' : 'HighLevel Location ID';
-  };
-
-  const getApiKeyDescription = () => {
-    if (isAdminView) {
-      return 'Agency API key for the SMS service integration';
-    }
-    return 'Your HighLevel Agency API Key (not a Location API Key). This should be obtained from your HighLevel Agency settings.';
-  };
-
-  const getLocationIdDescription = () => {
-    if (isAdminView) {
-      return 'Location identifier for the SMS service';
-    }
-    return 'The Location ID from your HighLevel sub-account that will be used for customer messaging';
+    return 'Configure your HighLevel Location ID. Your admin has already configured the global Agency API Key.';
   };
 
   return (
@@ -244,50 +258,37 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {!isAdminView && (
-          <Alert className="mb-4">
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Important:</strong> You must use an <strong>Agency API Key</strong> (not a Location API Key). 
-              Agency API Keys can be found in your HighLevel Agency settings and provide access to multiple locations.
+        {!hasGlobalApiKey && (
+          <Alert className="mb-4 border-orange-200 bg-orange-50">
+            <AlertCircle className="h-4 w-4 text-orange-600" />
+            <AlertDescription className="text-orange-800">
+              <strong>Global Agency API Key Required:</strong> The system administrator needs to configure the global HighLevel Agency API Key before Location IDs can be validated.
+              {isAdminView && ' Please configure this in the Admin Settings.'}
             </AlertDescription>
           </Alert>
         )}
+
+        <Alert className="mb-4">
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            <strong>Note:</strong> Only the Location ID needs to be configured here. 
+            The Agency API Key is managed globally by your system administrator for security purposes.
+          </AlertDescription>
+        </Alert>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
-              name="apiKey"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{getApiKeyLabel()}</FormLabel>
-                  <FormControl>
-                    <Input 
-                      type="password" 
-                      placeholder={`Enter ${isAdminView ? 'SMS service' : 'HighLevel Agency'} API key`}
-                      {...field} 
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {getApiKeyDescription()}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="locationId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{getLocationIdLabel()}</FormLabel>
+                  <FormLabel>HighLevel Location ID</FormLabel>
                   <FormControl>
-                    <Input placeholder={`Enter ${isAdminView ? 'SMS service' : 'HighLevel'} Location ID`} {...field} />
+                    <Input placeholder="Enter HighLevel Location ID" {...field} />
                   </FormControl>
                   <FormDescription>
-                    {getLocationIdDescription()}
+                    The Location ID from your HighLevel sub-account that will be used for customer messaging
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -303,7 +304,7 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
                 )}
                 <AlertDescription className={validationResult.valid ? "text-green-800" : "text-red-800"}>
                   {validationResult.valid 
-                    ? "✅ API Key and Location ID validated successfully!"
+                    ? "✅ Location ID validated successfully!"
                     : `❌ Validation failed: ${validationResult.error}`
                   }
                 </AlertDescription>
@@ -314,8 +315,8 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
               <Button 
                 type="button"
                 variant="outline"
-                onClick={validateApiKey}
-                disabled={isValidating || isLoading}
+                onClick={validateLocationId}
+                disabled={isValidating || isLoading || !hasGlobalApiKey}
               >
                 {isValidating ? 'Validating...' : 'Test Connection'}
               </Button>

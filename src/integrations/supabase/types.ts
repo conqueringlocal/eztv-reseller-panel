@@ -139,8 +139,6 @@ export type Database = {
           created_at: string
           credits: number
           email: string
-          highlevel_api_key: string | null
-          highlevel_location_id: string | null
           id: string
           name: string
           role: Database["public"]["Enums"]["user_role"]
@@ -149,8 +147,6 @@ export type Database = {
           created_at?: string
           credits?: number
           email: string
-          highlevel_api_key?: string | null
-          highlevel_location_id?: string | null
           id: string
           name: string
           role?: Database["public"]["Enums"]["user_role"]
@@ -159,8 +155,6 @@ export type Database = {
           created_at?: string
           credits?: number
           email?: string
-          highlevel_api_key?: string | null
-          highlevel_location_id?: string | null
           id?: string
           name?: string
           role?: Database["public"]["Enums"]["user_role"]

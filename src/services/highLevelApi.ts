@@ -1,6 +1,5 @@
 
 interface HighLevelApiConfig {
-  apiKey: string;
   locationId: string;
 }
 
@@ -26,9 +25,37 @@ export class HighLevelApiService {
     this.config = config;
   }
 
-  private getHeaders() {
+  private async getGlobalApiKey(): Promise<string | null> {
+    try {
+      // Get the global Agency API Key from system settings via Supabase
+      const { supabase } = await import('@/integrations/supabase/client');
+      
+      const { data: systemSettings, error } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('id', 'highlevel_agency_api_key')
+        .single();
+
+      if (error || !systemSettings?.value) {
+        console.error('❌ No global HighLevel Agency API Key found:', error);
+        return null;
+      }
+
+      return systemSettings.value;
+    } catch (error) {
+      console.error('💥 Error fetching global API key:', error);
+      return null;
+    }
+  }
+
+  private async getHeaders() {
+    const apiKey = await this.getGlobalApiKey();
+    if (!apiKey) {
+      throw new Error('HighLevel Agency API Key not configured at system level');
+    }
+
     return {
-      'Authorization': `Bearer ${this.config.apiKey}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json'
     };
   }
@@ -37,9 +64,11 @@ export class HighLevelApiService {
     try {
       console.log('🚀 Sending message via HighLevel API:', payload);
 
+      const headers = await this.getHeaders();
+
       const response = await fetch(`${this.baseUrl}/conversations/messages`, {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers: headers,
         body: JSON.stringify({
           type: payload.type || 'SMS',
           contactId: payload.contactId,
@@ -51,20 +80,6 @@ export class HighLevelApiService {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ HighLevel API error:', response.status, errorText);
-        
-        // Log detailed error information
-        console.error('Request details:', {
-          url: `${this.baseUrl}/conversations/messages`,
-          method: 'POST',
-          headers: { ...this.getHeaders(), Authorization: `Bearer ${this.config.apiKey.slice(0, 10)}...` },
-          body: {
-            type: payload.type || 'SMS',
-            contactId: payload.contactId,
-            message: payload.message,
-            locationId: this.config.locationId
-          }
-        });
-        
         return false;
       }
 
@@ -81,22 +96,16 @@ export class HighLevelApiService {
     try {
       console.log('🔍 Fetching contact from HighLevel:', contactId);
 
+      const headers = await this.getHeaders();
+
       const response = await fetch(`${this.baseUrl}/contacts/${contactId}?locationId=${this.config.locationId}`, {
         method: 'GET',
-        headers: this.getHeaders()
+        headers: headers
       });
 
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Failed to fetch contact:', response.status, errorText);
-        
-        // Log detailed error information
-        console.error('Request details:', {
-          url: `${this.baseUrl}/contacts/${contactId}?locationId=${this.config.locationId}`,
-          method: 'GET',
-          headers: { ...this.getHeaders(), Authorization: `Bearer ${this.config.apiKey.slice(0, 10)}...` }
-        });
-        
         return null;
       }
 
@@ -117,6 +126,8 @@ export class HighLevelApiService {
     try {
       console.log('📞 Creating contact in HighLevel:', contactData);
 
+      const headers = await this.getHeaders();
+
       const payload = {
         firstName: contactData.firstName,
         lastName: contactData.lastName || '',
@@ -129,7 +140,7 @@ export class HighLevelApiService {
 
       const response = await fetch(`${this.baseUrl}/contacts/`, {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers: headers,
         body: JSON.stringify(payload)
       });
 
@@ -139,15 +150,6 @@ export class HighLevelApiService {
 
       if (!response.ok) {
         console.error('❌ HighLevel API error:', response.status, responseText);
-        
-        // Log detailed error information
-        console.error('Request details:', {
-          url: `${this.baseUrl}/contacts/`,
-          method: 'POST',
-          headers: { ...this.getHeaders(), Authorization: `Bearer ${this.config.apiKey.slice(0, 10)}...` },
-          body: payload
-        });
-
         return {
           success: false,
           error: `HighLevel API error: ${response.status} - ${responseText}`
@@ -184,10 +186,11 @@ export class HighLevelApiService {
     try {
       console.log('🔑 Validating HighLevel Agency API Key...');
 
-      // Test the API key by attempting to fetch locations
+      const headers = await this.getHeaders();
+
       const response = await fetch(`${this.baseUrl}/locations/`, {
         method: 'GET',
-        headers: this.getHeaders()
+        headers: headers
       });
 
       if (response.status === 401) {
@@ -208,7 +211,6 @@ export class HighLevelApiService {
       const result = await response.json();
       console.log('✅ Agency API Key validation successful');
       
-      // Check if the specified location exists in the accessible locations
       const locations = result.locations || [];
       const locationExists = locations.some((loc: any) => loc.id === this.config.locationId);
       

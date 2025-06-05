@@ -10,8 +10,6 @@ interface CreateContactRequest {
   customerName: string;
   customerEmail: string;
   resellerId: string;
-  apiKey?: string;
-  locationId?: string;
 }
 
 serve(async (req) => {
@@ -25,66 +23,67 @@ serve(async (req) => {
     const { 
       customerName, 
       customerEmail, 
-      resellerId,
-      apiKey: providedApiKey,
-      locationId: providedLocationId
+      resellerId
     }: CreateContactRequest = await req.json();
 
     console.log('📋 Request data:', { customerName, customerEmail, resellerId });
 
-    // Get reseller's HighLevel credentials from database
+    // Get Supabase client
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    let apiKey = providedApiKey;
-    let locationId = providedLocationId;
+    // Get reseller's location ID from settings
+    console.log('🔍 Fetching reseller HighLevel settings...');
+    
+    const { data: hlSettings, error: hlError } = await supabase
+      .from('reseller_highlevel_settings')
+      .select('location_id')
+      .eq('reseller_id', resellerId)
+      .eq('is_active', true)
+      .single();
 
-    // If credentials not provided in request, fetch from database
-    if (!apiKey || !locationId) {
-      console.log('🔍 Fetching HighLevel credentials from database...');
-      
-      const { data: hlSettings, error: hlError } = await supabase
-        .from('reseller_highlevel_settings')
-        .select('api_key, location_id')
-        .eq('reseller_id', resellerId)
-        .eq('is_active', true)
-        .single();
-
-      if (hlError || !hlSettings) {
-        console.error('❌ No HighLevel settings found for reseller:', resellerId, hlError);
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'HighLevel credentials not configured for this reseller' 
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      apiKey = hlSettings.api_key;
-      locationId = hlSettings.location_id;
-    }
-
-    if (!apiKey || !locationId) {
-      console.error('❌ Missing HighLevel API credentials');
+    if (hlError || !hlSettings) {
+      console.error('❌ No HighLevel settings found for reseller:', resellerId, hlError);
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'HighLevel API credentials not provided' 
+        error: 'HighLevel integration not configured for this reseller' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Log API key format for debugging
-    console.log('🔑 Agency API key check:');
-    console.log('- API key length:', apiKey.length);
-    console.log('- API key ending:', apiKey.slice(-8));
-    console.log('- Using Bearer authentication with Agency API Key');
-    console.log('📍 Location ID:', locationId);
+    // Get the global Agency API Key from system settings
+    console.log('🔑 Fetching global Agency API Key...');
+    
+    const { data: systemSettings, error: systemError } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('id', 'highlevel_agency_api_key')
+      .single();
+
+    if (systemError || !systemSettings?.value) {
+      console.error('❌ No global HighLevel Agency API Key found:', systemError);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'HighLevel Agency API Key not configured at system level' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const agencyApiKey = systemSettings.value;
+    const locationId = hlSettings.location_id;
+
+    console.log('🔐 Using global Agency API credentials:', {
+      hasApiKey: !!agencyApiKey,
+      apiKeyLength: agencyApiKey?.length || 0,
+      locationId: locationId
+    });
 
     // Create contact in HighLevel using the v1 API endpoint
     console.log('🔄 Creating contact in HighLevel...');
@@ -99,19 +98,17 @@ serve(async (req) => {
 
     console.log('📤 Contact payload:', contactPayload);
 
-    // Use the correct HighLevel API v1 endpoint with Agency API Key
     const apiUrl = `https://rest.gohighlevel.com/v1/contacts/`;
     console.log('🌐 API URL:', apiUrl);
 
-    // Prepare headers with Bearer authentication for Agency API Key
     const headers = {
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': `Bearer ${agencyApiKey}`,
       'Content-Type': 'application/json'
     };
 
-    console.log('📡 Request headers (without auth token):', {
+    console.log('📡 Request headers (redacted):', {
       'Content-Type': headers['Content-Type'],
-      'Authorization': `Bearer ${apiKey.slice(0, 10)}...${apiKey.slice(-10)}`
+      'Authorization': `Bearer ${agencyApiKey.slice(0, 10)}...`
     });
 
     const response = await fetch(apiUrl, {
@@ -122,37 +119,26 @@ serve(async (req) => {
 
     const responseText = await response.text();
     console.log('📡 HighLevel API response status:', response.status);
-    console.log('📡 HighLevel API response headers:', Object.fromEntries(response.headers.entries()));
     console.log('📡 HighLevel API response body:', responseText);
 
     if (!response.ok) {
       console.error('❌ HighLevel API error details:');
       console.error('- Status:', response.status);
-      console.error('- Status Text:', response.statusText);
       console.error('- Response:', responseText);
       
-      // Parse error response if possible
       let errorDetails = responseText;
       try {
         const errorJson = JSON.parse(responseText);
         errorDetails = errorJson.message || errorJson.error || responseText;
-        console.error('- Parsed error:', errorDetails);
       } catch (e) {
         console.error('- Could not parse error response as JSON');
       }
 
-      // Handle specific error cases with detailed messages
       if (response.status === 401) {
         return new Response(JSON.stringify({ 
           success: false, 
           error: 'HighLevel API authentication failed. The Agency API Key may be invalid or expired.',
-          details: `Authentication error: ${errorDetails}`,
-          troubleshooting: {
-            apiKeyType: 'Agency API Key (Bearer token)',
-            apiKeyLength: apiKey.length,
-            endpoint: apiUrl,
-            suggestion: 'Please verify your HighLevel Agency API Key is valid and has the correct permissions for creating contacts.'
-          }
+          details: `Authentication error: ${errorDetails}`
         }), {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -162,28 +148,10 @@ serve(async (req) => {
       if (response.status === 403) {
         return new Response(JSON.stringify({ 
           success: false, 
-          error: 'HighLevel API access forbidden. The Agency API Key may not have permission to access this location or create contacts.',
-          details: errorDetails,
-          troubleshooting: {
-            suggestion: 'Check that your HighLevel Agency API Key has the necessary permissions and access to the specified location.'
-          }
+          error: 'HighLevel API access forbidden. The Agency API Key may not have permission to access this location.',
+          details: errorDetails
         }), {
           status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (response.status === 422) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'HighLevel API validation error. The contact data may be invalid.',
-          details: errorDetails,
-          troubleshooting: {
-            payload: contactPayload,
-            suggestion: 'Check that the contact data meets HighLevel\'s validation requirements.'
-          }
-        }), {
-          status: 422,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
@@ -191,12 +159,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: false, 
         error: `HighLevel API error: ${response.status} ${response.statusText}`,
-        details: errorDetails,
-        troubleshooting: {
-          httpStatus: response.status,
-          endpoint: apiUrl,
-          suggestion: 'Check HighLevel API documentation for this error code.'
-        }
+        details: errorDetails
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -219,12 +182,10 @@ serve(async (req) => {
       });
     }
 
-    // Extract contact ID from response
     const contactId = result.contact?.id || result.id;
     
     if (!contactId) {
       console.error('❌ No contact ID returned from HighLevel');
-      console.error('Full response:', result);
       return new Response(JSON.stringify({ 
         success: false, 
         error: 'Contact creation succeeded but no contact ID was returned',
@@ -240,19 +201,13 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       contactId: contactId,
-      message: 'Contact created successfully in HighLevel',
-      debugInfo: {
-        apiEndpoint: apiUrl,
-        responseStatus: response.status,
-        contactData: result.contact || result
-      }
+      message: 'Contact created successfully in HighLevel'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('💥 Error in HighLevel contact creation function:', error);
-    console.error('Error stack:', error.stack);
     return new Response(JSON.stringify({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error',

@@ -44,16 +44,17 @@ serve(async (req) => {
       });
     }
 
-    // Get reseller's HighLevel credentials
+    // Get Supabase client
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    // Get reseller's location ID from settings
     const { data: hlSettings, error: hlError } = await supabase
       .from('reseller_highlevel_settings')
-      .select('api_key, location_id')
+      .select('location_id')
       .eq('reseller_id', resellerId)
       .eq('is_active', true)
       .single();
@@ -62,25 +63,43 @@ serve(async (req) => {
       console.error('❌ No HighLevel settings found for reseller:', resellerId);
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'HighLevel credentials not configured for this reseller' 
+        error: 'HighLevel integration not configured for this reseller' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { api_key: apiKey, location_id: locationId } = hlSettings;
+    // Get the global Agency API Key from system settings
+    const { data: systemSettings, error: systemError } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('id', 'highlevel_agency_api_key')
+      .single();
+
+    if (systemError || !systemSettings?.value) {
+      console.error('❌ No global HighLevel Agency API Key found:', systemError);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'HighLevel Agency API Key not configured at system level' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const agencyApiKey = systemSettings.value;
+    const locationId = hlSettings.location_id;
     const baseUrl = 'https://rest.gohighlevel.com/v1';
     
     const headers = {
-      'Authorization': `Bearer ${apiKey}`,
+      'Authorization': `Bearer ${agencyApiKey}`,
       'Content-Type': 'application/json'
     };
 
-    console.log('🔐 Using Agency API credentials:', {
-      hasApiKey: !!apiKey,
-      apiKeyType: 'Agency API Key (Bearer)',
-      apiKeyLength: apiKey?.length || 0,
+    console.log('🔐 Using global Agency API credentials:', {
+      hasApiKey: !!agencyApiKey,
+      apiKeyLength: agencyApiKey?.length || 0,
       locationId: locationId
     });
 
@@ -170,7 +189,6 @@ serve(async (req) => {
     if (tagsToRemove.length > 0) {
       console.log('🗑️ Removing tags...');
       
-      // First get current contact to see existing tags
       const getResponse = await fetch(`${baseUrl}/contacts/${contactId}?locationId=${locationId}`, {
         method: 'GET',
         headers: headers
@@ -215,7 +233,6 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('💥 Error in HighLevel contact update function:', error);
-    console.error('Error stack:', error.stack);
     return new Response(JSON.stringify({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error',
