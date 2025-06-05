@@ -246,6 +246,108 @@ export type Database = {
           },
         ]
       }
+      sso_audit_logs: {
+        Row: {
+          action: string
+          additional_data: Json | null
+          created_at: string
+          id: string
+          ip_address: unknown | null
+          reseller_id: string
+          token_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          additional_data?: Json | null
+          created_at?: string
+          id?: string
+          ip_address?: unknown | null
+          reseller_id: string
+          token_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          additional_data?: Json | null
+          created_at?: string
+          id?: string
+          ip_address?: unknown | null
+          reseller_id?: string
+          token_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sso_audit_logs_reseller_id_fkey"
+            columns: ["reseller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sso_audit_logs_token_id_fkey"
+            columns: ["token_id"]
+            isOneToOne: false
+            referencedRelation: "sso_tokens"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sso_tokens: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          last_used_at: string | null
+          name: string
+          reseller_id: string
+          revoked_at: string | null
+          token_hash: string
+          usage_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name?: string
+          reseller_id: string
+          revoked_at?: string | null
+          token_hash: string
+          usage_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          last_used_at?: string | null
+          name?: string
+          reseller_id?: string
+          revoked_at?: string | null
+          token_hash?: string
+          usage_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sso_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sso_tokens_reseller_id_fkey"
+            columns: ["reseller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       system_settings: {
         Row: {
           description: string | null
@@ -273,6 +375,10 @@ export type Database = {
     }
     Functions: {
       generate_api_key: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_sso_token: {
         Args: Record<PropertyKey, never>
         Returns: string
       }

@@ -10,6 +10,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 
 // Pages
 import Login from "./pages/Login";
+import TokenAuth from "./pages/TokenAuth";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -41,6 +42,7 @@ const App = () => (
               
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
+              <Route path="/auth/token" element={<TokenAuth />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/api/webhook" element={<Webhook />} />
               

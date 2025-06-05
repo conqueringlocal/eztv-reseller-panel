@@ -10,6 +10,7 @@ import { CustomerTable } from '@/components/customers/CustomerTable';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
+import { SsoTokenManager } from '@/components/sso/SsoTokenManager';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Dialog,
@@ -90,6 +91,7 @@ export default function AdminResellerDetail() {
           <TabsTrigger value="customers">Customers</TabsTrigger>
           <TabsTrigger value="credits">Credit History</TabsTrigger>
           <TabsTrigger value="highlevel">HighLevel Integration</TabsTrigger>
+          <TabsTrigger value="sso">SSO Tokens</TabsTrigger>
         </TabsList>
         <TabsContent value="customers">
           <DashboardCard
@@ -109,6 +111,9 @@ export default function AdminResellerDetail() {
         </TabsContent>
         <TabsContent value="highlevel">
           <HighLevelSettings resellerId={reseller.id} isAdminView={true} />
+        </TabsContent>
+        <TabsContent value="sso">
+          <SsoTokenManager />
         </TabsContent>
       </Tabs>
       
