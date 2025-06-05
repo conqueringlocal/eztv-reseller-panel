@@ -154,7 +154,11 @@ export default function AdminResellerDetail() {
             description="All customers created by this reseller"
           >
             <CustomerTable 
-              customers={resellerCustomers} 
+              customers={resellerCustomers}
+              onAddClick={() => {}} // Admin view doesn't need add functionality
+              onCancel={() => {}} // Admin view doesn't need cancel functionality  
+              onRenew={() => {}} // Admin view doesn't need renew functionality
+              onDeactivate={() => {}} // Admin view doesn't need deactivate functionality
               onManageCrm={handleManageCrmContact}
               onSyncToCrm={handleSyncToCrm}
             />

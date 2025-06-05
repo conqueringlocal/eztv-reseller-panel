@@ -21,15 +21,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
-import { MoreVertical, Eye, RotateCcw, UserX, Settings, Sync, Crown } from 'lucide-react';
+import { MoreVertical, Eye, RotateCcw, UserX, Settings, RefreshCw, Crown } from 'lucide-react';
 import { formatDate, isExpiringSoon } from '@/lib/utils';
 
 interface CustomerTableProps {
   customers: Customer[];
-  onAddClick: () => void;
-  onCancel: (customerId: string) => void;
-  onRenew: (customer: Customer) => void;
-  onDeactivate: (customerId: string) => void;
+  onAddClick?: () => void;
+  onCancel?: (customerId: string) => void;
+  onRenew?: (customer: Customer) => void;
+  onDeactivate?: (customerId: string) => void;
   onManageCrm?: (customer: Customer) => void;
   onSyncToCrm?: (customer: Customer) => void;
 }
@@ -81,22 +81,22 @@ export function CustomerTable({
   };
 
   const handleRenew = (customer: Customer) => {
-    onRenew(customer);
+    onRenew?.(customer);
   };
 
   const handleDeactivate = (customerId: string) => {
-    onDeactivate(customerId);
+    onDeactivate?.(customerId);
   };
 
   const handleCancel = (customerId: string) => {
-    onCancel(customerId);
+    onCancel?.(customerId);
   };
 
   if (customers.length === 0) {
     return (
       <div className="text-center py-8">
         <p className="text-gray-500 mb-4">No customers found. Start by adding your first customer.</p>
-        <Button onClick={onAddClick}>Add Customer</Button>
+        {onAddClick && <Button onClick={onAddClick}>Add Customer</Button>}
       </div>
     );
   }
@@ -187,13 +187,15 @@ export function CustomerTable({
                         
                         {!customer.isDeactivated && customer.status !== 'cancelled' && (
                           <>
-                            <DropdownMenuItem 
-                              onClick={() => handleRenew(customer)}
-                              className="cursor-pointer"
-                            >
-                              <RotateCcw className="mr-2 h-4 w-4" />
-                              Renew
-                            </DropdownMenuItem>
+                            {onRenew && (
+                              <DropdownMenuItem 
+                                onClick={() => handleRenew(customer)}
+                                className="cursor-pointer"
+                              >
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                Renew
+                              </DropdownMenuItem>
+                            )}
                             
                             {customer.highlevelContactId && onManageCrm && (
                               <DropdownMenuItem 
@@ -210,28 +212,32 @@ export function CustomerTable({
                                 onClick={() => onSyncToCrm(customer)}
                                 className="cursor-pointer"
                               >
-                                <Sync className="mr-2 h-4 w-4" />
+                                <RefreshCw className="mr-2 h-4 w-4" />
                                 Sync to CRM
                               </DropdownMenuItem>
                             )}
                             
-                            <DropdownMenuSeparator />
+                            {(onDeactivate || onCancel) && <DropdownMenuSeparator />}
                             
-                            <DropdownMenuItem 
-                              onClick={() => handleDeactivate(customer.id)}
-                              className="cursor-pointer text-orange-600"
-                            >
-                              <UserX className="mr-2 h-4 w-4" />
-                              Deactivate
-                            </DropdownMenuItem>
+                            {onDeactivate && (
+                              <DropdownMenuItem 
+                                onClick={() => handleDeactivate(customer.id)}
+                                className="cursor-pointer text-orange-600"
+                              >
+                                <UserX className="mr-2 h-4 w-4" />
+                                Deactivate
+                              </DropdownMenuItem>
+                            )}
                             
-                            <DropdownMenuItem 
-                              onClick={() => handleCancel(customer.id)}
-                              className="cursor-pointer text-red-600"
-                            >
-                              <UserX className="mr-2 h-4 w-4" />
-                              Cancel
-                            </DropdownMenuItem>
+                            {onCancel && (
+                              <DropdownMenuItem 
+                                onClick={() => handleCancel(customer.id)}
+                                className="cursor-pointer text-red-600"
+                              >
+                                <UserX className="mr-2 h-4 w-4" />
+                                Cancel
+                              </DropdownMenuItem>
+                            )}
                           </>
                         )}
                       </DropdownMenuContent>
@@ -247,10 +253,12 @@ export function CustomerTable({
       {selectedCustomer && (
         <CustomerCredentialsDialog
           customer={selectedCustomer}
-          isOpen={isCredentialsOpen}
-          onClose={() => {
-            setIsCredentialsOpen(false);
-            setSelectedCustomer(null);
+          open={isCredentialsOpen}
+          onOpenChange={(open) => {
+            setIsCredentialsOpen(open);
+            if (!open) {
+              setSelectedCustomer(null);
+            }
           }}
         />
       )}

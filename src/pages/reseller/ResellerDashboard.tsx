@@ -102,7 +102,10 @@ export default function ResellerDashboard() {
       >
         <CustomerTable 
           customers={resellerCustomers.slice(0, 5)}
-          onAddClick={() => setIsAddCustomerOpen(true)} 
+          onAddClick={() => setIsAddCustomerOpen(true)}
+          onCancel={() => {}} // Dashboard view doesn't need cancel functionality
+          onRenew={() => {}} // Dashboard view doesn't need renew functionality  
+          onDeactivate={() => {}} // Dashboard view doesn't need deactivate functionality
         />
       </DashboardCard>
       
