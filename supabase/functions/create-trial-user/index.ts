@@ -39,6 +39,13 @@ serve(async (req) => {
       )
     }
 
+    // Generate MAC address from customer name (remove spaces/special chars, lowercase)
+    const generatedMacAddress = customerData.name
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toLowerCase()
+
+    console.log(`🔧 Generated MAC address from name "${customerData.name}": ${generatedMacAddress}`)
+
     // Generate IPTV credentials
     const username = customerData.name
       .replace(/[^a-zA-Z0-9]/g, "")
@@ -179,7 +186,7 @@ serve(async (req) => {
         reseller_id: resellerId,
         name: customerData.name,
         email: customerData.email,
-        mac_address: customerData.macAddress,
+        mac_address: generatedMacAddress, // Use the generated MAC address
         device_type: customerData.deviceType || 'Smart TV',
         plan_duration: 1, // Duration is not relevant for trials, but keep it as 1
         start_date: startDate,
@@ -245,7 +252,8 @@ serve(async (req) => {
           password: finalPassword,
           expirationDate: expirationDate,
           m3uUrl: m3uUrl,
-          isTrial: true
+          isTrial: true,
+          macAddress: generatedMacAddress
         }
       }),
       { 

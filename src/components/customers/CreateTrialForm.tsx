@@ -14,7 +14,6 @@ import { supabase } from '@/integrations/supabase/client';
 const formSchema = z.object({
   name: z.string().min(2, 'Customer name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
-  macAddress: z.string().min(12, 'MAC address must be at least 12 characters').regex(/^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$|^([0-9A-Fa-f]{12})$/, 'Please enter a valid MAC address'),
   deviceType: z.string().min(1, 'Device type is required'),
 });
 
@@ -34,7 +33,6 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
     defaultValues: {
       name: '',
       email: '',
-      macAddress: '',
       deviceType: 'Smart TV',
     },
   });
@@ -55,7 +53,6 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
           customerData: {
             name: data.name,
             email: data.email,
-            macAddress: data.macAddress,
             deviceType: data.deviceType,
           },
           resellerId: user.id,
@@ -125,23 +122,6 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
 
         <FormField
           control={form.control}
-          name="macAddress"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>MAC Address</FormLabel>
-              <FormControl>
-                <Input placeholder="00:11:22:33:44:55" {...field} />
-              </FormControl>
-              <FormDescription>
-                The unique MAC address of the customer's device
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
           name="deviceType"
           render={({ field }) => (
             <FormItem>
@@ -160,6 +140,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
             <li>• Trial duration: 24 hours from creation</li>
             <li>• No credits will be consumed</li>
             <li>• Credentials will be automatically generated</li>
+            <li>• MAC address will be generated from customer name</li>
             <li>• Customer will receive login details via CRM (if configured)</li>
           </ul>
         </div>
