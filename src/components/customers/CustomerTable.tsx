@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import {
   Table,
@@ -10,7 +9,7 @@ import {
 } from '@/components/ui/table';
 import { Customer } from '@/contexts/AppContext';
 import { EmptyState } from '@/components/dashboard/EmptyState';
-import { Users, Edit, Trash2, Clock, ShieldOff, Repeat } from 'lucide-react';
+import { Users, Edit, Trash2, Clock, ShieldOff, Repeat, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
@@ -43,6 +42,7 @@ interface CustomerTableProps {
   onCancel?: (customerId: string) => void; // Changed from onDelete to onCancel
   onRenew?: (customer: Customer) => void;
   onDeactivate?: (customerId: string) => void;
+  onManageHighLevel?: (customer: Customer) => void; // Added this prop
 }
 
 type FilterStatus = 'all' | 'active' | 'expiring_soon' | 'expired';
@@ -53,7 +53,8 @@ export function CustomerTable({
   onEdit,
   onCancel, // Changed from onDelete to onCancel
   onRenew,
-  onDeactivate
+  onDeactivate,
+  onManageHighLevel // Added this prop
 }: CustomerTableProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
@@ -214,6 +215,13 @@ export function CustomerTable({
     }
   };
 
+  // Handle HighLevel contact management
+  const handleManageHighLevelClick = (customer: Customer) => {
+    if (onManageHighLevel) {
+      onManageHighLevel(customer);
+    }
+  };
+
   if (customers.length === 0) {
     return (
       <EmptyState
@@ -351,6 +359,19 @@ export function CustomerTable({
                           >
                             <ShieldOff size={12} className="mr-1" />
                             Deactivate
+                          </Button>
+                        )}
+                        
+                        {/* HighLevel management button */}
+                        {onManageHighLevel && customer.highlevelContactId && (
+                          <Button 
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2 text-xs bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800"
+                            onClick={() => handleManageHighLevelClick(customer)}
+                          >
+                            <Settings size={12} className="mr-1" />
+                            HighLevel
                           </Button>
                         )}
                         

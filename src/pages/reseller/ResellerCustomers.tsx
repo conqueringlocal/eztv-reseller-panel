@@ -85,6 +85,14 @@ export default function ResellerCustomers() {
 
   // Handle HighLevel contact management
   const handleManageHighLevelContact = (customer: Customer) => {
+    // Check if customer has highlevelContactId property, using type assertion with fallback
+    const customerWithHL = customer as Customer & { highlevelContactId?: string };
+    
+    if (!customerWithHL.highlevelContactId) {
+      toast.error('This customer does not have a HighLevel contact ID');
+      return;
+    }
+    
     setSelectedCustomerForHL(customer);
     setIsHighLevelManagerOpen(true);
   };
@@ -172,7 +180,7 @@ export default function ResellerCustomers() {
           onCancel={handleCancelCustomer} // Changed from onDelete to onCancel
           onRenew={handleRenewCustomer}
           onDeactivate={handleDeactivateCustomer}
-          onManageHighLevel={handleManageHighLevelContact} // New prop for HighLevel management
+          onManageHighLevel={handleManageHighLevelContact} // Updated prop name
         />
       </DashboardCard>
       
@@ -221,7 +229,7 @@ export default function ResellerCustomers() {
               </DialogDescription>
             </DialogHeader>
             <HighLevelContactManager
-              contactId={selectedCustomerForHL.highLevelContactId || ''}
+              contactId={(selectedCustomerForHL as any).highlevelContactId || ''}
               resellerId={user?.id || ''}
               customerName={selectedCustomerForHL.name}
               onUpdate={() => {
