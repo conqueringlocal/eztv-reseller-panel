@@ -1,11 +1,11 @@
-
 import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Eye, EyeOff, Save, Webhook, MessageSquare } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Eye, EyeOff, Save, Webhook, MessageSquare, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -113,7 +113,7 @@ export default function AdminSettings() {
     
     setIsSaving(true);
     try {
-      const apiKeySuccess = await saveSetting('highlevel_api_key', highLevelApiKey, 'HighLevel API key for sending messages');
+      const apiKeySuccess = await saveSetting('highlevel_api_key', highLevelApiKey, 'HighLevel Agency API key for sending messages');
       const locationSuccess = await saveSetting('highlevel_location_id', highLevelLocationId, 'HighLevel Location ID for message context');
       
       if (apiKeySuccess && locationSuccess) {
@@ -250,18 +250,26 @@ export default function AdminSettings() {
         {/* HighLevel Integration Settings */}
         <DashboardCard
           title="HighLevel Integration"
-          description="Configure HighLevel API for automatic credential delivery"
+          description="Configure HighLevel Agency API for automatic credential delivery"
         >
           <div className="space-y-4">
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Important:</strong> Use an <strong>Agency API Key</strong> (not a Location API Key) for proper authentication. 
+                Agency API Keys provide access to multiple locations and use Bearer token authentication.
+              </AlertDescription>
+            </Alert>
+
             <div>
-              <p className="text-sm font-medium mb-1.5">HighLevel API Key</p>
+              <p className="text-sm font-medium mb-1.5">HighLevel Agency API Key</p>
               <div className="flex gap-2">
                 <Input 
                   value={highLevelApiKey} 
                   onChange={(e) => setHighLevelApiKey(e.target.value)}
                   type={showHighLevelApiKey ? "text" : "password"} 
                   className="flex-1"
-                  placeholder="Enter your HighLevel API key" 
+                  placeholder="Enter your HighLevel Agency API key" 
                   disabled={isLoading}
                 />
                 <Button 
@@ -272,6 +280,9 @@ export default function AdminSettings() {
                   {showHighLevelApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Agency API Key from your HighLevel Agency settings (requires Bearer authentication)
+              </p>
             </div>
             
             <div>
@@ -282,6 +293,9 @@ export default function AdminSettings() {
                 placeholder="Enter your HighLevel Location ID" 
                 disabled={isLoading}
               />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                The Location ID for scoping operations to the correct HighLevel location
+              </p>
             </div>
 
             <Button 
@@ -322,8 +336,8 @@ export default function AdminSettings() {
               <p className="text-sm font-medium">Integration Status</p>
               <p className="text-xs mt-1">
                 {highLevelApiKey && highLevelLocationId 
-                  ? '✅ HighLevel integration is configured and ready'
-                  : '⚠️ HighLevel integration requires both API Key and Location ID'
+                  ? '✅ HighLevel Agency API integration is configured and ready'
+                  : '⚠️ HighLevel integration requires both Agency API Key and Location ID'
                 }
               </p>
             </div>

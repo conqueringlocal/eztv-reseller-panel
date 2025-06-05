@@ -20,7 +20,7 @@ interface HighLevelContact {
 
 export class HighLevelApiService {
   private config: HighLevelApiConfig;
-  private baseUrl = 'https://services.leadconnectorhq.com';
+  private baseUrl = 'https://rest.gohighlevel.com/v1';
 
   constructor(config: HighLevelApiConfig) {
     this.config = config;
@@ -29,8 +29,7 @@ export class HighLevelApiService {
   private getHeaders() {
     return {
       'Authorization': `Bearer ${this.config.apiKey}`,
-      'Content-Type': 'application/json',
-      'Version': '2021-07-28'
+      'Content-Type': 'application/json'
     };
   }
 
@@ -82,7 +81,7 @@ export class HighLevelApiService {
     try {
       console.log('🔍 Fetching contact from HighLevel:', contactId);
 
-      const response = await fetch(`${this.baseUrl}/contacts/${contactId}`, {
+      const response = await fetch(`${this.baseUrl}/contacts/${contactId}?locationId=${this.config.locationId}`, {
         method: 'GET',
         headers: this.getHeaders()
       });
@@ -93,7 +92,7 @@ export class HighLevelApiService {
         
         // Log detailed error information
         console.error('Request details:', {
-          url: `${this.baseUrl}/contacts/${contactId}`,
+          url: `${this.baseUrl}/contacts/${contactId}?locationId=${this.config.locationId}`,
           method: 'GET',
           headers: { ...this.getHeaders(), Authorization: `Bearer ${this.config.apiKey.slice(0, 10)}...` }
         });
@@ -177,6 +176,55 @@ export class HighLevelApiService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
+  async validateApiKey(): Promise<{ valid: boolean; error?: string }> {
+    try {
+      console.log('🔑 Validating HighLevel Agency API Key...');
+
+      // Test the API key by attempting to fetch locations
+      const response = await fetch(`${this.baseUrl}/locations/`, {
+        method: 'GET',
+        headers: this.getHeaders()
+      });
+
+      if (response.status === 401) {
+        return {
+          valid: false,
+          error: 'Invalid Agency API Key - authentication failed'
+        };
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return {
+          valid: false,
+          error: `API validation failed: ${response.status} - ${errorText}`
+        };
+      }
+
+      const result = await response.json();
+      console.log('✅ Agency API Key validation successful');
+      
+      // Check if the specified location exists in the accessible locations
+      const locations = result.locations || [];
+      const locationExists = locations.some((loc: any) => loc.id === this.config.locationId);
+      
+      if (!locationExists) {
+        return {
+          valid: false,
+          error: `Location ID ${this.config.locationId} not accessible with this Agency API Key`
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      console.error('💥 Error validating Agency API Key:', error);
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : 'Unknown validation error'
       };
     }
   }

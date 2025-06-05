@@ -80,13 +80,13 @@ serve(async (req) => {
     }
 
     // Log API key format for debugging
-    console.log('🔑 API key format check:');
+    console.log('🔑 Agency API key check:');
     console.log('- API key length:', apiKey.length);
     console.log('- API key ending:', apiKey.slice(-8));
-    console.log('- Starts with eyJ (JWT):', apiKey.startsWith('eyJ'));
+    console.log('- Using Bearer authentication with Agency API Key');
     console.log('📍 Location ID:', locationId);
 
-    // Create contact in HighLevel using the correct API endpoint
+    // Create contact in HighLevel using the v1 API endpoint
     console.log('🔄 Creating contact in HighLevel...');
     
     const contactPayload = {
@@ -99,20 +99,18 @@ serve(async (req) => {
 
     console.log('📤 Contact payload:', contactPayload);
 
-    // Use the correct HighLevel API v2 endpoint
-    const apiUrl = `https://services.leadconnectorhq.com/contacts/`;
+    // Use the correct HighLevel API v1 endpoint with Agency API Key
+    const apiUrl = `https://rest.gohighlevel.com/v1/contacts/`;
     console.log('🌐 API URL:', apiUrl);
 
-    // Prepare headers with proper authorization
+    // Prepare headers with Bearer authentication for Agency API Key
     const headers = {
       'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'Version': '2021-07-28'
+      'Content-Type': 'application/json'
     };
 
     console.log('📡 Request headers (without auth token):', {
       'Content-Type': headers['Content-Type'],
-      'Version': headers['Version'],
       'Authorization': `Bearer ${apiKey.slice(0, 10)}...${apiKey.slice(-10)}`
     });
 
@@ -147,13 +145,13 @@ serve(async (req) => {
       if (response.status === 401) {
         return new Response(JSON.stringify({ 
           success: false, 
-          error: 'HighLevel API authentication failed. The API key may be invalid, expired, or not properly formatted.',
+          error: 'HighLevel API authentication failed. The Agency API Key may be invalid or expired.',
           details: `Authentication error: ${errorDetails}`,
           troubleshooting: {
-            apiKeyFormat: apiKey.startsWith('eyJ') ? 'JWT format' : 'Bearer token format',
+            apiKeyType: 'Agency API Key (Bearer token)',
             apiKeyLength: apiKey.length,
             endpoint: apiUrl,
-            suggestion: 'Please verify your HighLevel API key is valid and has the correct permissions for creating contacts.'
+            suggestion: 'Please verify your HighLevel Agency API Key is valid and has the correct permissions for creating contacts.'
           }
         }), {
           status: 401,
@@ -164,10 +162,10 @@ serve(async (req) => {
       if (response.status === 403) {
         return new Response(JSON.stringify({ 
           success: false, 
-          error: 'HighLevel API access forbidden. The API key may not have permission to create contacts.',
+          error: 'HighLevel API access forbidden. The Agency API Key may not have permission to access this location or create contacts.',
           details: errorDetails,
           troubleshooting: {
-            suggestion: 'Check that your HighLevel API key has the necessary permissions for contact creation.'
+            suggestion: 'Check that your HighLevel Agency API Key has the necessary permissions and access to the specified location.'
           }
         }), {
           status: 403,

@@ -70,17 +70,16 @@ serve(async (req) => {
     }
 
     const { api_key: apiKey, location_id: locationId } = hlSettings;
-    const baseUrl = 'https://services.leadconnectorhq.com';
+    const baseUrl = 'https://rest.gohighlevel.com/v1';
     
     const headers = {
       'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'Version': '2021-07-28'
+      'Content-Type': 'application/json'
     };
 
-    console.log('🔐 Using API credentials:', {
+    console.log('🔐 Using Agency API credentials:', {
       hasApiKey: !!apiKey,
-      apiKeyFormat: apiKey?.startsWith('eyJ') ? 'JWT' : 'Bearer',
+      apiKeyType: 'Agency API Key (Bearer)',
       apiKeyLength: apiKey?.length || 0,
       locationId: locationId
     });
@@ -104,7 +103,8 @@ serve(async (req) => {
         method: 'PUT',
         headers: headers,
         body: JSON.stringify({
-          customFields: customFieldsObj
+          customFields: customFieldsObj,
+          locationId: locationId
         })
       });
 
@@ -152,7 +152,8 @@ serve(async (req) => {
         method: 'PUT',
         headers: headers,
         body: JSON.stringify({
-          tags: tagsToAdd
+          tags: tagsToAdd,
+          locationId: locationId
         })
       });
 
@@ -170,7 +171,7 @@ serve(async (req) => {
       console.log('🗑️ Removing tags...');
       
       // First get current contact to see existing tags
-      const getResponse = await fetch(`${baseUrl}/contacts/${contactId}`, {
+      const getResponse = await fetch(`${baseUrl}/contacts/${contactId}?locationId=${locationId}`, {
         method: 'GET',
         headers: headers
       });
@@ -184,7 +185,8 @@ serve(async (req) => {
           method: 'PUT',
           headers: headers,
           body: JSON.stringify({
-            tags: updatedTags
+            tags: updatedTags,
+            locationId: locationId
           })
         });
 
