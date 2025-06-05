@@ -70,6 +70,21 @@ serve(async (req) => {
     }
 
     const { api_key: apiKey, location_id: locationId } = hlSettings;
+    const baseUrl = 'https://services.leadconnectorhq.com';
+    
+    const headers = {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Version': '2021-07-28'
+    };
+
+    console.log('🔐 Using API credentials:', {
+      hasApiKey: !!apiKey,
+      apiKeyFormat: apiKey?.startsWith('eyJ') ? 'JWT' : 'Bearer',
+      apiKeyLength: apiKey?.length || 0,
+      locationId: locationId
+    });
+
     const results = {
       customFields: false,
       notes: [] as boolean[],
@@ -85,21 +100,20 @@ serve(async (req) => {
         return acc;
       }, {} as Record<string, string>);
 
-      const customFieldsResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+      const customFieldsResponse = await fetch(`${baseUrl}/contacts/${contactId}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Version': '2021-07-28'
-        },
+        headers: headers,
         body: JSON.stringify({
           customFields: customFieldsObj
         })
       });
 
-      results.customFields = customFieldsResponse.ok;
-      if (!customFieldsResponse.ok) {
-        console.error('❌ Failed to update custom fields:', await customFieldsResponse.text());
+      if (customFieldsResponse.ok) {
+        results.customFields = true;
+        console.log('✅ Custom fields updated successfully');
+      } else {
+        const errorText = await customFieldsResponse.text();
+        console.error('❌ Failed to update custom fields:', customFieldsResponse.status, errorText);
       }
     }
 
@@ -107,13 +121,9 @@ serve(async (req) => {
     if (notes.length > 0) {
       console.log('📝 Adding notes...');
       for (const note of notes) {
-        const noteResponse = await fetch('https://services.leadconnectorhq.com/conversations/messages', {
+        const noteResponse = await fetch(`${baseUrl}/conversations/messages`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'Version': '2021-07-28'
-          },
+          headers: headers,
           body: JSON.stringify({
             type: 'Email',
             contactId: contactId,
@@ -123,9 +133,14 @@ serve(async (req) => {
           })
         });
 
-        results.notes.push(noteResponse.ok);
-        if (!noteResponse.ok) {
-          console.error('❌ Failed to add note:', await noteResponse.text());
+        const success = noteResponse.ok;
+        results.notes.push(success);
+        
+        if (success) {
+          console.log('✅ Note added successfully');
+        } else {
+          const errorText = await noteResponse.text();
+          console.error('❌ Failed to add note:', noteResponse.status, errorText);
         }
       }
     }
@@ -133,21 +148,20 @@ serve(async (req) => {
     // Add tags if provided
     if (tagsToAdd.length > 0) {
       console.log('🏷️ Adding tags...');
-      const addTagsResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+      const addTagsResponse = await fetch(`${baseUrl}/contacts/${contactId}`, {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'Version': '2021-07-28'
-        },
+        headers: headers,
         body: JSON.stringify({
           tags: tagsToAdd
         })
       });
 
-      results.tagsAdded = addTagsResponse.ok;
-      if (!addTagsResponse.ok) {
-        console.error('❌ Failed to add tags:', await addTagsResponse.text());
+      if (addTagsResponse.ok) {
+        results.tagsAdded = true;
+        console.log('✅ Tags added successfully');
+      } else {
+        const errorText = await addTagsResponse.text();
+        console.error('❌ Failed to add tags:', addTagsResponse.status, errorText);
       }
     }
 
@@ -156,12 +170,9 @@ serve(async (req) => {
       console.log('🗑️ Removing tags...');
       
       // First get current contact to see existing tags
-      const getResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+      const getResponse = await fetch(`${baseUrl}/contacts/${contactId}`, {
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Version': '2021-07-28'
-        }
+        headers: headers
       });
 
       if (getResponse.ok) {
@@ -169,22 +180,24 @@ serve(async (req) => {
         const currentTags = contactData.contact?.tags || [];
         const updatedTags = currentTags.filter((tag: string) => !tagsToRemove.includes(tag));
 
-        const removeTagsResponse = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+        const removeTagsResponse = await fetch(`${baseUrl}/contacts/${contactId}`, {
           method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'Version': '2021-07-28'
-          },
+          headers: headers,
           body: JSON.stringify({
             tags: updatedTags
           })
         });
 
-        results.tagsRemoved = removeTagsResponse.ok;
-        if (!removeTagsResponse.ok) {
-          console.error('❌ Failed to remove tags:', await removeTagsResponse.text());
+        if (removeTagsResponse.ok) {
+          results.tagsRemoved = true;
+          console.log('✅ Tags removed successfully');
+        } else {
+          const errorText = await removeTagsResponse.text();
+          console.error('❌ Failed to remove tags:', removeTagsResponse.status, errorText);
         }
+      } else {
+        const errorText = await getResponse.text();
+        console.error('❌ Failed to fetch current contact tags:', getResponse.status, errorText);
       }
     }
 
@@ -200,9 +213,11 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('💥 Error in HighLevel contact update function:', error);
+    console.error('Error stack:', error.stack);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: error instanceof Error ? error.message : 'Unknown error',
+      details: error instanceof Error ? error.stack : 'No additional details available'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
