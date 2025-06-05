@@ -33,7 +33,8 @@ export interface Customer {
   connections?: number;
   accountType?: 'm3u' | 'mag';
   highlevelContactId?: string;
-  m3uUrl?: string; // Added missing property
+  m3uUrl?: string;
+  isTrial?: boolean; // Added missing property
 }
 
 export interface CreditLog {
@@ -49,33 +50,33 @@ export interface CreditLog {
 
 interface Reseller extends Tables<'profiles'> {
   role: 'reseller';
-  accentColor?: string; // Added missing property
-  logoUrl?: string; // Added missing property
+  accentColor?: string;
+  logoUrl?: string;
 }
 
 interface AppContextType {
   customers: Customer[];
   resellers: Reseller[];
-  creditLogs: CreditLog[]; // Added missing property
+  creditLogs: CreditLog[];
   loading: boolean;
-  isLoading: boolean; // Added missing property
-  
+  isLoading: boolean;
+
   // Customer management
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<boolean>;
   updateCustomer: (customer: Customer) => Promise<boolean>;
   cancelCustomer: (customerId: string) => Promise<boolean>;
   deactivateCustomer: (customerId: string) => Promise<boolean>;
   renewCustomer: (customerId: string, additionalMonths: number) => Promise<boolean>;
-  
+
   // Reseller management
   addReseller: (reseller: Omit<Reseller, 'id' | 'created_at' | 'updated_at'>) => Promise<boolean>;
   updateResellerCredits: (resellerId: string, newCredits: number) => Promise<boolean>;
-  
-  // Credit management - Added missing methods
+
+  // Credit management
   addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
   removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
   getReseller: (resellerId: string) => Reseller | undefined;
-  
+
   // Data refresh
   refreshData: () => Promise<void>;
 }
@@ -86,9 +87,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resellers, setResellers] = useState<Reseller[]>([]);
-  const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]); // Added missing state
+  const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isLoading, setIsLoading] = useState(true); // Added missing state
+  const [isLoading, setIsLoading] = useState(true);
 
   // Load data when user changes or on mount
   useEffect(() => {
@@ -149,7 +150,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           cancelledAt: customer.cancelled_at,
           status: customer.status as 'active' | 'cancelled' | 'expired' | 'expiring_soon',
           highlevelContactId: customer.highlevel_contact_id,
-          m3uUrl: customer.m3u_url // Added missing property mapping
+          m3uUrl: customer.m3u_url
         }));
         setCustomers(transformedCustomers);
       }
