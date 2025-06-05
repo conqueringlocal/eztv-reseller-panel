@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -10,16 +10,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Plus, X, Tag, FileText, Settings } from 'lucide-react';
+import { Plus, X, Tag, FileText, Settings, Loader2 } from 'lucide-react';
 
 interface CustomField {
-  key: string;
+  id: string;
   value: string;
 }
 
 interface ContactNote {
   body: string;
   type: string;
+}
+
+interface AvailableCustomField {
+  id: string;
+  name: string;
+  fieldKey: string;
+  dataType: string;
 }
 
 interface CrmContactManagerProps {
@@ -35,21 +42,56 @@ export function CrmContactManager({
   customerName = 'Contact',
   onUpdate 
 }: CrmContactManagerProps) {
-  const [customFields, setCustomFields] = useState<CustomField[]>([{ key: '', value: '' }]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([{ id: '', value: '' }]);
   const [notes, setNotes] = useState<ContactNote[]>([{ body: '', type: 'general' }]);
   const [tagsToAdd, setTagsToAdd] = useState<string[]>(['']);
   const [tagsToRemove, setTagsToRemove] = useState<string[]>(['']);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // New state for available options
+  const [availableCustomFields, setAvailableCustomFields] = useState<AvailableCustomField[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
+
+  // Fetch available custom fields and tags on component mount
+  useEffect(() => {
+    const fetchFieldsAndTags = async () => {
+      try {
+        setIsLoadingOptions(true);
+        
+        const { data, error } = await supabase.functions.invoke('get-highlevel-fields-and-tags', {
+          body: { resellerId }
+        });
+
+        if (error || !data?.success) {
+          console.error('Failed to fetch fields and tags:', error || data);
+          toast.error('Failed to load custom fields and tags');
+          return;
+        }
+
+        setAvailableCustomFields(data.data.customFields || []);
+        setAvailableTags(data.data.tags || []);
+        
+      } catch (error) {
+        console.error('Error fetching fields and tags:', error);
+        toast.error('An error occurred while loading options');
+      } finally {
+        setIsLoadingOptions(false);
+      }
+    };
+
+    fetchFieldsAndTags();
+  }, [resellerId]);
 
   const addCustomField = () => {
-    setCustomFields([...customFields, { key: '', value: '' }]);
+    setCustomFields([...customFields, { id: '', value: '' }]);
   };
 
   const removeCustomField = (index: number) => {
     setCustomFields(customFields.filter((_, i) => i !== index));
   };
 
-  const updateCustomField = (index: number, field: 'key' | 'value', value: string) => {
+  const updateCustomField = (index: number, field: 'id' | 'value', value: string) => {
     const updated = [...customFields];
     updated[index][field] = value;
     setCustomFields(updated);
@@ -101,8 +143,14 @@ export function CrmContactManager({
     setIsLoading(true);
     
     try {
-      // Filter out empty fields
-      const validCustomFields = customFields.filter(field => field.key && field.value);
+      // Filter out empty fields and convert to the format expected by the API
+      const validCustomFields = customFields
+        .filter(field => field.id && field.value)
+        .map(field => ({
+          key: field.id,
+          value: field.value
+        }));
+      
       const validNotes = notes.filter(note => note.body.trim());
       const validTagsToAdd = tagsToAdd.filter(tag => tag.trim());
       const validTagsToRemove = tagsToRemove.filter(tag => tag.trim());
@@ -127,7 +175,7 @@ export function CrmContactManager({
       toast.success('CRM contact updated successfully!');
       
       // Reset forms
-      setCustomFields([{ key: '', value: '' }]);
+      setCustomFields([{ id: '', value: '' }]);
       setNotes([{ body: '', type: 'general' }]);
       setTagsToAdd(['']);
       setTagsToRemove(['']);
@@ -141,6 +189,17 @@ export function CrmContactManager({
       setIsLoading(false);
     }
   };
+
+  if (isLoadingOptions) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center p-8">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          <span>Loading custom fields and tags...</span>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -165,15 +224,23 @@ export function CrmContactManager({
             <div className="space-y-3">
               {customFields.map((field, index) => (
                 <div key={index} className="flex space-x-2">
-                  <Input
-                    placeholder="Field key (e.g., iptv_username)"
-                    value={field.key}
-                    onChange={(e) => updateCustomField(index, 'key', e.target.value)}
-                  />
+                  <Select value={field.id} onValueChange={(value) => updateCustomField(index, 'id', value)}>
+                    <SelectTrigger className="w-[250px]">
+                      <SelectValue placeholder="Select custom field" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCustomFields.map((availableField) => (
+                        <SelectItem key={availableField.id} value={availableField.id}>
+                          {availableField.name} ({availableField.fieldKey})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Input
                     placeholder="Field value"
                     value={field.value}
                     onChange={(e) => updateCustomField(index, 'value', e.target.value)}
+                    className="flex-1"
                   />
                   <Button 
                     variant="outline" 
@@ -240,11 +307,18 @@ export function CrmContactManager({
                 <div className="space-y-2 mt-2">
                   {tagsToAdd.map((tag, index) => (
                     <div key={index} className="flex space-x-2">
-                      <Input
-                        placeholder="Tag name"
-                        value={tag}
-                        onChange={(e) => updateTag(index, e.target.value, 'add')}
-                      />
+                      <Select value={tag} onValueChange={(value) => updateTag(index, value, 'add')}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select or type tag name" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableTags.map((availableTag) => (
+                            <SelectItem key={availableTag} value={availableTag}>
+                              {availableTag}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -267,11 +341,18 @@ export function CrmContactManager({
                 <div className="space-y-2 mt-2">
                   {tagsToRemove.map((tag, index) => (
                     <div key={index} className="flex space-x-2">
-                      <Input
-                        placeholder="Tag name to remove"
-                        value={tag}
-                        onChange={(e) => updateTag(index, e.target.value, 'remove')}
-                      />
+                      <Select value={tag} onValueChange={(value) => updateTag(index, value, 'remove')}>
+                        <SelectTrigger className="flex-1">
+                          <SelectValue placeholder="Select tag to remove" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableTags.map((availableTag) => (
+                            <SelectItem key={availableTag} value={availableTag}>
+                              {availableTag}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <Button 
                         variant="outline" 
                         size="sm"
