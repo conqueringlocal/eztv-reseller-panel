@@ -67,7 +67,8 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
     try {
       console.log(`🔄 RenewCustomerForm: Starting renewal for ${customer.name}`);
       
-      const success = await renewCustomer(customer, data.planDuration);
+      // Pass customer ID instead of customer object
+      const success = await renewCustomer(customer.id, data.planDuration);
       
       if (success) {
         console.log(`✅ RenewCustomerForm: Renewal successful for ${customer.name}`);

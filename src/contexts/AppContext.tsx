@@ -1,3 +1,4 @@
+
 import React, {
   createContext,
   useState,
@@ -31,18 +32,34 @@ export interface Customer {
   cancelledAt?: string;
   packageId?: string;
   connections?: number;
-  accountType?: 'm3u' | 'mag'; // New field to distinguish account types
-  highlevelContactId?: string; // Added HighLevel contact ID
+  accountType?: 'm3u' | 'mag';
+  highlevelContactId?: string;
+  m3uUrl?: string; // Added missing property
+}
+
+export interface CreditLog {
+  id: string;
+  resellerId: string;
+  action: 'addition' | 'deduction' | 'account_creation' | 'renewal';
+  creditsUsed: number;
+  customerId?: string;
+  customerName?: string;
+  notes?: string;
+  date: string;
 }
 
 interface Reseller extends Tables<'profiles'> {
   role: 'reseller';
+  accentColor?: string; // Added missing property
+  logoUrl?: string; // Added missing property
 }
 
 interface AppContextType {
   customers: Customer[];
   resellers: Reseller[];
+  creditLogs: CreditLog[]; // Added missing property
   loading: boolean;
+  isLoading: boolean; // Added missing property
   
   // Customer management
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<boolean>;
@@ -55,6 +72,11 @@ interface AppContextType {
   addReseller: (reseller: Omit<Reseller, 'id' | 'created_at' | 'updated_at'>) => Promise<boolean>;
   updateResellerCredits: (resellerId: string, newCredits: number) => Promise<boolean>;
   
+  // Credit management - Added missing methods
+  addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  getReseller: (resellerId: string) => Reseller | undefined;
+  
   // Data refresh
   refreshData: () => Promise<void>;
 }
@@ -65,7 +87,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resellers, setResellers] = useState<Reseller[]>([]);
+  const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]); // Added missing state
   const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Added missing state
 
   // Load data when user changes or on mount
   useEffect(() => {
@@ -74,6 +98,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } else {
       console.log('Not authenticated, skipping data refresh');
       setLoading(false);
+      setIsLoading(false);
     }
   }, [user]);
 
@@ -85,6 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       setLoading(true);
+      setIsLoading(true);
       console.log('Refreshing data for user:', user.id, 'role:', user.role);
 
       // Load customers
@@ -123,7 +149,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           isDeactivated: customer.is_deactivated,
           cancelledAt: customer.cancelled_at,
           status: customer.status as 'active' | 'cancelled' | 'expired' | 'expiring_soon',
-          highlevelContactId: customer.highlevel_contact_id // Added HighLevel contact ID mapping
+          highlevelContactId: customer.highlevel_contact_id,
+          m3uUrl: customer.m3u_url // Added missing property mapping
         }));
         setCustomers(transformedCustomers);
       }
@@ -143,10 +170,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setResellers(resellersData as Reseller[]);
         }
       }
+
+      // Load credit logs
+      let logsQuery = supabase
+        .from('credit_logs')
+        .select('*')
+        .order('date', { ascending: false });
+
+      // Filter by reseller if not admin
+      if (user.role !== 'admin') {
+        logsQuery = logsQuery.eq('reseller_id', user.id);
+      }
+
+      const { data: logsData, error: logsError } = await logsQuery;
+      
+      if (logsError) {
+        console.error('Error loading credit logs:', logsError);
+      } else {
+        const transformedLogs = logsData.map(log => ({
+          id: log.id,
+          resellerId: log.reseller_id,
+          action: log.action as 'addition' | 'deduction' | 'account_creation' | 'renewal',
+          creditsUsed: log.credits_used,
+          customerId: log.customer_id,
+          customerName: log.customer_name,
+          notes: log.notes,
+          date: log.date
+        }));
+        setCreditLogs(transformedLogs);
+      }
     } catch (error) {
       console.error('Error in refreshData:', error);
     } finally {
       setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -168,7 +225,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           customer_group_id: customer.customerGroupId,
           connection_number: customer.connectionNumber,
           total_connections: customer.totalConnections,
-          highlevel_contact_id: customer.highlevelContactId
+          highlevel_contact_id: customer.highlevelContactId,
+          status: customer.status || 'active',
+          is_deactivated: customer.isDeactivated || false,
+          m3u_url: customer.m3uUrl
         });
 
       if (error) {
@@ -208,7 +268,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           total_connections: customer.totalConnections,
           is_deactivated: customer.isDeactivated,
           status: customer.status,
-          highlevel_contact_id: customer.highlevelContactId
+          highlevel_contact_id: customer.highlevelContactId,
+          m3u_url: customer.m3uUrl
         })
         .eq('id', customer.id);
 
@@ -383,12 +444,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      // Log the transaction
+      // Log the transaction - Fixed action type
       const { error: logError } = await supabase
         .from('credit_logs')
         .insert({
           reseller_id: customerData.reseller_id,
-          action: 'renewal',
+          action: 'deduction', // Changed from 'renewal' to 'deduction'
           credits_used: additionalMonths,
           customer_id: customerId,
           notes: `${additionalMonths} month renewal`
@@ -412,7 +473,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase
         .from('profiles')
-        .insert(reseller);
+        .insert({
+          name: reseller.name,
+          email: reseller.email,
+          role: reseller.role,
+          credits: reseller.credits
+        });
 
       if (error) {
         console.error('Error adding reseller:', error);
@@ -453,10 +519,125 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Added missing credit management methods
+  const addCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
+    try {
+      // Get current credits
+      const { data: resellerData, error: resellerError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', resellerId)
+        .single();
+
+      if (resellerError || !resellerData) {
+        console.error('Error getting reseller data:', resellerError);
+        toast.error('Failed to get reseller data');
+        return false;
+      }
+
+      // Update credits
+      const newCredits = resellerData.credits + credits;
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ credits: newCredits })
+        .eq('id', resellerId);
+
+      if (updateError) {
+        console.error('Error adding credits:', updateError);
+        toast.error('Failed to add credits');
+        return false;
+      }
+
+      // Log the transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'addition',
+          credits_used: credits,
+          notes: notes || 'Manual credit addition'
+        });
+
+      if (logError) {
+        console.error('Failed to log credit addition:', logError);
+      }
+
+      await refreshData();
+      return true;
+    } catch (error) {
+      console.error('Error adding credits:', error);
+      toast.error('Failed to add credits');
+      return false;
+    }
+  };
+
+  const removeCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
+    try {
+      // Get current credits
+      const { data: resellerData, error: resellerError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', resellerId)
+        .single();
+
+      if (resellerError || !resellerData) {
+        console.error('Error getting reseller data:', resellerError);
+        toast.error('Failed to get reseller data');
+        return false;
+      }
+
+      // Check if enough credits available
+      if (resellerData.credits < credits) {
+        toast.error('Insufficient credits to remove');
+        return false;
+      }
+
+      // Update credits
+      const newCredits = resellerData.credits - credits;
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ credits: newCredits })
+        .eq('id', resellerId);
+
+      if (updateError) {
+        console.error('Error removing credits:', updateError);
+        toast.error('Failed to remove credits');
+        return false;
+      }
+
+      // Log the transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'deduction',
+          credits_used: credits,
+          notes: notes || 'Manual credit removal'
+        });
+
+      if (logError) {
+        console.error('Failed to log credit removal:', logError);
+      }
+
+      await refreshData();
+      return true;
+    } catch (error) {
+      console.error('Error removing credits:', error);
+      toast.error('Failed to remove credits');
+      return false;
+    }
+  };
+
+  const getReseller = (resellerId: string): Reseller | undefined => {
+    return resellers.find(r => r.id === resellerId);
+  };
+
   const value: AppContextType = {
     customers,
     resellers,
+    creditLogs,
     loading,
+    isLoading,
     addCustomer,
     updateCustomer,
     cancelCustomer,
@@ -464,6 +645,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     renewCustomer,
     addReseller,
     updateResellerCredits,
+    addCredits,
+    removeCredits,
+    getReseller,
     refreshData,
   };
 

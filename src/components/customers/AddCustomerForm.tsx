@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -120,6 +119,8 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         startDate,
         expirationDate: expirationDateString,
         accountType: data.accountType, // New field to distinguish M3U vs MAG
+        status: 'active', // Added required property
+        isDeactivated: false, // Added required property
       });
       
       if (success) {

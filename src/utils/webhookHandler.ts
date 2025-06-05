@@ -347,7 +347,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.log('ℹ️ No HighLevel contact ID available, skipping HighLevel integration');
     }
 
-    // Return success with customer data (using actual credentials)
+    // Return success with customer data (using actual credentials) - Fixed to include required properties
     return {
       success: true,
       message: "Customer provisioned successfully",
@@ -359,7 +359,9 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         deviceType,
         planDuration,
         startDate,
-        expirationDate
+        expirationDate,
+        status: 'active', // Added required property
+        isDeactivated: false, // Added required property
       }
     };
   } catch (error) {
