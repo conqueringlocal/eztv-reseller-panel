@@ -167,9 +167,9 @@ const findCustomerByNameAndEmail = async (
       customerGroupId: customer.customer_group_id,
       connectionNumber: customer.connection_number,
       totalConnections: customer.total_connections,
-      packageId: customer.package_id,
-      connections: customer.connections,
-      accountType: customer.account_type as 'm3u' | 'mag',
+      packageId: customer.customer_group_id, // Map customer_group_id to packageId
+      connections: customer.total_connections || 1, // Map total_connections to connections with fallback
+      accountType: 'm3u' as 'm3u' | 'mag', // Default to m3u type
       highlevelContactId: customer.highlevel_contact_id,
       m3uUrl: customer.m3u_url
     };
