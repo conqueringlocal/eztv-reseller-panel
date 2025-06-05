@@ -128,28 +128,43 @@ serve(async (req) => {
       )
     }
 
-    console.log('🎯 Creating trial IPTV user via direct API call')
+    console.log('🎯 Creating trial IPTV user via player_api.php endpoint')
 
-    // Prepare trial API data
-    const trialData = {
-      mac: generatedMacAddress,
-      sub_id: "8", // Trial subscription ID
-      comment: `Trial - ${customerData.name} | Reseller: ${resellerData.name}`,
-      bouq_list: [],
-      type: "lines",
-      bouq_custom: packageId,
-      country: "ALL"
+    // Generate trial credentials
+    const username = customerData.name
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .toLowerCase()
+      .substring(0, 10) + Math.floor(Math.random() * 1000)
+    
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    let password = ""
+    for (let i = 0; i < 8; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length))
     }
 
-    console.log('📋 Trial API data:', trialData)
+    console.log(`🔐 Generated trial credentials: ${username} / ${password}`)
+
+    // Calculate expiry timestamp (24 hours from now)
+    const expiryTimestamp = Math.floor((Date.now() + (24 * 60 * 60 * 1000)) / 1000)
 
     try {
-      // Construct the trial API URL (based on the format: https://my8k.me/api.php?action=add_new&data=...)
+      // Use the player_api.php endpoint for trial creation with proper authentication
       const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '')
-      const apiUrl = new URL(`${baseUrl}/api.php`)
-      apiUrl.searchParams.append('action', 'add_new')
-      apiUrl.searchParams.append('data', JSON.stringify(trialData))
-      apiUrl.searchParams.append('api_key', API_KEY)
+      const apiUrl = new URL(`${baseUrl}/player_api.php`)
+      
+      // Add authentication and action parameters
+      apiUrl.searchParams.append('username', API_KEY.split(':')[0] || API_KEY)
+      apiUrl.searchParams.append('password', API_KEY.split(':')[1] || API_KEY)
+      apiUrl.searchParams.append('action', 'user_add')
+      
+      // Add user details
+      apiUrl.searchParams.append('user_username', username)
+      apiUrl.searchParams.append('user_password', password)
+      apiUrl.searchParams.append('user_expire', expiryTimestamp.toString())
+      apiUrl.searchParams.append('user_max_connections', '1')
+      apiUrl.searchParams.append('user_is_trial', '1')
+      apiUrl.searchParams.append('user_bouquet', packageId)
+      apiUrl.searchParams.append('user_output', 'ts')
       
       console.log(`🔗 Trial API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`)
       
@@ -193,6 +208,26 @@ serve(async (req) => {
         console.log(`📋 Parsed trial API response:`, trialApiResult)
       } catch (parseError) {
         console.log(`❌ Failed to parse trial API response as JSON: ${parseError}`)
+        
+        // If we get HTML response, it means authentication failed
+        if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html')) {
+          return new Response(
+            JSON.stringify({ 
+              success: false, 
+              error: 'Authentication failed - received login page instead of API response. Please check IPTV API credentials.',
+              debug_info: {
+                panel_url: PANEL_URL,
+                package_id: packageId,
+                response_preview: responseText.substring(0, 200) + '...'
+              }
+            }),
+            { 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 401,
+            },
+          )
+        }
+        
         return new Response(
           JSON.stringify({ 
             success: false, 
@@ -234,22 +269,8 @@ serve(async (req) => {
 
       console.log('✅ Trial API call successful')
 
-      // Generate credentials for trial account (since trial API might not return them)
-      const username = customerData.name
-        .replace(/[^a-zA-Z0-9]/g, "")
-        .toLowerCase()
-        .substring(0, 10) + Math.floor(Math.random() * 1000)
-      
-      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-      let password = ""
-      for (let i = 0; i < 8; i++) {
-        password += chars.charAt(Math.floor(Math.random() * chars.length))
-      }
-
       // Generate M3U URL
       const m3uUrl = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`
-
-      console.log(`🔐 Generated trial credentials: ${username} / ${password}`)
 
       // Create HighLevel contact with trial credentials if needed
       let contactId = null
