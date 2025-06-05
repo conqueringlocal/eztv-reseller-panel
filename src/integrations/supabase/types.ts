@@ -207,6 +207,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          location_api_key: string | null
           location_id: string
           reseller_id: string
           updated_at: string
@@ -215,6 +216,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          location_api_key?: string | null
           location_id: string
           reseller_id: string
           updated_at?: string
@@ -223,6 +225,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          location_api_key?: string | null
           location_id?: string
           reseller_id?: string
           updated_at?: string

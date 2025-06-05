@@ -1,14 +1,13 @@
-
 import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
-import { GlobalHighLevelSettings } from '@/components/admin/GlobalHighLevelSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import { Eye, EyeOff, Save, Webhook } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { GlobalHighLevelSettings } from '@/components/admin/GlobalHighLevelSettings';
 
 interface SystemSetting {
   id: string;

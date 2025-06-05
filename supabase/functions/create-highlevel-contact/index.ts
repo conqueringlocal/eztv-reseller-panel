@@ -35,12 +35,12 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get reseller's location ID from settings
+    // Get reseller's HighLevel settings including both location_id and location_api_key
     console.log('🔍 Fetching reseller HighLevel settings...');
     
     const { data: hlSettings, error: hlError } = await supabase
       .from('reseller_highlevel_settings')
-      .select('location_id')
+      .select('location_id, location_api_key')
       .eq('reseller_id', resellerId)
       .eq('is_active', true)
       .single();
@@ -49,43 +49,37 @@ serve(async (req) => {
       console.error('❌ No HighLevel settings found for reseller:', resellerId, hlError);
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'HighLevel integration not configured for this reseller' 
+        error: 'HighLevel integration not configured for this reseller',
+        details: hlError?.message || 'No active HighLevel settings found'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get the global Agency API Key from system settings
-    console.log('🔑 Fetching global Agency API Key...');
-    
-    const { data: systemSettings, error: systemError } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('id', 'highlevel_agency_api_key')
-      .single();
-
-    if (systemError || !systemSettings?.value) {
-      console.error('❌ No global HighLevel Agency API Key found:', systemError);
+    // Check if location API key is configured
+    if (!hlSettings.location_api_key) {
+      console.error('❌ No Location API Key configured for reseller:', resellerId);
       return new Response(JSON.stringify({ 
         success: false, 
-        error: 'HighLevel Agency API Key not configured at system level' 
+        error: 'HighLevel Location API Key not configured for this reseller',
+        details: 'Please configure the Location API Key in your HighLevel settings'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const agencyApiKey = systemSettings.value;
+    const locationApiKey = hlSettings.location_api_key;
     const locationId = hlSettings.location_id;
 
-    console.log('🔐 Using global Agency API credentials:', {
-      hasApiKey: !!agencyApiKey,
-      apiKeyLength: agencyApiKey?.length || 0,
+    console.log('🔐 Using Location API credentials:', {
+      hasApiKey: !!locationApiKey,
+      apiKeyLength: locationApiKey?.length || 0,
       locationId: locationId
     });
 
-    // Create contact in HighLevel using the v1 API endpoint
+    // Create contact in HighLevel using the v1 API endpoint with Location API Key
     console.log('🔄 Creating contact in HighLevel...');
     
     const contactPayload = {
@@ -102,13 +96,13 @@ serve(async (req) => {
     console.log('🌐 API URL:', apiUrl);
 
     const headers = {
-      'Authorization': `Bearer ${agencyApiKey}`,
+      'Authorization': `Bearer ${locationApiKey}`,
       'Content-Type': 'application/json'
     };
 
     console.log('📡 Request headers (redacted):', {
       'Content-Type': headers['Content-Type'],
-      'Authorization': `Bearer ${agencyApiKey.slice(0, 10)}...`
+      'Authorization': `Bearer ${locationApiKey.slice(0, 10)}...`
     });
 
     const response = await fetch(apiUrl, {
@@ -137,8 +131,9 @@ serve(async (req) => {
       if (response.status === 401) {
         return new Response(JSON.stringify({ 
           success: false, 
-          error: 'HighLevel API authentication failed. The Agency API Key may be invalid or expired.',
-          details: `Authentication error: ${errorDetails}`
+          error: 'HighLevel API authentication failed. The Location API Key may be invalid or expired.',
+          details: `Authentication error: ${errorDetails}`,
+          troubleshooting: 'Please verify your Location API Key in the HighLevel settings'
         }), {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -148,8 +143,9 @@ serve(async (req) => {
       if (response.status === 403) {
         return new Response(JSON.stringify({ 
           success: false, 
-          error: 'HighLevel API access forbidden. The Agency API Key may not have permission to access this location.',
-          details: errorDetails
+          error: 'HighLevel API access forbidden. The Location API Key may not have permission to create contacts.',
+          details: errorDetails,
+          troubleshooting: 'Please check that your Location API Key has the necessary permissions'
         }), {
           status: 403,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -159,7 +155,8 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: false, 
         error: `HighLevel API error: ${response.status} ${response.statusText}`,
-        details: errorDetails
+        details: errorDetails,
+        troubleshooting: 'Please check your HighLevel Location API Key and try again'
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
