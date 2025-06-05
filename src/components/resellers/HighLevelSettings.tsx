@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { CheckCircle, AlertCircle, Eye, EyeOff, Info } from 'lucide-react';
 import {
   Form,
   FormControl,
@@ -214,6 +214,18 @@ export function HighLevelSettings({ resellerId, isAdminView = false }: HighLevel
           <AlertDescription>
             <strong>Important:</strong> You need both your HighLevel Location ID and Location API Key. 
             The Location API Key is specific to each location and provides the necessary authentication for creating contacts.
+          </AlertDescription>
+        </Alert>
+
+        <Alert className="mb-4 border-blue-200 bg-blue-50">
+          <Info className="h-4 w-4 text-blue-600" />
+          <AlertDescription className="text-blue-800">
+            <strong>IPTV Credentials Integration:</strong> When customers are created or synced to HighLevel, their IPTV username, password, and M3U URL will be automatically added as custom fields to their contact record. Make sure your HighLevel location has the following custom fields configured:
+            <ul className="mt-2 ml-4 list-disc text-sm">
+              <li><code>iptv_username</code> - For storing the IPTV username</li>
+              <li><code>iptv_password</code> - For storing the IPTV password</li>
+              <li><code>iptv_m3u_url</code> - For storing the M3U URL</li>
+            </ul>
           </AlertDescription>
         </Alert>
 

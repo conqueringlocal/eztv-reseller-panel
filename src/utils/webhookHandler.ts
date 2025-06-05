@@ -1,3 +1,4 @@
+
 import { Customer } from "../contexts/AppContext";
 import { supabase } from "@/integrations/supabase/client";
 import { generateUsername, generatePassword, dateToUnixTimestamp } from "./iptvApi";
@@ -52,11 +53,16 @@ const getDefaultPackageId = async (): Promise<string> => {
   }
 };
 
-// Create HighLevel contact for customer
+// Create HighLevel contact for customer with IPTV credentials
 const createHighLevelContact = async (
   customerName: string,
   customerEmail: string,
-  resellerId: string
+  resellerId: string,
+  iptvCredentials?: {
+    username?: string;
+    password?: string;
+    m3uUrl?: string;
+  }
 ): Promise<string | null> => {
   try {
     console.log('🎯 Creating HighLevel contact for customer:', customerName);
@@ -65,7 +71,8 @@ const createHighLevelContact = async (
       body: {
         customerName,
         customerEmail,
-        resellerId
+        resellerId,
+        iptvCredentials
       }
     });
 
@@ -79,6 +86,40 @@ const createHighLevelContact = async (
   } catch (error) {
     console.error('💥 Error creating HighLevel contact:', error);
     return null;
+  }
+};
+
+// Update HighLevel contact with IPTV credentials
+const updateHighLevelContactCredentials = async (
+  contactId: string,
+  resellerId: string,
+  iptvCredentials: {
+    username: string;
+    password: string;
+    m3uUrl?: string;
+  }
+): Promise<boolean> => {
+  try {
+    console.log('🔄 Updating HighLevel contact credentials for contact:', contactId);
+
+    const { data, error } = await supabase.functions.invoke('update-highlevel-contact-credentials', {
+      body: {
+        contactId,
+        resellerId,
+        iptvCredentials
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to update HighLevel contact credentials:', error || data);
+      return false;
+    }
+
+    console.log('✅ HighLevel contact credentials updated successfully');
+    return true;
+  } catch (error) {
+    console.error('💥 Error updating HighLevel contact credentials:', error);
+    return false;
   }
 };
 
@@ -294,6 +335,22 @@ const processCustomerRenewal = async (
       console.error('⚠️ Failed to log renewal transaction:', logError);
     }
 
+    // Update HighLevel contact with renewed credentials if contact ID is available
+    if ((contactId || customer.highlevelContactId) && customer.username && customer.password) {
+      const finalContactId = contactId || customer.highlevelContactId;
+      console.log('🔄 Updating HighLevel contact with renewed credentials');
+      
+      await updateHighLevelContactCredentials(
+        finalContactId!,
+        resellerId,
+        {
+          username: customer.username,
+          password: customer.password,
+          m3uUrl: customer.m3uUrl
+        }
+      );
+    }
+
     // Send renewal confirmation via HighLevel if contact ID is available
     if (contactId || customer.highlevelContactId) {
       const finalContactId = contactId || customer.highlevelContactId;
@@ -460,18 +517,6 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       };
     }
 
-    // Create HighLevel contact if not provided and reseller has HighLevel configured
-    if (!contactId) {
-      console.log('🔄 No contact ID provided, attempting to create HighLevel contact...');
-      contactId = await createHighLevelContact(customerName, customerEmail, resellerId);
-      
-      if (contactId) {
-        console.log('✅ HighLevel contact created with ID:', contactId);
-      } else {
-        console.log('ℹ️ HighLevel contact creation failed or not configured, continuing without HighLevel integration');
-      }
-    }
-
     // Generate IPTV credentials (used as fallback if API doesn't return credentials)
     const fallbackUsername = generateUsername(customerName);
     const fallbackPassword = generatePassword();
@@ -526,6 +571,29 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.log(`API did not return credentials, using fallback - Username: ${finalUsername}, Password: ${finalPassword}`);
     }
 
+    // Prepare IPTV credentials for HighLevel contact
+    const iptvCredentials = {
+      username: finalUsername,
+      password: finalPassword,
+      m3uUrl: data.user?.m3u_url
+    };
+
+    // Create HighLevel contact with IPTV credentials if not provided
+    if (!contactId) {
+      console.log('🔄 No contact ID provided, attempting to create HighLevel contact with IPTV credentials...');
+      contactId = await createHighLevelContact(customerName, customerEmail, resellerId, iptvCredentials);
+      
+      if (contactId) {
+        console.log('✅ HighLevel contact created with ID and credentials:', contactId);
+      } else {
+        console.log('ℹ️ HighLevel contact creation failed or not configured, continuing without HighLevel integration');
+      }
+    } else {
+      // Update existing contact with IPTV credentials
+      console.log('🔄 Contact ID provided, updating with IPTV credentials...');
+      await updateHighLevelContactCredentials(contactId, resellerId, iptvCredentials);
+    }
+
     // Create customer record in database with the actual credentials
     const customerData = {
       reseller_id: resellerId,
@@ -538,6 +606,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       expiration_date: expirationDate,
       username: finalUsername,  // Use actual credentials from API
       password: finalPassword,   // Use actual credentials from API
+      m3u_url: data.user?.m3u_url,
       highlevel_contact_id: contactId  // Store the HighLevel contact ID
     };
 
@@ -601,7 +670,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     // Return success with customer data (using actual credentials) - Fixed to include required properties
     return {
       success: true,
-      message: "Customer provisioned successfully",
+      message: "Customer provisioned successfully with IPTV credentials added to CRM",
       customer: {
         resellerId,
         name: customerName,

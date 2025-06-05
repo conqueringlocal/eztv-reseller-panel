@@ -41,7 +41,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get customer details
+    // Get customer details including IPTV credentials
     console.log('🔍 Fetching customer details...');
     const { data: customer, error: customerError } = await supabase
       .from('customers')
@@ -62,11 +62,56 @@ serve(async (req) => {
       });
     }
 
-    console.log('👤 Customer found:', { name: customer.name, email: customer.email, highlevelContactId: customer.highlevel_contact_id });
+    console.log('👤 Customer found:', { 
+      name: customer.name, 
+      email: customer.email, 
+      highlevelContactId: customer.highlevel_contact_id,
+      hasCredentials: !!(customer.username && customer.password)
+    });
 
     // Check if customer already has a CRM contact ID and force sync is not enabled
     if (customer.highlevel_contact_id && !forceSync) {
-      console.log('ℹ️ Customer already has CRM contact ID, skipping sync');
+      console.log('ℹ️ Customer already has CRM contact ID, checking if credentials need updating...');
+      
+      // If customer has IPTV credentials but force sync is not enabled, update credentials
+      if (customer.username && customer.password) {
+        console.log('🔄 Updating existing contact with IPTV credentials...');
+        
+        const updateResponse = await supabase.functions.invoke('update-highlevel-contact-credentials', {
+          body: {
+            contactId: customer.highlevel_contact_id,
+            resellerId: resellerId,
+            iptvCredentials: {
+              username: customer.username,
+              password: customer.password,
+              m3uUrl: customer.m3u_url
+            }
+          }
+        });
+
+        if (updateResponse.error || !updateResponse.data?.success) {
+          console.error('❌ Failed to update contact credentials:', updateResponse.error || updateResponse.data);
+          return new Response(JSON.stringify({ 
+            success: false, 
+            error: 'Failed to update contact credentials in CRM',
+            details: updateResponse.data?.error || 'Contact credentials update function returned failure'
+          }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        console.log('✅ Contact credentials updated successfully');
+        return new Response(JSON.stringify({ 
+          success: true, 
+          contactId: customer.highlevel_contact_id,
+          message: 'Customer credentials updated in CRM',
+          credentialsUpdated: true
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       return new Response(JSON.stringify({ 
         success: true, 
         contactId: customer.highlevel_contact_id,
@@ -103,6 +148,17 @@ serve(async (req) => {
       locationId: crmSettings.location_id
     });
 
+    // Prepare IPTV credentials if available
+    let iptvCredentials = undefined;
+    if (customer.username && customer.password) {
+      iptvCredentials = {
+        username: customer.username,
+        password: customer.password,
+        m3uUrl: customer.m3u_url
+      };
+      console.log('📋 IPTV credentials prepared for contact creation');
+    }
+
     // Create contact in CRM using the create-highlevel-contact function
     console.log('🔄 Creating contact in CRM...');
     
@@ -110,7 +166,8 @@ serve(async (req) => {
       body: {
         customerName: customer.name,
         customerEmail: customer.email,
-        resellerId: resellerId
+        resellerId: resellerId,
+        iptvCredentials: iptvCredentials
       }
     });
 
@@ -174,6 +231,7 @@ serve(async (req) => {
       success: true, 
       contactId: contactId,
       message: forceSync ? 'Customer force-synced to CRM successfully' : 'Customer successfully synced to CRM',
+      credentialsAdded: !!iptvCredentials,
       debugInfo: createContactResponse.data?.debugInfo || null
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

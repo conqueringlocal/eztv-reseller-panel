@@ -6,13 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface CreateContactRequest {
-  customerName: string;
-  customerEmail: string;
+interface UpdateCredentialsRequest {
+  contactId: string;
   resellerId: string;
-  iptvCredentials?: {
-    username?: string;
-    password?: string;
+  iptvCredentials: {
+    username: string;
+    password: string;
     m3uUrl?: string;
   };
 }
@@ -23,16 +22,25 @@ serve(async (req) => {
   }
 
   try {
-    console.log('📞 HighLevel contact creation function called');
+    console.log('🔄 HighLevel contact credentials update function called');
 
     const { 
-      customerName, 
-      customerEmail, 
+      contactId, 
       resellerId,
       iptvCredentials
-    }: CreateContactRequest = await req.json();
+    }: UpdateCredentialsRequest = await req.json();
 
-    console.log('📋 Request data:', { customerName, customerEmail, resellerId, hasCredentials: !!iptvCredentials });
+    console.log('📋 Update request:', { contactId, resellerId, hasCredentials: !!iptvCredentials });
+
+    if (!contactId || !resellerId || !iptvCredentials) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Missing required fields: contactId, resellerId, and iptvCredentials are required' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Get Supabase client
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -41,7 +49,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // Get reseller's HighLevel settings including both location_id and location_api_key
+    // Get reseller's HighLevel settings
     console.log('🔍 Fetching reseller HighLevel settings...');
     
     const { data: hlSettings, error: hlError } = await supabase
@@ -63,7 +71,6 @@ serve(async (req) => {
       });
     }
 
-    // Check if location API key is configured
     if (!hlSettings.location_api_key) {
       console.error('❌ No Location API Key configured for reseller:', resellerId);
       return new Response(JSON.stringify({ 
@@ -79,51 +86,42 @@ serve(async (req) => {
     const locationApiKey = hlSettings.location_api_key;
     const locationId = hlSettings.location_id;
 
-    console.log('🔐 Using Location API credentials:', {
-      hasApiKey: !!locationApiKey,
-      apiKeyLength: locationApiKey?.length || 0,
-      locationId: locationId
-    });
+    console.log('🔐 Using Location API credentials for update');
 
     // Prepare custom field values for IPTV credentials
     const customField: any[] = [];
     
-    if (iptvCredentials?.username) {
+    if (iptvCredentials.username) {
       customField.push({
         id: 'iptv_username',
         field_value: iptvCredentials.username
       });
     }
     
-    if (iptvCredentials?.password) {
+    if (iptvCredentials.password) {
       customField.push({
         id: 'iptv_password', 
         field_value: iptvCredentials.password
       });
     }
     
-    if (iptvCredentials?.m3uUrl) {
+    if (iptvCredentials.m3uUrl) {
       customField.push({
         id: 'iptv_m3u_url',
         field_value: iptvCredentials.m3uUrl
       });
     }
 
-    // Create contact in HighLevel using the v1 API endpoint with Location API Key
-    console.log('🔄 Creating contact in HighLevel...');
+    // Update contact in HighLevel
+    console.log('🔄 Updating contact credentials in HighLevel...');
     
-    const contactPayload = {
-      firstName: customerName.split(' ')[0] || customerName,
-      lastName: customerName.split(' ').slice(1).join(' ') || '',
-      email: customerEmail,
-      locationId: locationId,
-      source: 'IPTV Customer Creation',
-      customField: customField.length > 0 ? customField : undefined
+    const updatePayload = {
+      customField: customField
     };
 
-    console.log('📤 Contact payload:', contactPayload);
+    console.log('📤 Update payload:', updatePayload);
 
-    const apiUrl = `https://rest.gohighlevel.com/v1/contacts/`;
+    const apiUrl = `https://rest.gohighlevel.com/v1/contacts/${contactId}`;
     console.log('🌐 API URL:', apiUrl);
 
     const headers = {
@@ -131,15 +129,10 @@ serve(async (req) => {
       'Content-Type': 'application/json'
     };
 
-    console.log('📡 Request headers (redacted):', {
-      'Content-Type': headers['Content-Type'],
-      'Authorization': `Bearer ${locationApiKey.slice(0, 10)}...`
-    });
-
     const response = await fetch(apiUrl, {
-      method: 'POST',
+      method: 'PUT',
       headers: headers,
-      body: JSON.stringify(contactPayload)
+      body: JSON.stringify(updatePayload)
     });
 
     const responseText = await response.text();
@@ -159,35 +152,11 @@ serve(async (req) => {
         console.error('- Could not parse error response as JSON');
       }
 
-      if (response.status === 401) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'HighLevel API authentication failed. The Location API Key may be invalid or expired.',
-          details: `Authentication error: ${errorDetails}`,
-          troubleshooting: 'Please verify your Location API Key in the HighLevel settings'
-        }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (response.status === 403) {
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'HighLevel API access forbidden. The Location API Key may not have permission to create contacts.',
-          details: errorDetails,
-          troubleshooting: 'Please check that your Location API Key has the necessary permissions'
-        }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
       return new Response(JSON.stringify({ 
         success: false, 
         error: `HighLevel API error: ${response.status} ${response.statusText}`,
         details: errorDetails,
-        troubleshooting: 'Please check your HighLevel Location API Key and try again'
+        troubleshooting: 'Please check your HighLevel Location API Key and contact ID'
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -197,7 +166,7 @@ serve(async (req) => {
     let result;
     try {
       result = JSON.parse(responseText);
-      console.log('✅ Contact created successfully in HighLevel:', result);
+      console.log('✅ Contact credentials updated successfully in HighLevel:', result);
     } catch (e) {
       console.error('❌ Failed to parse HighLevel response as JSON:', e);
       return new Response(JSON.stringify({ 
@@ -210,33 +179,19 @@ serve(async (req) => {
       });
     }
 
-    const contactId = result.contact?.id || result.id;
-    
-    if (!contactId) {
-      console.error('❌ No contact ID returned from HighLevel');
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: 'Contact creation succeeded but no contact ID was returned',
-        details: result
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    console.log('🎉 Contact creation successful - Contact ID:', contactId);
+    console.log('🎉 Contact credentials update successful');
 
     return new Response(JSON.stringify({ 
       success: true, 
       contactId: contactId,
-      message: 'Contact created successfully in HighLevel',
-      credentialsAdded: customField.length > 0
+      message: 'Contact credentials updated successfully in HighLevel',
+      credentialsUpdated: customField.length
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('💥 Error in HighLevel contact creation function:', error);
+    console.error('💥 Error in HighLevel contact credentials update function:', error);
     return new Response(JSON.stringify({ 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error',
