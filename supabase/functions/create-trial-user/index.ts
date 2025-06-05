@@ -46,18 +46,6 @@ serve(async (req) => {
 
     console.log(`🔧 Generated MAC address from name "${customerData.name}": ${generatedMacAddress}`)
 
-    // Generate IPTV credentials
-    const username = customerData.name
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .toLowerCase()
-      .substring(0, 10) + Math.floor(Math.random() * 1000)
-    
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    let password = ""
-    for (let i = 0; i < 8; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-
     // Calculate trial dates (24 hours from now)
     const today = new Date()
     const startDate = today.toISOString().split('T')[0]
@@ -87,7 +75,7 @@ serve(async (req) => {
       console.log('⚠️ Failed to get package ID from settings, using fallback:', error)
     }
 
-    // Get reseller name for IPTV API
+    // Get reseller name for trial API
     const { data: resellerData, error: resellerError } = await supabase
       .from('profiles')
       .select('name')
@@ -108,159 +96,291 @@ serve(async (req) => {
       )
     }
 
-    console.log('🎯 Creating trial IPTV user via create-iptv-user function')
-
-    // Call the create-iptv-user function for trial account
-    const { data: iptvResult, error: iptvError } = await supabase.functions.invoke('create-iptv-user', {
-      body: {
-        userParams: {
-          username,
-          password,
-          maxConnections: 1,
-          expiryDate: expiryDate.toISOString(),
-          isTrial: true, // Mark as trial
-          bouquet: packageId,
-          output: "ts",
-          customerName: customerData.name,
-          resellerName: resellerData.name
-        }
-      }
-    })
-
-    if (iptvError || !iptvResult?.success) {
-      console.error('❌ Failed to create trial IPTV user:', iptvError || iptvResult)
+    // Get API configuration
+    const API_KEY = Deno.env.get('IPTV_API_KEY')
+    const PANEL_URL = Deno.env.get('IPTV_PANEL_URL')
+    
+    if (!API_KEY) {
+      console.error('❌ IPTV API key not configured')
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'Failed to create trial IPTV user' 
+          error: 'IPTV API key not configured'
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
-        }
+          status: 500,
+        },
       )
     }
 
-    console.log('✅ Trial IPTV user created successfully')
-
-    // Extract credentials from API response (if provided) or use generated ones
-    const finalUsername = iptvResult.user?.username || username
-    const finalPassword = iptvResult.user?.password || password
-    const m3uUrl = iptvResult.user?.m3u_url
-
-    console.log(`🔐 Final trial credentials: ${finalUsername} / ${finalPassword}`)
-
-    // Create HighLevel contact with trial credentials if needed
-    let contactId = null
-    if (customerData.highlevelContactId) {
-      contactId = customerData.highlevelContactId
-    } else {
-      console.log('🔄 Creating HighLevel contact for trial user...')
-      try {
-        const { data: hlData, error: hlError } = await supabase.functions.invoke('create-highlevel-contact', {
-          body: {
-            customerName: customerData.name,
-            customerEmail: customerData.email,
-            resellerId: resellerId,
-            iptvCredentials: {
-              username: finalUsername,
-              password: finalPassword,
-              m3uUrl: m3uUrl
-            }
-          }
-        })
-
-        if (!hlError && hlData?.success) {
-          contactId = hlData.contactId
-          console.log('✅ HighLevel contact created:', contactId)
-        }
-      } catch (error) {
-        console.log('⚠️ HighLevel contact creation failed:', error)
-      }
+    if (!PANEL_URL) {
+      console.error('❌ IPTV Panel URL not configured')
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'IPTV Panel URL not configured'
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 500,
+        },
+      )
     }
 
-    // Insert trial customer into database
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .insert({
-        reseller_id: resellerId,
-        name: customerData.name,
-        email: customerData.email,
-        mac_address: generatedMacAddress, // Use the generated MAC address
-        device_type: customerData.deviceType || 'Smart TV',
-        plan_duration: 1, // Duration is not relevant for trials, but keep it as 1
-        start_date: startDate,
-        expiration_date: expirationDate,
-        username: finalUsername,
-        password: finalPassword,
-        m3u_url: m3uUrl,
-        highlevel_contact_id: contactId,
-        status: 'active',
-        is_trial: true, // Mark as trial account
-        trial_created_at: new Date().toISOString(),
-        is_deactivated: false
+    console.log('🎯 Creating trial IPTV user via direct API call')
+
+    // Prepare trial API data
+    const trialData = {
+      mac: generatedMacAddress,
+      sub_id: "8", // Trial subscription ID
+      comment: `Trial - ${customerData.name} | Reseller: ${resellerData.name}`,
+      bouq_list: [],
+      type: "lines",
+      bouq_custom: packageId,
+      country: "ALL"
+    }
+
+    console.log('📋 Trial API data:', trialData)
+
+    try {
+      // Construct the trial API URL (based on the format: https://my8k.me/api.php?action=add_new&data=...)
+      const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '')
+      const apiUrl = new URL(`${baseUrl}/api.php`)
+      apiUrl.searchParams.append('action', 'add_new')
+      apiUrl.searchParams.append('data', JSON.stringify(trialData))
+      apiUrl.searchParams.append('api_key', API_KEY)
+      
+      console.log(`🔗 Trial API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`)
+      
+      const response = await fetch(apiUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'IPTV-Management-System/1.0',
+          'Accept': 'application/json, text/plain, */*',
+          'Cache-Control': 'no-cache',
+        },
+        signal: AbortSignal.timeout(30000), // 30 second timeout
       })
-      .select()
-      .single()
+      
+      const responseText = await response.text()
+      console.log(`📡 Trial API Response Status: ${response.status}`)
+      console.log(`📡 Trial API Response: ${responseText}`)
 
-    if (customerError) {
-      console.error('❌ Error creating trial customer record:', customerError)
+      if (!response.ok) {
+        console.log(`❌ Trial API HTTP Error: ${response.status} - ${response.statusText}`)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Trial API HTTP ${response.status}: ${response.statusText}`,
+            debug_info: {
+              panel_url: PANEL_URL,
+              package_id: packageId,
+              response_text: responseText
+            }
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        )
+      }
+
+      // Try to parse the response
+      let trialApiResult
+      try {
+        trialApiResult = JSON.parse(responseText)
+        console.log(`📋 Parsed trial API response:`, trialApiResult)
+      } catch (parseError) {
+        console.log(`❌ Failed to parse trial API response as JSON: ${parseError}`)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Invalid trial API response format: ${responseText.substring(0, 100)}`,
+            debug_info: {
+              panel_url: PANEL_URL,
+              package_id: packageId,
+              full_response: responseText
+            }
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        )
+      }
+
+      // Check for API errors
+      if (trialApiResult.error || trialApiResult.status === 'error') {
+        const errorMsg = trialApiResult.error || trialApiResult.message || 'Trial API returned error status'
+        console.log(`❌ Trial API Error: ${errorMsg}`)
+        
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Trial API Error: ${errorMsg}`,
+            debug_info: {
+              panel_url: PANEL_URL,
+              package_id: packageId,
+              api_response: trialApiResult
+            }
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 400,
+          },
+        )
+      }
+
+      console.log('✅ Trial API call successful')
+
+      // Generate credentials for trial account (since trial API might not return them)
+      const username = customerData.name
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .toLowerCase()
+        .substring(0, 10) + Math.floor(Math.random() * 1000)
+      
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+      let password = ""
+      for (let i = 0; i < 8; i++) {
+        password += chars.charAt(Math.floor(Math.random() * chars.length))
+      }
+
+      // Generate M3U URL
+      const m3uUrl = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`
+
+      console.log(`🔐 Generated trial credentials: ${username} / ${password}`)
+
+      // Create HighLevel contact with trial credentials if needed
+      let contactId = null
+      if (customerData.highlevelContactId) {
+        contactId = customerData.highlevelContactId
+      } else {
+        console.log('🔄 Creating HighLevel contact for trial user...')
+        try {
+          const { data: hlData, error: hlError } = await supabase.functions.invoke('create-highlevel-contact', {
+            body: {
+              customerName: customerData.name,
+              customerEmail: customerData.email,
+              resellerId: resellerId,
+              iptvCredentials: {
+                username: username,
+                password: password,
+                m3uUrl: m3uUrl
+              }
+            }
+          })
+
+          if (!hlError && hlData?.success) {
+            contactId = hlData.contactId
+            console.log('✅ HighLevel contact created:', contactId)
+          }
+        } catch (error) {
+          console.log('⚠️ HighLevel contact creation failed:', error)
+        }
+      }
+
+      // Insert trial customer into database
+      const { data: customer, error: customerError } = await supabase
+        .from('customers')
+        .insert({
+          reseller_id: resellerId,
+          name: customerData.name,
+          email: customerData.email,
+          mac_address: generatedMacAddress,
+          device_type: customerData.deviceType || 'Smart TV',
+          plan_duration: 1, // Duration is not relevant for trials, but keep it as 1
+          start_date: startDate,
+          expiration_date: expirationDate,
+          username: username,
+          password: password,
+          m3u_url: m3uUrl,
+          highlevel_contact_id: contactId,
+          status: 'active',
+          is_trial: true,
+          trial_created_at: new Date().toISOString(),
+          is_deactivated: false
+        })
+        .select()
+        .single()
+
+      if (customerError) {
+        console.error('❌ Error creating trial customer record:', customerError)
+        return new Response(
+          JSON.stringify({ 
+            success: false, 
+            error: `Failed to create trial customer record: ${customerError.message}` 
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500 
+          }
+        )
+      }
+
+      console.log('✅ Trial customer record created successfully:', customer.id)
+
+      // Send trial credentials via HighLevel if contact ID is available
+      if (contactId) {
+        console.log('📨 Sending trial credentials via HighLevel')
+        try {
+          await supabase.functions.invoke('send-highlevel-message', {
+            body: {
+              contactId,
+              customerName: customerData.name,
+              username: username,
+              password: password,
+              m3uUrl: m3uUrl,
+              resellerId: resellerId,
+              messageType: 'SMS'
+            }
+          })
+          console.log('✅ Trial credentials sent via HighLevel')
+        } catch (error) {
+          console.log('⚠️ Failed to send trial credentials via HighLevel:', error)
+        }
+      }
+
+      console.log('🎉 Trial account creation completed successfully')
+
       return new Response(
         JSON.stringify({ 
-          success: false, 
-          error: `Failed to create trial customer record: ${customerError.message}` 
+          success: true, 
+          message: '24-hour trial account created successfully',
+          customer: {
+            id: customer.id,
+            username: username,
+            password: password,
+            expirationDate: expirationDate,
+            m3uUrl: m3uUrl,
+            isTrial: true,
+            macAddress: generatedMacAddress
+          }
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500 
+          status: 200 
         }
       )
-    }
 
-    console.log('✅ Trial customer record created successfully:', customer.id)
-
-    // Send trial credentials via HighLevel if contact ID is available
-    if (contactId) {
-      console.log('📨 Sending trial credentials via HighLevel')
-      try {
-        await supabase.functions.invoke('send-highlevel-message', {
-          body: {
-            contactId,
-            customerName: customerData.name,
-            username: finalUsername,
-            password: finalPassword,
-            m3uUrl: m3uUrl,
-            resellerId: resellerId,
-            messageType: 'SMS'
+    } catch (error) {
+      console.error('💥 Error during trial API call:', error)
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Trial API call failed: ${error.message}`,
+          debug_info: {
+            panel_url: PANEL_URL,
+            package_id: packageId,
+            error_details: error.stack
           }
-        })
-        console.log('✅ Trial credentials sent via HighLevel')
-      } catch (error) {
-        console.log('⚠️ Failed to send trial credentials via HighLevel:', error)
-      }
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400,
+        },
+      )
     }
-
-    console.log('🎉 Trial account creation completed successfully')
-
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: '24-hour trial account created successfully',
-        customer: {
-          id: customer.id,
-          username: finalUsername,
-          password: finalPassword,
-          expirationDate: expirationDate,
-          m3uUrl: m3uUrl,
-          isTrial: true,
-          macAddress: generatedMacAddress
-        }
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
-      }
-    )
 
   } catch (error) {
     console.error('💥 Error in create-trial-user function:', error)
