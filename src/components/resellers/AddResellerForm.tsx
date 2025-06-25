@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { ProviderSelect } from '@/components/customers/ProviderSelect';
 import {
   Form,
   FormControl,
@@ -21,6 +22,9 @@ const addResellerSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   credits: z.number().min(0, 'Credits must be a positive number').default(0),
+  provider: z.enum(['8k', 'trex'], {
+    required_error: 'Please select a provider',
+  }),
 });
 
 type AddResellerFormData = z.infer<typeof addResellerSchema>;
@@ -39,6 +43,7 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
       email: '',
       password: '',
       credits: 0,
+      provider: '8k',
     },
   });
 
@@ -64,6 +69,7 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
           email: data.email,
           password: data.password,
           credits: data.credits,
+          provider: data.provider,
         },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -141,6 +147,24 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
               <FormLabel>Password</FormLabel>
               <FormControl>
                 <Input placeholder="Enter password" type="password" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="provider"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>IPTV Provider</FormLabel>
+              <FormControl>
+                <ProviderSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  disabled={isLoading}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

@@ -90,14 +90,23 @@ serve(async (req) => {
     console.log('Admin verified, parsing request body');
 
     // Parse the request body
-    const { name, email, password, credits } = await req.json();
+    const { name, email, password, credits, provider } = await req.json();
 
-    console.log('Request data:', { name, email, credits });
+    console.log('Request data:', { name, email, credits, provider });
 
     // Validate required fields
     if (!email || !password || !name) {
       console.log('Missing required fields');
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate provider
+    if (provider && !['8k', 'trex'].includes(provider)) {
+      console.log('Invalid provider');
+      return new Response(JSON.stringify({ error: 'Invalid provider. Must be 8k or trex' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -134,12 +143,13 @@ serve(async (req) => {
 
     console.log('User created:', authData.user.id);
 
-    // Update the profile with the correct credits using admin client
+    // Update the profile with the correct credits and provider using admin client
     const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
       .update({ 
         credits: credits || 0,
-        name: name 
+        name: name,
+        provider: provider || '8k'
       })
       .eq('id', authData.user.id);
 

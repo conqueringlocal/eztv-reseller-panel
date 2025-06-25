@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -65,6 +66,11 @@ export default function AdminResellers() {
     setIsAddResellerModalOpen(false);
     refreshData();
   };
+
+  // Format provider display
+  const formatProvider = (provider: string) => {
+    return provider === '8k' ? '8K' : provider === 'trex' ? 'Trex' : provider;
+  };
   
   return (
     <DashboardLayout>
@@ -99,6 +105,7 @@ export default function AdminResellers() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
+                  <TableHead>Provider</TableHead>
                   <TableHead>Credits</TableHead>
                   <TableHead>Connections</TableHead>
                   <TableHead>Branding</TableHead>
@@ -108,7 +115,7 @@ export default function AdminResellers() {
               <TableBody>
                 {filteredResellers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-6 text-gray-500">
+                    <TableCell colSpan={7} className="text-center py-6 text-gray-500">
                       No resellers found matching your search.
                     </TableCell>
                   </TableRow>
@@ -117,6 +124,11 @@ export default function AdminResellers() {
                     <TableRow key={reseller.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium">{reseller.name}</TableCell>
                       <TableCell>{reseller.email}</TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {formatProvider(reseller.provider || '8k')}
+                        </span>
+                      </TableCell>
                       <TableCell>
                         {hasLowCredits(reseller.credits) ? (
                           <div className="flex items-center">
@@ -186,7 +198,7 @@ export default function AdminResellers() {
           <DialogHeader>
             <DialogTitle>Add New Reseller</DialogTitle>
             <DialogDescription>
-              Create a new reseller account with login credentials and initial credits.
+              Create a new reseller account with login credentials, initial credits, and IPTV provider selection.
             </DialogDescription>
           </DialogHeader>
           <AddResellerForm onSuccess={handleAddResellerSuccess} />
