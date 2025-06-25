@@ -33,6 +33,9 @@ export default function ResellerCustomers() {
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
 
+  // Check if user can create trials (only Trex-enabled resellers)
+  const canCreateTrials = user?.provider === 'trex';
+
   // Handle customer cancel
   const handleCancelCustomer = async (customerId: string) => {
     console.log(`🚫 ResellerCustomers: Cancel request for customer ID: ${customerId}`);
@@ -145,7 +148,7 @@ export default function ResellerCustomers() {
       // In a real implementation, this would validate the token and set up the session
     }
   }, []);
-
+  
   return (
     <DashboardLayout>
       <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-center">
@@ -154,13 +157,15 @@ export default function ResellerCustomers() {
           <p className="text-gray-500">Manage all your IPTV customers</p>
         </div>
         <div className="flex space-x-2 mt-4 sm:mt-0">
-          <Button 
-            onClick={() => setIsCreateTrialOpen(true)}
-            variant="outline"
-            className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
-          >
-            Create Trial
-          </Button>
+          {canCreateTrials && (
+            <Button 
+              onClick={() => setIsCreateTrialOpen(true)}
+              variant="outline"
+              className="bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+            >
+              Create Trial
+            </Button>
+          )}
           <Button 
             onClick={() => setIsAddCustomerOpen(true)}
           >
@@ -235,18 +240,20 @@ export default function ResellerCustomers() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Trial Dialog */}
-      <Dialog open={isCreateTrialOpen} onOpenChange={setIsCreateTrialOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Trial Account</DialogTitle>
-            <DialogDescription>
-              Create a free 30-day trial account for a potential customer. No credits will be consumed.
-            </DialogDescription>
-          </DialogHeader>
-          <CreateTrialForm onSuccess={() => setIsCreateTrialOpen(false)} />
-        </DialogContent>
-      </Dialog>
+      {/* Create Trial Dialog - Only show if user can create trials */}
+      {canCreateTrials && (
+        <Dialog open={isCreateTrialOpen} onOpenChange={setIsCreateTrialOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Trial Account</DialogTitle>
+              <DialogDescription>
+                Create a free 24-hour trial account for a potential customer. No credits will be consumed.
+              </DialogDescription>
+            </DialogHeader>
+            <CreateTrialForm onSuccess={() => setIsCreateTrialOpen(false)} />
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Renew Customer Dialog */}
       {customerToRenew && (

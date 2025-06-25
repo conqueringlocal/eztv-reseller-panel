@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from "sonner";
@@ -12,6 +11,7 @@ export interface User {
   email: string;
   role: UserRole;
   credits?: number;
+  provider?: string; // Add provider field
 }
 
 interface AuthContextType {
@@ -79,7 +79,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: data.name,
           email: data.email,
           role: data.role,
-          credits: data.credits
+          credits: data.credits,
+          provider: data.provider // Include provider in user object
         });
       }
     } catch (error) {

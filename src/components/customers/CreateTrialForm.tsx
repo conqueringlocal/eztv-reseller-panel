@@ -10,15 +10,11 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useApp } from '@/contexts/AppContext';
 import { supabase } from '@/integrations/supabase/client';
-import { ProviderSelect } from './ProviderSelect';
 
 const formSchema = z.object({
   name: z.string().min(2, 'Customer name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
   deviceType: z.string().min(1, 'Device type is required'),
-  provider: z.enum(['8k', 'trex'], {
-    required_error: 'Please select a provider',
-  }),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -38,7 +34,6 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       name: '',
       email: '',
       deviceType: 'Smart TV',
-      provider: '8k',
     },
   });
 
@@ -48,12 +43,15 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       return;
     }
 
+    // Use the reseller's assigned provider
+    const provider = user.provider || 'trex'; // Default to 'trex' since only Trex resellers can access this form
+
     setIsLoading(true);
-    console.log(`🎯 Creating 24-hour trial account for: ${data.name} with provider: ${data.provider}`);
+    console.log(`🎯 Creating 24-hour trial account for: ${data.name} with provider: ${provider}`);
 
     try {
-      // Call the appropriate edge function based on provider
-      const functionName = data.provider === 'trex' ? 'create-trex-trial-user' : 'create-trial-user';
+      // Call the appropriate edge function based on reseller's provider
+      const functionName = provider === 'trex' ? 'create-trex-trial-user' : 'create-trial-user';
       
       const { data: result, error } = await supabase.functions.invoke(functionName, {
         body: {
@@ -67,19 +65,19 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       });
 
       if (error) {
-        console.error(`❌ Error creating ${data.provider} trial account:`, error);
-        toast.error(`Failed to create ${data.provider} trial account`);
+        console.error(`❌ Error creating ${provider} trial account:`, error);
+        toast.error(`Failed to create ${provider} trial account`);
         return;
       }
 
       if (!result.success) {
-        console.error(`❌ ${data.provider} trial creation failed:`, result.error);
-        toast.error(result.error || `Failed to create ${data.provider} trial account`);
+        console.error(`❌ ${provider} trial creation failed:`, result.error);
+        toast.error(result.error || `Failed to create ${provider} trial account`);
         return;
       }
 
-      console.log(`✅ ${data.provider} trial account created successfully:`, result);
-      toast.success(`24-hour ${data.provider} trial account created successfully!`);
+      console.log(`✅ ${provider} trial account created successfully:`, result);
+      toast.success(`24-hour ${provider} trial account created successfully!`);
       
       // Refresh data to show the new trial customer
       await refreshData();
@@ -89,33 +87,25 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       onSuccess();
       
     } catch (error) {
-      console.error(`💥 Unexpected error creating ${data.provider} trial:`, error);
+      console.error(`💥 Unexpected error creating ${provider} trial:`, error);
       toast.error('An error occurred while creating the trial account');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Get provider display name
+  const providerDisplayName = user?.provider === 'trex' ? 'Trex' : '8K';
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-        <FormField
-          control={form.control}
-          name="provider"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>IPTV Provider</FormLabel>
-              <FormControl>
-                <ProviderSelect
-                  value={field.value}
-                  onChange={field.onChange}
-                  disabled={isLoading}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+          <h4 className="font-medium text-green-800 mb-2">Provider Information</h4>
+          <p className="text-sm text-green-700">
+            Trial will be created using your assigned provider: <strong>{providerDisplayName}</strong>
+          </p>
+        </div>
 
         <FormField
           control={form.control}
@@ -176,7 +166,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
             Reset
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Creating Trial...' : 'Create 24-Hour Trial'}
+            {isLoading ? 'Creating Trial...' : `Create 24-Hour ${providerDisplayName} Trial`}
           </Button>
         </div>
       </form>

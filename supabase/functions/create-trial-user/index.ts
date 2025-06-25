@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -39,6 +38,81 @@ serve(async (req) => {
       )
     }
 
+    // Get reseller data to verify provider
+    const { data: resellerData, error: resellerError } = await supabase
+      .from('profiles')
+      .select('name, provider')
+      .eq('id', resellerId)
+      .single()
+
+    if (resellerError || !resellerData) {
+      console.error('❌ Error getting reseller data:', resellerError)
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Reseller not found' 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      )
+    }
+
+    // Verify that the reseller has 8K provider (this function is for 8K trials)
+    if (resellerData.provider !== '8k') {
+      console.log(`❌ Reseller provider mismatch. Expected: 8k, Got: ${resellerData.provider}`)
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'This reseller is not authorized to create 8K trial accounts' 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403 
+        }
+      )
+    }
+
+    // Check daily trial limit for 8K provider
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Get the daily trial limit from system settings
+    const { data: trialLimitData, error: trialLimitError } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('id', 'default_trial_daily_limit')
+      .single()
+
+    const dailyLimit = trialLimitData ? parseInt(trialLimitData.value) : 10; // Default to 10
+    console.log(`📊 Daily trial limit for 8K: ${dailyLimit}`)
+
+    // Get current trial count for today
+    const { data: currentLimitData, error: currentLimitError } = await supabase
+      .from('daily_trial_limits')
+      .select('trial_count')
+      .eq('provider', '8k')
+      .eq('date', today)
+      .single()
+
+    const currentTrialCount = currentLimitData ? currentLimitData.trial_count : 0;
+    console.log(`📊 Current 8K trials today: ${currentTrialCount}`)
+
+    // Check if limit is exceeded
+    if (currentTrialCount >= dailyLimit) {
+      console.log(`❌ Daily trial limit exceeded for 8K provider: ${currentTrialCount}/${dailyLimit}`)
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Daily trial limit exceeded for 8K provider (${currentTrialCount}/${dailyLimit})` 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 429 
+        }
+      )
+    }
+
     // Generate MAC address from customer name (remove spaces/special chars, lowercase)
     const generatedMacAddress = customerData.name
       .replace(/[^a-zA-Z0-9]/g, "")
@@ -47,8 +121,7 @@ serve(async (req) => {
     console.log(`🔧 Generated MAC address from name "${customerData.name}": ${generatedMacAddress}`)
 
     // Calculate trial dates (24 hours from now)
-    const today = new Date()
-    const startDate = today.toISOString().split('T')[0]
+    const startDate = today
     
     const expiryDate = new Date()
     expiryDate.setHours(expiryDate.getHours() + 24) // 24 hours trial
@@ -73,27 +146,6 @@ serve(async (req) => {
       }
     } catch (error) {
       console.log('⚠️ Failed to get package ID from settings, using fallback:', error)
-    }
-
-    // Get reseller name for trial API
-    const { data: resellerData, error: resellerError } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', resellerId)
-      .single()
-
-    if (resellerError || !resellerData) {
-      console.error('❌ Error getting reseller data:', resellerError)
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Reseller not found' 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      )
     }
 
     // Get API configuration
@@ -317,7 +369,8 @@ serve(async (req) => {
           status: 'active',
           is_trial: true,
           trial_created_at: new Date().toISOString(),
-          is_deactivated: false
+          is_deactivated: false,
+          provider: '8k' // Set provider to 8K
         })
         .select()
         .single()
@@ -337,6 +390,25 @@ serve(async (req) => {
       }
 
       console.log('✅ Trial customer record created successfully:', customer.id)
+
+      // Update daily trial count for 8K provider
+      try {
+        const { error: updateError } = await supabase
+          .from('daily_trial_limits')
+          .upsert({
+            provider: '8k',
+            date: today,
+            trial_count: currentTrialCount + 1
+          })
+
+        if (updateError) {
+          console.error('⚠️ Failed to update 8K trial count:', updateError)
+        } else {
+          console.log(`✅ Updated 8K trial count: ${currentTrialCount + 1}`)
+        }
+      } catch (error) {
+        console.error('⚠️ Error updating 8K trial count:', error)
+      }
 
       // Send trial credentials via HighLevel if contact ID is available
       if (contactId) {
@@ -372,7 +444,8 @@ serve(async (req) => {
             expirationDate: expirationDate,
             m3uUrl: m3uUrl,
             isTrial: true,
-            macAddress: generatedMacAddress
+            macAddress: generatedMacAddress,
+            provider: '8k'
           }
         }),
         { 

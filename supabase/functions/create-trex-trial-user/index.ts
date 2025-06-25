@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -35,6 +34,42 @@ serve(async (req) => {
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400 
+        }
+      )
+    }
+
+    // Get reseller data to verify provider
+    const { data: resellerData, error: resellerError } = await supabase
+      .from('profiles')
+      .select('name, provider')
+      .eq('id', resellerId)
+      .single()
+
+    if (resellerError || !resellerData) {
+      console.error('❌ Error getting reseller data:', resellerError)
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Reseller not found' 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      )
+    }
+
+    // Verify that the reseller has Trex provider (this function is for Trex trials)
+    if (resellerData.provider !== 'trex') {
+      console.log(`❌ Reseller provider mismatch. Expected: trex, Got: ${resellerData.provider}`)
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'This reseller is not authorized to create Trex trial accounts' 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 403 
         }
       )
     }
@@ -111,27 +146,6 @@ serve(async (req) => {
       }
     } catch (error) {
       console.log('⚠️ Failed to get Trex package ID from settings, using fallback:', error)
-    }
-
-    // Get reseller name for trial API
-    const { data: resellerData, error: resellerError } = await supabase
-      .from('profiles')
-      .select('name')
-      .eq('id', resellerId)
-      .single()
-
-    if (resellerError || !resellerData) {
-      console.error('❌ Error getting reseller data:', resellerError)
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Reseller not found' 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      )
     }
 
     // Get API configuration
