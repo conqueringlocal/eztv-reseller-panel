@@ -75,6 +75,7 @@ export type Database = {
           name: string
           password: string | null
           plan_duration: number
+          provider: string | null
           reseller_id: string
           start_date: string
           status: string | null
@@ -99,6 +100,7 @@ export type Database = {
           name: string
           password?: string | null
           plan_duration: number
+          provider?: string | null
           reseller_id: string
           start_date: string
           status?: string | null
@@ -123,6 +125,7 @@ export type Database = {
           name?: string
           password?: string | null
           plan_duration?: number
+          provider?: string | null
           reseller_id?: string
           start_date?: string
           status?: string | null
@@ -139,6 +142,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      daily_trial_limits: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          provider: string
+          trial_count: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string
+          id?: string
+          provider: string
+          trial_count?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          provider?: string
+          trial_count?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {

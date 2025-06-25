@@ -16,9 +16,21 @@ interface SystemSetting {
 }
 
 export default function AdminSettings() {
+  // 8K Provider settings
   const [apiKey, setApiKey] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [defaultPackageId, setDefaultPackageId] = useState("");
+  
+  // Trex Provider settings
+  const [trexApiKey, setTrexApiKey] = useState("");
+  const [showTrexApiKey, setShowTrexApiKey] = useState(false);
+  const [trexPanelUrl, setTrexPanelUrl] = useState("");
+  const [trexDefaultPackageId, setTrexDefaultPackageId] = useState("");
+  
+  // Trial limits
+  const [eightKTrialLimit, setEightKTrialLimit] = useState("");
+  const [trexTrialLimit, setTrexTrialLimit] = useState("");
+  
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -32,7 +44,11 @@ export default function AdminSettings() {
         const { data, error } = await supabase
           .from('system_settings')
           .select('*')
-          .in('id', ['iptv_api_key', 'default_package_id']);
+          .in('id', [
+            'iptv_api_key', 'default_package_id', 
+            'trex_api_key', 'trex_panel_url', 'trex_default_package_id',
+            '8k_trial_daily_limit', 'trex_trial_daily_limit'
+          ]);
         
         if (error) throw error;
         
@@ -44,6 +60,21 @@ export default function AdminSettings() {
               break;
             case 'default_package_id':
               setDefaultPackageId(setting.value);
+              break;
+            case 'trex_api_key':
+              setTrexApiKey(setting.value);
+              break;
+            case 'trex_panel_url':
+              setTrexPanelUrl(setting.value);
+              break;
+            case 'trex_default_package_id':
+              setTrexDefaultPackageId(setting.value);
+              break;
+            case '8k_trial_daily_limit':
+              setEightKTrialLimit(setting.value);
+              break;
+            case 'trex_trial_daily_limit':
+              setTrexTrialLimit(setting.value);
               break;
           }
         });
@@ -79,17 +110,17 @@ export default function AdminSettings() {
   
   const saveApiKey = async () => {
     if (!apiKey.trim()) {
-      toast.error('API Key cannot be empty');
+      toast.error('8K API Key cannot be empty');
       return;
     }
     
     setIsSaving(true);
     try {
-      const success = await saveSetting('iptv_api_key', apiKey, 'IPTV API key for user provisioning');
+      const success = await saveSetting('iptv_api_key', apiKey, '8K IPTV API key for user provisioning');
       if (success) {
-        toast.success('IPTV API Key saved successfully');
+        toast.success('8K IPTV API Key saved successfully');
       } else {
-        toast.error('Failed to save IPTV API Key');
+        toast.error('Failed to save 8K IPTV API Key');
       }
     } finally {
       setIsSaving(false);
@@ -98,17 +129,100 @@ export default function AdminSettings() {
 
   const saveDefaultPackage = async () => {
     if (!defaultPackageId.trim()) {
-      toast.error('Default Package ID cannot be empty');
+      toast.error('8K Default Package ID cannot be empty');
       return;
     }
     
     setIsSaving(true);
     try {
-      const success = await saveSetting('default_package_id', defaultPackageId, 'Default IPTV package ID for new accounts');
+      const success = await saveSetting('default_package_id', defaultPackageId, 'Default 8K IPTV package ID for new accounts');
       if (success) {
-        toast.success('Default Package ID saved successfully');
+        toast.success('8K Default Package ID saved successfully');
       } else {
-        toast.error('Failed to save Default Package ID');
+        toast.error('Failed to save 8K Default Package ID');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveTrexApiKey = async () => {
+    if (!trexApiKey.trim()) {
+      toast.error('Trex API Key cannot be empty');
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      const success = await saveSetting('trex_api_key', trexApiKey, 'Trex IPTV API key for user provisioning');
+      if (success) {
+        toast.success('Trex IPTV API Key saved successfully');
+      } else {
+        toast.error('Failed to save Trex IPTV API Key');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveTrexPanelUrl = async () => {
+    if (!trexPanelUrl.trim()) {
+      toast.error('Trex Panel URL cannot be empty');
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      const success = await saveSetting('trex_panel_url', trexPanelUrl, 'Trex IPTV panel URL for API calls');
+      if (success) {
+        toast.success('Trex Panel URL saved successfully');
+      } else {
+        toast.error('Failed to save Trex Panel URL');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveTrexDefaultPackage = async () => {
+    if (!trexDefaultPackageId.trim()) {
+      toast.error('Trex Default Package ID cannot be empty');
+      return;
+    }
+    
+    setIsSaving(true);
+    try {
+      const success = await saveSetting('trex_default_package_id', trexDefaultPackageId, 'Default Trex IPTV package ID for new accounts');
+      if (success) {
+        toast.success('Trex Default Package ID saved successfully');
+      } else {
+        toast.error('Failed to save Trex Default Package ID');
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveTrialLimits = async () => {
+    setIsSaving(true);
+    try {
+      const promises = [];
+      
+      if (eightKTrialLimit.trim()) {
+        promises.push(saveSetting('8k_trial_daily_limit', eightKTrialLimit, 'Daily trial limit for 8K provider'));
+      }
+      
+      if (trexTrialLimit.trim()) {
+        promises.push(saveSetting('trex_trial_daily_limit', trexTrialLimit, 'Daily trial limit for Trex provider'));
+      }
+      
+      const results = await Promise.all(promises);
+      const allSuccessful = results.every(Boolean);
+      
+      if (allSuccessful) {
+        toast.success('Trial limits saved successfully');
+      } else {
+        toast.error('Failed to save some trial limits');
       }
     } finally {
       setIsSaving(false);
@@ -128,10 +242,10 @@ export default function AdminSettings() {
       </div>
       
       <div className="grid gap-6">
-        {/* IPTV API Settings */}
+        {/* 8K IPTV API Settings */}
         <DashboardCard
-          title="IPTV API Configuration"
-          description="Your IPTV API connection settings"
+          title="8K IPTV API Configuration"
+          description="Your 8K IPTV API connection settings"
         >
           <div className="space-y-4">
             <div>
@@ -212,6 +326,134 @@ export default function AdminSettings() {
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
                 Default package ID used when none is specified in webhook requests
+              </p>
+            </div>
+          </div>
+        </DashboardCard>
+
+        {/* Trex IPTV API Settings */}
+        <DashboardCard
+          title="Trex IPTV API Configuration"
+          description="Your Trex IPTV API connection settings"
+        >
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-medium mb-1.5">Trex API Key</p>
+              <div className="flex gap-2">
+                <Input 
+                  value={trexApiKey} 
+                  onChange={(e) => setTrexApiKey(e.target.value)}
+                  type={showTrexApiKey ? "text" : "password"} 
+                  className="flex-1"
+                  placeholder="Enter your Trex API key" 
+                  disabled={isLoading}
+                />
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowTrexApiKey(!showTrexApiKey)}
+                  disabled={isLoading}
+                >
+                  {showTrexApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                </Button>
+                <Button 
+                  onClick={saveTrexApiKey}
+                  disabled={isLoading || isSaving}
+                >
+                  <Save size={16} className="mr-2" />
+                  Save
+                </Button>
+              </div>
+            </div>
+            
+            <div>
+              <p className="text-sm font-medium mb-1.5">Trex Panel URL</p>
+              <div className="flex gap-2">
+                <Input 
+                  value={trexPanelUrl} 
+                  onChange={(e) => setTrexPanelUrl(e.target.value)}
+                  className="flex-1"
+                  placeholder="https://trex.example.com/api/api.php" 
+                  disabled={isLoading}
+                />
+                <Button 
+                  onClick={saveTrexPanelUrl}
+                  disabled={isLoading || isSaving}
+                >
+                  <Save size={16} className="mr-2" />
+                  Save
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-medium mb-1.5">Trex Default Package ID</p>
+              <div className="flex gap-2">
+                <Input 
+                  value={trexDefaultPackageId} 
+                  onChange={(e) => setTrexDefaultPackageId(e.target.value)}
+                  className="flex-1"
+                  placeholder="Enter default Trex package ID (e.g., 14826)" 
+                  disabled={isLoading}
+                />
+                <Button 
+                  onClick={saveTrexDefaultPackage}
+                  disabled={isLoading || isSaving}
+                >
+                  <Save size={16} className="mr-2" />
+                  Save
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Default package ID used for Trex when none is specified in webhook requests
+              </p>
+            </div>
+          </div>
+        </DashboardCard>
+
+        {/* Trial Limits Settings */}
+        <DashboardCard
+          title="Daily Trial Limits"
+          description="Configure daily trial limits per provider to control costs"
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-medium mb-1.5">8K Daily Trial Limit</p>
+                <Input 
+                  value={eightKTrialLimit} 
+                  onChange={(e) => setEightKTrialLimit(e.target.value)}
+                  type="number"
+                  min="0"
+                  placeholder="50" 
+                  disabled={isLoading}
+                />
+              </div>
+              <div>
+                <p className="text-sm font-medium mb-1.5">Trex Daily Trial Limit</p>
+                <Input 
+                  value={trexTrialLimit} 
+                  onChange={(e) => setTrexTrialLimit(e.target.value)}
+                  type="number"
+                  min="0"
+                  placeholder="10" 
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button 
+                onClick={saveTrialLimits}
+                disabled={isLoading || isSaving}
+              >
+                <Save size={16} className="mr-2" />
+                Save Trial Limits
+              </Button>
+            </div>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-800">
+              <p className="text-sm font-medium">Trial Limit Information</p>
+              <p className="text-xs mt-1">
+                These limits prevent excessive trial creation per provider per day. When the limit is reached, 
+                new trial requests will be rejected with a 429 error until the next day.
               </p>
             </div>
           </div>

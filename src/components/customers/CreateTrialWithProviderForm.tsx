@@ -23,11 +23,11 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>;
 
-interface CreateTrialFormProps {
+interface CreateTrialWithProviderFormProps {
   onSuccess: () => void;
 }
 
-export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
+export function CreateTrialWithProviderForm({ onSuccess }: CreateTrialWithProviderFormProps) {
   const { user } = useAuth();
   const { refreshData } = useApp();
   const [isLoading, setIsLoading] = useState(false);
