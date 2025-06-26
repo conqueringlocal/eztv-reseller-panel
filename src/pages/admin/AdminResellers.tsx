@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -8,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { AddResellerForm } from '@/components/resellers/AddResellerForm';
-import { ChangeProviderDialog } from '@/components/resellers/ChangeProviderDialog';
 import {
   Table,
   TableBody,
@@ -30,10 +30,8 @@ export default function AdminResellers() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedResellerId, setSelectedResellerId] = useState<string | null>(null);
-  const [selectedResellerForProvider, setSelectedResellerForProvider] = useState<any>(null);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [isAddResellerModalOpen, setIsAddResellerModalOpen] = useState(false);
-  const [isChangeProviderModalOpen, setIsChangeProviderModalOpen] = useState(false);
   
   // Filter resellers based on search
   const filteredResellers = resellers.filter(
@@ -67,24 +65,6 @@ export default function AdminResellers() {
   const handleAddResellerSuccess = () => {
     setIsAddResellerModalOpen(false);
     refreshData();
-  };
-
-  // Handle change provider click
-  const handleChangeProvider = (reseller: any) => {
-    setSelectedResellerForProvider(reseller);
-    setIsChangeProviderModalOpen(true);
-  };
-
-  // Handle change provider success
-  const handleChangeProviderSuccess = () => {
-    setIsChangeProviderModalOpen(false);
-    setSelectedResellerForProvider(null);
-    refreshData();
-  };
-
-  // Format provider display
-  const formatProvider = (provider: string) => {
-    return provider === '8k' ? '8K' : provider === 'trex' ? 'Trex' : provider;
   };
   
   return (
@@ -120,7 +100,6 @@ export default function AdminResellers() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Provider</TableHead>
                   <TableHead>Credits</TableHead>
                   <TableHead>Connections</TableHead>
                   <TableHead>Branding</TableHead>
@@ -130,7 +109,7 @@ export default function AdminResellers() {
               <TableBody>
                 {filteredResellers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-6 text-gray-500">
+                    <TableCell colSpan={6} className="text-center py-6 text-gray-500">
                       No resellers found matching your search.
                     </TableCell>
                   </TableRow>
@@ -139,11 +118,6 @@ export default function AdminResellers() {
                     <TableRow key={reseller.id} className="hover:bg-gray-50">
                       <TableCell className="font-medium">{reseller.name}</TableCell>
                       <TableCell>{reseller.email}</TableCell>
-                      <TableCell>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {formatProvider(reseller.provider || '8k')}
-                        </span>
-                      </TableCell>
                       <TableCell>
                         {hasLowCredits(reseller.credits) ? (
                           <div className="flex items-center">
@@ -183,13 +157,6 @@ export default function AdminResellers() {
                       </TableCell>
                       <TableCell>
                         <div className="space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleChangeProvider(reseller)}
-                          >
-                            Change Provider
-                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -247,16 +214,6 @@ export default function AdminResellers() {
             />
           </DialogContent>
         </Dialog>
-      )}
-
-      {/* Change Provider Dialog */}
-      {selectedResellerForProvider && (
-        <ChangeProviderDialog
-          open={isChangeProviderModalOpen}
-          onOpenChange={setIsChangeProviderModalOpen}
-          reseller={selectedResellerForProvider}
-          onSuccess={handleChangeProviderSuccess}
-        />
       )}
     </DashboardLayout>
   );

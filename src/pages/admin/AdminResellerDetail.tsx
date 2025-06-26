@@ -12,6 +12,7 @@ import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
 import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
 import { SsoTokenManager } from '@/components/sso/SsoTokenManager';
+import { ChangeProviderDialog } from '@/components/resellers/ChangeProviderDialog';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -33,6 +34,7 @@ export default function AdminResellerDetail() {
   const [isAddCreditsOpen, setIsAddCreditsOpen] = useState(false);
   const [isRemoveCreditsOpen, setIsRemoveCreditsOpen] = useState(false);
   const [isCrmManagerOpen, setIsCrmManagerOpen] = useState(false);
+  const [isChangeProviderOpen, setIsChangeProviderOpen] = useState(false);
   const [selectedCustomerForCrm, setSelectedCustomerForCrm] = useState<any>(null);
   
   // Get reseller data
@@ -104,6 +106,17 @@ export default function AdminResellerDetail() {
       toast.error('An error occurred while syncing to CRM');
     }
   };
+
+  // Handle change provider success
+  const handleChangeProviderSuccess = () => {
+    setIsChangeProviderOpen(false);
+    refreshData();
+  };
+
+  // Format provider display
+  const formatProvider = (provider: string) => {
+    return provider === '8k' ? '8K' : provider === 'trex' ? 'Trex' : provider;
+  };
   
   return (
     <DashboardLayout>
@@ -118,6 +131,11 @@ export default function AdminResellerDetail() {
           <div>
             <h1 className="text-2xl font-bold mb-1">{reseller.name}</h1>
             <p className="text-gray-500">{reseller.email}</p>
+            <div className="mt-2">
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                Provider: {formatProvider(reseller.provider || '8k')}
+              </span>
+            </div>
           </div>
           <div className="mt-4 sm:mt-0 flex gap-2 flex-col sm:flex-row">
             <div className="mb-2 sm:mb-0">
@@ -145,7 +163,7 @@ export default function AdminResellerDetail() {
         <TabsList className="mb-6">
           <TabsTrigger value="customers">Customers</TabsTrigger>
           <TabsTrigger value="credits">Credit History</TabsTrigger>
-          <TabsTrigger value="crm">CRM Integration</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
           <TabsTrigger value="sso">SSO Tokens</TabsTrigger>
         </TabsList>
         <TabsContent value="customers">
@@ -172,8 +190,35 @@ export default function AdminResellerDetail() {
             <CreditLogTable logs={resellerLogs} />
           </DashboardCard>
         </TabsContent>
-        <TabsContent value="crm">
+        <TabsContent value="settings">
           <div className="space-y-6">
+            <DashboardCard
+              title="Provider Management"
+              description="Manage the IPTV provider for this reseller"
+            >
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">
+                      Current Provider: <span className="font-bold">{formatProvider(reseller.provider || '8k')}</span>
+                    </p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      This affects all IPTV operations for this reseller and their customers.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsChangeProviderOpen(true)}
+                    className="bg-blue-100 border-blue-300 text-blue-700 hover:bg-blue-200"
+                  >
+                    Change Provider
+                  </Button>
+                </div>
+              </div>
+            </DashboardCard>
+            
+            <Separator />
+            
             <HighLevelSettings resellerId={reseller.id} isAdminView={true} />
             
             <Separator />
@@ -219,6 +264,14 @@ export default function AdminResellerDetail() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Change Provider Dialog */}
+      <ChangeProviderDialog
+        open={isChangeProviderOpen}
+        onOpenChange={setIsChangeProviderOpen}
+        reseller={reseller}
+        onSuccess={handleChangeProviderSuccess}
+      />
 
       {/* CRM Contact Manager Dialog */}
       {selectedCustomerForCrm && (

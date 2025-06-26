@@ -28,7 +28,6 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [availableCredits, setAvailableCredits] = useState<number>(0);
-  const [parentProvider, setParentProvider] = useState<string>('8k');
   const [loadingCredits, setLoadingCredits] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -37,37 +36,36 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
     credits: 100,
   });
 
-  // Fetch available credits and provider when dialog opens
+  // Fetch available credits when dialog opens
   useEffect(() => {
     if (open && user) {
-      fetchAvailableCreditsAndProvider();
+      fetchAvailableCredits();
     }
   }, [open, user]);
 
-  const fetchAvailableCreditsAndProvider = async () => {
+  const fetchAvailableCredits = async () => {
     if (!user) return;
     
     setLoadingCredits(true);
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('credits, provider')
+        .select('credits')
         .eq('id', user.id)
         .single();
 
       if (error) {
-        console.error('Error fetching credits and provider:', error);
+        console.error('Error fetching credits:', error);
         toast({
           title: "Error",
-          description: "Failed to fetch your available credits and provider",
+          description: "Failed to fetch your available credits",
           variant: "destructive",
         });
       } else {
         setAvailableCredits(data.credits || 0);
-        setParentProvider(data.provider || '8k');
       }
     } catch (error) {
-      console.error('Unexpected error fetching credits and provider:', error);
+      console.error('Unexpected error fetching credits:', error);
     } finally {
       setLoadingCredits(false);
     }
@@ -141,7 +139,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       
       toast({
         title: "Success",
-        description: `Sub-reseller created successfully with ${parentProvider} provider! ${formData.credits} credits allocated. You have ${data.parentCreditsRemaining || 0} credits remaining.`,
+        description: `Sub-reseller created successfully! ${formData.credits} credits allocated. You have ${data.parentCreditsRemaining || 0} credits remaining.`,
       });
 
       // Reset form and close dialog
@@ -181,7 +179,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Add Sub-Reseller</DialogTitle>
           <DialogDescription>
-            Create a new sub-reseller account under your organization. The sub-reseller will automatically inherit your {parentProvider} provider.
+            Create a new sub-reseller account under your organization. The sub-reseller will automatically inherit your settings.
           </DialogDescription>
         </DialogHeader>
         
@@ -195,9 +193,6 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
             <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
               <p className="text-sm font-medium text-blue-900">
                 Available Credits: <span className="font-bold">{availableCredits}</span>
-              </p>
-              <p className="text-sm font-medium text-blue-900 mt-1">
-                Provider: <span className="font-bold">{parentProvider}</span> (will be inherited)
               </p>
               <p className="text-xs text-blue-700 mt-1">
                 Credits will be transferred from your account to the new sub-reseller.
