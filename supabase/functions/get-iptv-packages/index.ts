@@ -1,5 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,16 +20,57 @@ serve(async (req) => {
   }
 
   try {
-    // Get configuration from environment
-    const API_KEY = Deno.env.get('IPTV_API_KEY')
-    const PANEL_URL = Deno.env.get('IPTV_PANEL_URL')
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+
+    // Get the authorization header to identify the reseller
+    const authHeader = req.headers.get('Authorization');
+    let provider = '8k'; // Default provider
+    
+    if (authHeader) {
+      try {
+        const token = authHeader.replace('Bearer ', '');
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        
+        if (!authError && user) {
+          // Get reseller's provider from profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('provider')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile?.provider) {
+            provider = profile.provider;
+          }
+        }
+      } catch (error) {
+        console.log('Could not determine provider from auth, using default 8k');
+      }
+    }
+
+    console.log(`🔍 Loading packages for provider: ${provider}`);
+
+    // Get API credentials based on provider
+    let API_KEY: string | undefined;
+    let PANEL_URL: string | undefined;
+
+    if (provider === 'trex') {
+      API_KEY = Deno.env.get('TREX_API_KEY');
+      PANEL_URL = Deno.env.get('TREX_PANEL_URL');
+    } else {
+      API_KEY = Deno.env.get('IPTV_API_KEY');
+      PANEL_URL = Deno.env.get('IPTV_PANEL_URL');
+    }
     
     if (!API_KEY) {
-      console.error('IPTV API key not configured')
+      console.error(`${provider.toUpperCase()} API key not configured`);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'IPTV API key not configured'
+          error: `${provider.toUpperCase()} API key not configured`
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -38,11 +80,11 @@ serve(async (req) => {
     }
 
     if (!PANEL_URL) {
-      console.error('IPTV Panel URL not configured')
+      console.error(`${provider.toUpperCase()} Panel URL not configured`);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: 'IPTV Panel URL not configured. Please set IPTV_PANEL_URL to https://my8k.me/api/api.php'
+          error: `${provider.toUpperCase()} Panel URL not configured`
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -51,26 +93,34 @@ serve(async (req) => {
       )
     }
 
-    console.log('Fetching IPTV packages from:', PANEL_URL)
-    console.log('Using API key format')
+    console.log(`Fetching packages from ${provider.toUpperCase()} provider:`, PANEL_URL)
 
     let packages: PackageInfo[] = [];
     let lastError = '';
     let successfulEndpoint = '';
 
-    // Try different actions in order of preference
-    const actions = ['bouquet', 'packages', 'categories'];
+    // Provider-specific API actions
+    const actions = provider === 'trex' ? ['bouquet', 'packages'] : ['bouquet', 'packages', 'categories'];
 
     for (const action of actions) {
       try {
-        console.log(`Trying action: ${action}`)
+        console.log(`Trying ${provider} action: ${action}`)
         
-        // Construct the URL with query parameters
-        const apiUrl = new URL(PANEL_URL);
-        apiUrl.searchParams.append('action', action);
-        apiUrl.searchParams.append('api_key', API_KEY);
+        let apiUrl: URL;
         
-        console.log(`Full URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
+        if (provider === 'trex') {
+          // Trex uses a different API structure
+          apiUrl = new URL(PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '') + '/api/api.php');
+          apiUrl.searchParams.append('action', action);
+          apiUrl.searchParams.append('api_key', API_KEY);
+        } else {
+          // 8K uses the standard structure
+          apiUrl = new URL(PANEL_URL);
+          apiUrl.searchParams.append('action', action);
+          apiUrl.searchParams.append('api_key', API_KEY);
+        }
+        
+        console.log(`🔗 ${provider.toUpperCase()} API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
         
         const response = await fetch(apiUrl.toString(), {
           method: 'GET',
@@ -79,13 +129,12 @@ serve(async (req) => {
             'Accept': 'application/json, text/plain, */*',
             'Cache-Control': 'no-cache',
           },
-          // Add timeout
           signal: AbortSignal.timeout(10000), // 10 second timeout
         });
         
         const responseText = await response.text();
-        console.log(`Response Status: ${response.status}`);
-        console.log(`Response preview: ${responseText.substring(0, 200)}...`);
+        console.log(`📡 ${provider.toUpperCase()} Response Status: ${response.status}`);
+        console.log(`📡 ${provider.toUpperCase()} Response preview: ${responseText.substring(0, 200)}...`);
 
         if (!response.ok) {
           lastError = `HTTP ${response.status}: ${response.statusText}`;
@@ -114,7 +163,7 @@ serve(async (req) => {
         let data;
         try {
           data = JSON.parse(responseText);
-          console.log(`Parsed JSON data keys:`, Object.keys(data));
+          console.log(`📋 Parsed JSON data keys:`, Object.keys(data));
         } catch (parseError) {
           lastError = `JSON parse error: ${parseError.message}`;
           console.log(`Failed with: ${lastError}`);
@@ -178,7 +227,7 @@ serve(async (req) => {
         if (extractedPackages.length > 0) {
           packages = extractedPackages;
           successfulEndpoint = `${action} action`;
-          console.log(`✅ SUCCESS: Found ${packages.length} packages using ${successfulEndpoint}`);
+          console.log(`✅ SUCCESS: Found ${packages.length} packages using ${successfulEndpoint} for ${provider}`);
           break;
         } else {
           lastError = `No packages found in ${action} response`;
@@ -192,57 +241,49 @@ serve(async (req) => {
       }
     }
 
-    // If no packages found from any action, provide default packages
+    // If no packages found from any action, provide provider-specific default packages
     if (packages.length === 0) {
-      console.log(`❌ No packages found from any API action.`);
+      console.log(`❌ No packages found from any ${provider.toUpperCase()} API action.`);
       console.log(`Last error: ${lastError}`);
       console.log(`Panel URL used: ${PANEL_URL}`);
-      console.log('Using default package options');
+      console.log(`Using default ${provider} package options`);
       
-      packages = [
-        { 
-          id: 'basic', 
-          name: 'Basic IPTV Package', 
-          description: 'Standard channels and content' 
-        },
-        { 
-          id: 'premium', 
-          name: 'Premium IPTV Package', 
-          description: 'Premium channels with HD quality' 
-        },
-        { 
-          id: 'sports', 
-          name: 'Sports Package', 
-          description: 'Sports channels and events' 
-        },
-        { 
-          id: 'movies', 
-          name: 'Movies & Entertainment', 
-          description: 'Movie channels and on-demand content' 
-        },
-        { 
-          id: 'international', 
-          name: 'International Package', 
-          description: 'Global channels and content' 
-        }
-      ];
+      if (provider === 'trex') {
+        packages = [
+          { id: '14826', name: 'Trex Premium Package', description: 'Premium IPTV channels with HD quality' },
+          { id: '14827', name: 'Trex Sports Package', description: 'Sports channels and live events' },
+          { id: '14828', name: 'Trex Entertainment', description: 'Movies and entertainment content' },
+          { id: '14829', name: 'Trex International', description: 'Global channels and content' },
+          { id: '14830', name: 'Trex Basic Package', description: 'Standard channels package' }
+        ];
+      } else {
+        packages = [
+          { id: 'basic', name: '8K Basic IPTV Package', description: 'Standard channels and content' },
+          { id: 'premium', name: '8K Premium IPTV Package', description: 'Premium channels with HD quality' },
+          { id: 'sports', name: '8K Sports Package', description: 'Sports channels and events' },
+          { id: 'movies', name: '8K Movies & Entertainment', description: 'Movie channels and on-demand content' },
+          { id: 'international', name: '8K International Package', description: 'Global channels and content' }
+        ];
+      }
     }
 
-    console.log(`📦 Returning ${packages.length} packages`);
+    console.log(`📦 Returning ${packages.length} packages for ${provider.toUpperCase()}`);
     console.log(`Source: ${successfulEndpoint || 'default'}`);
     
     return new Response(
       JSON.stringify({ 
         success: true, 
         packages: packages,
-        message: `Found ${packages.length} available packages`,
+        message: `Found ${packages.length} available packages for ${provider.toUpperCase()}`,
         source: packages.length === 5 && !successfulEndpoint ? 'default' : 'api',
+        provider: provider,
         endpoint_used: successfulEndpoint || 'none',
         panel_url: PANEL_URL,
         debug_info: {
           total_actions_tried: actions.length,
           last_error: lastError,
-          auth_format: 'api_key'
+          auth_format: 'api_key',
+          provider_used: provider
         }
       }),
       { 

@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface IptvPackage {
   id: string;
@@ -13,21 +14,25 @@ interface PackageResponse {
   success: boolean;
   packages?: IptvPackage[];
   source?: 'api' | 'default';
+  provider?: string;
   endpoint_used?: string;
   panel_url?: string;
   debug_info?: {
-    total_endpoints_tried: number;
+    total_actions_tried: number;
     last_error: string;
     auth_format: string;
+    provider_used?: string;
   };
   error?: string;
 }
 
 export const useIptvPackages = () => {
+  const { user } = useAuth();
   const [packages, setPackages] = useState<IptvPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<'api' | 'default'>('api');
+  const [provider, setProvider] = useState<string>('8k');
   const [debugInfo, setDebugInfo] = useState<PackageResponse['debug_info'] | null>(null);
 
   const fetchPackages = async () => {
@@ -35,7 +40,7 @@ export const useIptvPackages = () => {
     setError(null);
     
     try {
-      console.log('🚀 Testing IPTV packages connection...');
+      console.log('🚀 Fetching IPTV packages...');
       
       const { data, error } = await supabase.functions.invoke('get-iptv-packages');
       
@@ -58,52 +63,55 @@ export const useIptvPackages = () => {
         console.error('❌ API response error:', errorMsg);
         setError(errorMsg);
         
-        // Enhanced error messaging with testing context
-        if (errorMsg.includes('IPTV_PANEL_URL')) {
-          toast.error('🔧 Configuration Issue: IPTV Panel URL not found. Please check your Supabase secrets.');
-        } else if (errorMsg.includes('IPTV_API_KEY')) {
-          toast.error('🔑 Configuration Issue: IPTV API key not found. Please check your Supabase secrets.');
+        // Enhanced error messaging with provider context
+        const currentProvider = response?.debug_info?.provider_used || user?.provider || '8k';
+        if (errorMsg.includes('API key')) {
+          toast.error(`🔑 Configuration Issue: ${currentProvider.toUpperCase()} API key not found. Please check your Supabase secrets.`);
+        } else if (errorMsg.includes('Panel URL')) {
+          toast.error(`🔧 Configuration Issue: ${currentProvider.toUpperCase()} Panel URL not found. Please check your Supabase secrets.`);
         } else if (errorMsg.includes('HTTP')) {
-          toast.error(`🌐 Connection Issue: ${errorMsg}. Check if your panel URL and credentials are correct.`);
+          toast.error(`🌐 Connection Issue: ${errorMsg}. Check if your ${currentProvider.toUpperCase()} panel URL and credentials are correct.`);
         } else {
-          toast.error(`⚠️ API Error: ${errorMsg}`);
+          toast.error(`⚠️ ${currentProvider.toUpperCase()} API Error: ${errorMsg}`);
         }
         return;
       }
       
       setPackages(response.packages || []);
       setSource(response.source || 'api');
+      setProvider(response.provider || user?.provider || '8k');
       setDebugInfo(response.debug_info || null);
       
       const packageCount = response.packages?.length || 0;
-      console.log(`✅ Test Result: ${packageCount} packages loaded from ${response.source || 'api'}`);
+      console.log(`✅ Loading Result: ${packageCount} packages loaded from ${response.provider?.toUpperCase() || 'Unknown'} provider`);
       
-      // Enhanced success/warning messages for testing
+      // Enhanced success/warning messages with provider context
       if (response.source === 'default') {
-        console.log('⚠️ TEST RESULT: Using fallback packages - API connection failed');
+        console.log(`⚠️ RESULT: Using fallback packages - ${response.provider?.toUpperCase() || 'Unknown'} API connection failed`);
         console.log('🔍 Debug Details:', {
           panel_url: response.panel_url,
-          endpoints_tried: response.debug_info?.total_endpoints_tried,
+          actions_tried: response.debug_info?.total_actions_tried,
           auth_format: response.debug_info?.auth_format,
-          last_error: response.debug_info?.last_error
+          last_error: response.debug_info?.last_error,
+          provider_used: response.debug_info?.provider_used
         });
         
-        toast.warning(`🔄 Test Result: Using fallback packages (${packageCount}). API connection needs troubleshooting.`, {
+        toast.warning(`🔄 Result: Using fallback packages (${packageCount}) for ${response.provider?.toUpperCase() || 'Unknown'}. API connection needs troubleshooting.`, {
           duration: 8000,
         });
       } else {
-        console.log('🎉 TEST SUCCESS: Connected to live IPTV API!');
+        console.log(`🎉 SUCCESS: Connected to live ${response.provider?.toUpperCase() || 'Unknown'} IPTV API!`);
         console.log(`🔗 Active endpoint: ${response.endpoint_used}`);
         console.log(`🌐 Panel URL: ${response.panel_url}`);
         
-        toast.success(`🎯 Test Success! Connected to your IPTV panel and loaded ${packageCount} live packages.`, {
+        toast.success(`🎯 Success! Connected to your ${response.provider?.toUpperCase() || 'Unknown'} panel and loaded ${packageCount} live packages.`, {
           duration: 6000,
         });
       }
       
     } catch (error) {
-      console.error('💥 Unexpected test error:', error);
-      const errorMsg = 'Test failed with unexpected error';
+      console.error('💥 Unexpected error:', error);
+      const errorMsg = 'Failed with unexpected error';
       setError(errorMsg);
       toast.error(`💥 ${errorMsg}: ${error.message}`);
     } finally {
@@ -111,17 +119,18 @@ export const useIptvPackages = () => {
     }
   };
 
-  // Auto-run test on mount
+  // Auto-run fetch on mount and when user changes (provider might change)
   useEffect(() => {
-    console.log('🔄 Initializing IPTV packages test...');
+    console.log('🔄 Initializing IPTV packages fetch...');
     fetchPackages();
-  }, []);
+  }, [user]);
 
   return {
     packages,
     isLoading,
     error,
     source,
+    provider,
     debugInfo,
     refetch: fetchPackages
   };

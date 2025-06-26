@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -59,7 +60,7 @@ serve(async (req) => {
       )
     }
 
-    // Verify that the reseller has Trex provider (this function is for Trex trials)
+    // Verify that the reseller has Trex provider
     if (resellerData.provider !== 'trex') {
       console.log(`❌ Reseller provider mismatch. Expected: trex, Got: ${resellerData.provider}`)
       return new Response(
@@ -113,16 +114,16 @@ serve(async (req) => {
       )
     }
 
-    // Generate MAC address from customer name (remove spaces/special chars, lowercase)
-    const generatedMacAddress = customerData.name
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .toLowerCase()
+    // Generate unique username and password for trial
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 1000);
+    const username = `trial_${customerData.name.toLowerCase().replace(/\s+/g, '')}_${timestamp}_${randomNum}`.substring(0, 32);
+    const password = `trial_${timestamp}_${randomNum}`;
 
-    console.log(`🔧 Generated MAC address from name "${customerData.name}": ${generatedMacAddress}`)
+    console.log(`🔐 Generated Trex trial credentials - Username: ${username}`);
 
     // Calculate trial dates (24 hours from now)
     const startDate = today
-    
     const expiryDate = new Date()
     expiryDate.setHours(expiryDate.getHours() + 24) // 24 hours trial
     const expirationDate = expiryDate.toISOString().split('T')[0]
@@ -180,28 +181,22 @@ serve(async (req) => {
       )
     }
 
-    console.log('🎯 Creating trial Trex user via direct API call')
-
-    // Prepare trial API data using the exact structure for Trex
-    const trialData = {
-      mac: generatedMacAddress,
-      sub_id: "8", // Trial subscription ID as specified
-      comment: `Trial - ${customerData.name} | Reseller: ${resellerData.name}`,
-      bouq_list: [],
-      type: "lines",
-      bouq_custom: packageId,
-      country: "ALL"
-    }
-
-    console.log('📋 Trex trial API data:', trialData)
+    console.log('🎯 Creating trial Trex user via API call using same format as 8K')
 
     try {
-      // Construct the trial API URL using the exact format for Trex
-      const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '')
-      const apiUrl = new URL(`${baseUrl}/api.php`)
-      apiUrl.searchParams.append('action', 'add_new')
-      apiUrl.searchParams.append('data', JSON.stringify(trialData))
-      apiUrl.searchParams.append('api_key', API_KEY)
+      // Use the same API format as 8K for consistency
+      const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
+      const apiUrl = new URL(`${baseUrl}/api/api.php`);
+      
+      // Use the same parameters as 8K for consistency
+      apiUrl.searchParams.append('api_key', API_KEY);
+      apiUrl.searchParams.append('action', 'user_create');
+      apiUrl.searchParams.append('username', username);
+      apiUrl.searchParams.append('password', password);
+      apiUrl.searchParams.append('package_id', packageId);
+      apiUrl.searchParams.append('duration', '1'); // 1 month duration for trial (will be limited by expiry date)
+      apiUrl.searchParams.append('max_connections', '1');
+      apiUrl.searchParams.append('country', 'us');
       
       console.log(`🔗 Trex trial API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`)
       
@@ -238,87 +233,29 @@ serve(async (req) => {
         )
       }
 
-      // Check if the trial creation was successful
-      if (responseText.includes('error') || responseText.includes('fail')) {
-        console.log(`❌ Trex trial API Error in response: ${responseText}`)
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Trex trial API Error: ${responseText}`,
-            debug_info: {
-              panel_url: PANEL_URL,
-              package_id: packageId,
-              api_response: responseText
-            }
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        )
+      // Try to parse as JSON
+      let apiResult;
+      try {
+        apiResult = JSON.parse(responseText);
+      } catch (parseError) {
+        // If it's not JSON, treat as success if no error indicators
+        if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
+          throw new Error(`API Error: ${responseText}`);
+        }
+        apiResult = { success: true, response: responseText };
+      }
+
+      // Check for API errors
+      if (apiResult.error || apiResult.status === 'error') {
+        throw new Error(apiResult.error || apiResult.result || 'Failed to create Trex trial user');
       }
 
       console.log('✅ Trex trial account created successfully')
 
-      // Now retrieve the credentials using the search API
-      console.log('🔍 Retrieving Trex trial account credentials...')
-      
-      const searchUrl = new URL(`${baseUrl}/api_table.php`)
-      searchUrl.searchParams.append('search[value]', generatedMacAddress)
-      searchUrl.searchParams.append('id', 'lines')
-      searchUrl.searchParams.append('filter', '15')
-      searchUrl.searchParams.append('state', '0')
-      
-      console.log(`🔗 Trex credential search URL: ${searchUrl.toString()}`)
-      
-      const credentialResponse = await fetch(searchUrl.toString(), {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'IPTV-Management-System/1.0',
-          'Accept': 'application/json, text/plain, */*',
-          'Cache-Control': 'no-cache',
-        },
-        signal: AbortSignal.timeout(30000),
-      })
-      
-      const credentialResponseText = await credentialResponse.text()
-      console.log(`📡 Trex credential API Response Status: ${credentialResponse.status}`)
-      console.log(`📡 Trex credential API Response: ${credentialResponseText}`)
+      // Generate M3U URL
+      const m3uUrl = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`;
 
-      if (!credentialResponse.ok) {
-        console.log(`❌ Trex credential API HTTP Error: ${credentialResponse.status}`)
-        // Continue with fallback credentials since account was created
-      }
-
-      // Parse credential response and extract username/password
-      let finalUsername = generatedMacAddress // Fallback to MAC address
-      let finalPassword = generatedMacAddress // Fallback to MAC address
-      
-      try {
-        const credentialData = JSON.parse(credentialResponseText)
-        console.log(`📋 Parsed Trex credential data:`, credentialData)
-        
-        // Extract credentials from the API response
-        if (credentialData.data && credentialData.data.length > 0) {
-          const accountData = credentialData.data[0]
-          if (accountData.username) {
-            finalUsername = accountData.username
-          }
-          if (accountData.password) {
-            finalPassword = accountData.password
-          }
-          console.log(`✅ Retrieved Trex credentials from API - Username: ${finalUsername}, Password: ${finalPassword}`)
-        } else {
-          console.log(`⚠️ No Trex account data found in credential response, using MAC address as fallback`)
-        }
-      } catch (parseError) {
-        console.log(`⚠️ Could not parse Trex credential response, using MAC address as fallback: ${parseError}`)
-      }
-
-      // Generate M3U URL using the retrieved or fallback credentials
-      const m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`
-
-      console.log(`🔐 Final Trex trial credentials - Username: ${finalUsername}, Password: ${finalPassword}`)
+      console.log(`🔐 Final Trex trial credentials - Username: ${username}, Password: ${password}`)
       console.log(`🔗 Trex M3U URL: ${m3uUrl}`)
 
       // Create HighLevel contact with trial credentials if needed
@@ -334,8 +271,8 @@ serve(async (req) => {
               customerEmail: customerData.email,
               resellerId: resellerId,
               iptvCredentials: {
-                username: finalUsername,
-                password: finalPassword,
+                username: username,
+                password: password,
                 m3uUrl: m3uUrl
               }
             }
@@ -357,20 +294,24 @@ serve(async (req) => {
           reseller_id: resellerId,
           name: customerData.name,
           email: customerData.email,
-          mac_address: generatedMacAddress,
+          mac_address: null,
           device_type: customerData.deviceType || 'Smart TV',
           plan_duration: 1, // Duration is not relevant for trials, but keep it as 1
           start_date: startDate,
           expiration_date: expirationDate,
-          username: finalUsername,
-          password: finalPassword,
+          username: username,
+          password: password,
           m3u_url: m3uUrl,
           highlevel_contact_id: contactId,
           status: 'active',
           is_trial: true,
           trial_created_at: new Date().toISOString(),
           is_deactivated: false,
-          provider: 'trex' // Set provider to Trex
+          provider: 'trex',
+          customer_group: `trial_${username}`,
+          connection_sequence: 1,
+          max_connections: 1,
+          current_connections: 0
         })
         .select()
         .single()
@@ -418,8 +359,8 @@ serve(async (req) => {
             body: {
               contactId,
               customerName: customerData.name,
-              username: finalUsername,
-              password: finalPassword,
+              username: username,
+              password: password,
               m3uUrl: m3uUrl,
               resellerId: resellerId,
               messageType: 'SMS'
@@ -439,12 +380,11 @@ serve(async (req) => {
           message: '24-hour Trex trial account created successfully',
           customer: {
             id: customer.id,
-            username: finalUsername,
-            password: finalPassword,
+            username: username,
+            password: password,
             expirationDate: expirationDate,
             m3uUrl: m3uUrl,
             isTrial: true,
-            macAddress: generatedMacAddress,
             provider: 'trex'
           }
         }),

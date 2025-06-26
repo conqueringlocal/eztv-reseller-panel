@@ -213,20 +213,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           customerData: customerData
         };
       } else if (customerData.accountType === 'm3u') {
-        // Check provider for M3U accounts
-        if (customerData.provider === 'trex') {
+        // Check provider for M3U accounts - use reseller's provider
+        const provider = user?.provider || '8k';
+        console.log(`Using provider: ${provider} for M3U account creation`);
+        
+        if (provider === 'trex') {
           functionName = 'create-trex-user';
           requestBody = {
-            userParams: {
-              username: customerData.username || '',
-              password: customerData.password || '',
-              maxConnections: customerData.maxConnections || customerData.connections || 1,
-              expiryDate: customerData.expirationDate,
-              isTrial: customerData.isTrial || false,
-              bouquet: customerData.packageId,
-              customerName: customerData.name,
-              resellerName: user?.name || 'Unknown'
-            }
+            resellerId: user?.id,
+            customerData: customerData
           };
         } else {
           // Default to 8k provider
@@ -262,13 +257,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const totalCreated = data.customers.length;
         const totalFailed = data.failedConnections?.length || 0;
         const totalRequested = data.summary?.totalRequested || 0;
+        const provider = data.provider || user?.provider || 'Unknown';
 
         if (totalCreated > 0) {
-          toast.success(`Successfully created ${totalCreated} of ${totalRequested} accounts${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}!`);
+          toast.success(`Successfully created ${totalCreated} of ${totalRequested} ${provider.toUpperCase()} accounts${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}!`);
           
           // Show detailed success message for multi-connection accounts
           if (totalCreated > 1) {
-            console.log('Multi-connection accounts created:', {
+            console.log(`Multi-connection ${provider} accounts created:`, {
               customerGroup: data.summary?.customerGroup,
               accounts: data.customers.map(c => ({
                 name: c.name,
@@ -278,12 +274,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             });
           }
         } else {
-          toast.error(`Failed to create any accounts. ${totalFailed} connections failed.`);
+          toast.error(`Failed to create any ${provider.toUpperCase()} accounts. ${totalFailed} connections failed.`);
           return false;
         }
       } else {
         // Single account creation (legacy response)
-        toast.success('Customer created successfully!');
+        const provider = data.provider || user?.provider || 'Unknown';
+        toast.success(`${provider.toUpperCase()} customer created successfully!`);
       }
 
       await fetchData();

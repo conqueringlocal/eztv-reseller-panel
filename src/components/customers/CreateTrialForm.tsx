@@ -44,7 +44,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
     }
 
     // Use the reseller's assigned provider
-    const provider = user.provider || 'trex'; // Default to 'trex' since only Trex resellers can access this form
+    const provider = user.provider || '8k'; // Default to '8k' if no provider is set
 
     setIsLoading(true);
     console.log(`🎯 Creating 24-hour trial account for: ${data.name} with provider: ${provider}`);
@@ -52,6 +52,8 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
     try {
       // Call the appropriate edge function based on reseller's provider
       const functionName = provider === 'trex' ? 'create-trex-trial-user' : 'create-trial-user';
+      
+      console.log(`📞 Calling function: ${functionName}`);
       
       const { data: result, error } = await supabase.functions.invoke(functionName, {
         body: {
@@ -66,7 +68,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
 
       if (error) {
         console.error(`❌ Error creating ${provider} trial account:`, error);
-        toast.error(`Failed to create ${provider} trial account`);
+        toast.error(`Failed to create ${provider} trial account: ${error.message}`);
         return;
       }
 
@@ -77,7 +79,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       }
 
       console.log(`✅ ${provider} trial account created successfully:`, result);
-      toast.success(`24-hour ${provider} trial account created successfully!`);
+      toast.success(`24-hour ${provider.toUpperCase()} trial account created successfully!`);
       
       // Refresh data to show the new trial customer
       await refreshData();
@@ -155,7 +157,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
             <li>• Trial duration: 24 hours from creation</li>
             <li>• No credits will be consumed</li>
             <li>• Credentials will be automatically generated</li>
-            <li>• MAC address will be generated from customer name</li>
+            <li>• Uses {providerDisplayName} provider for account creation</li>
             <li>• Customer will receive login details via CRM (if configured)</li>
             <li>• Daily trial limits apply per provider</li>
           </ul>
