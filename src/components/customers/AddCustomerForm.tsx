@@ -146,13 +146,14 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         deviceType: data.deviceType,
         packageId: data.packageId,
         planDuration: parseInt(data.planDuration),
-        connections: data.connections,
-        maxConnections: data.connections, // Set max connections based on selected plan
+        maxConnections: data.connections, // Fixed: use maxConnections instead of connections
+        currentConnections: 0,
+        connectionDetails: [],
         startDate,
         expirationDate: expirationDateString,
-        accountType: data.accountType,
         status: 'active',
         isDeactivated: false,
+        provider: user?.provider || '8k',
       });
       
       if (success) {

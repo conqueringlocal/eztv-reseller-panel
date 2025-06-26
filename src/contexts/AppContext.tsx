@@ -407,17 +407,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addCredits = async (resellerId: string, credits: number, notes?: string) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .update({ credits: supabase.sql`credits + ${credits}` })
-        .eq('id', resellerId)
-        .select()
-        .single();
+      // Use RPC function instead of supabase.sql
+      const { data, error } = await supabase.rpc('increment_user_credits', {
+        user_id: resellerId,
+        credit_amount: credits
+      });
 
       if (error) {
         console.error('Error adding credits:', error);
-        toast.error('Failed to add credits');
-        return false;
+        // Fallback to direct update
+        const { data: updateData, error: updateError } = await supabase
+          .from('profiles')
+          .select('credits')
+          .eq('id', resellerId)
+          .single();
+
+        if (updateError || !updateData) {
+          toast.error('Failed to add credits');
+          return false;
+        }
+
+        const newCredits = updateData.credits + credits;
+        const { error: finalError } = await supabase
+          .from('profiles')
+          .update({ credits: newCredits })
+          .eq('id', resellerId);
+
+        if (finalError) {
+          toast.error('Failed to add credits');
+          return false;
+        }
       }
 
       // Log the credit addition
@@ -451,9 +470,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
+      // Use direct update instead of supabase.sql
+      const newCredits = reseller.credits - credits;
       const { data, error } = await supabase
         .from('profiles')
-        .update({ credits: supabase.sql`credits - ${credits}` })
+        .update({ credits: newCredits })
         .eq('id', resellerId)
         .select()
         .single();
