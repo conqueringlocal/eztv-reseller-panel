@@ -1,4 +1,3 @@
-
 import React, {
   createContext,
   useState,
@@ -20,6 +19,8 @@ export interface Profile {
   parent_reseller_id?: string;
   reseller_level?: number;
   provider?: string;
+  logoUrl?: string;
+  accentColor?: string;
 }
 
 export interface CreditLog {
@@ -79,6 +80,7 @@ export interface Customer {
   isDeactivated: boolean;
   cancelledAt?: string;
   isTrialAccount?: boolean;
+  isTrial?: boolean; // Add this for backward compatibility
   highlevelContactId?: string;
   provider?: string;
   connectionNumber?: number;
@@ -262,6 +264,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isDeactivated: customer.is_deactivated || false,
         cancelledAt: customer.cancelled_at || undefined,
         isTrialAccount: customer.is_trial || false,
+        isTrial: customer.is_trial || false, // Add for backward compatibility
         highlevelContactId: customer.highlevel_contact_id || undefined,
         provider: customer.provider || '8k',
         connectionNumber: customer.connection_number || undefined,

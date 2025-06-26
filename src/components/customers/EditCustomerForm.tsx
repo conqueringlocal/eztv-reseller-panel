@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -54,11 +53,10 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
   // Handle form submission
   const onSubmit = async (data: FormData) => {
     try {
-      const success = await updateCustomer({
-        ...customer,
+      const success = await updateCustomer(customer.id, {
         name: data.name,
         email: data.email,
-        macAddress: customer.macAddress || '', // Keep existing or empty
+        macAddress: customer.macAddress || '',
         deviceType: data.deviceType,
       });
       
