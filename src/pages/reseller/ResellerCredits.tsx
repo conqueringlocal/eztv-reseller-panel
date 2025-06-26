@@ -20,7 +20,7 @@ export default function ResellerCredits() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold mb-2">Credits & Usage</h1>
-            <p className="text-gray-500">Monitor your credit usage and streaming service transaction history</p>
+            <p className="text-gray-500">Monitor your credit usage and EZTV streaming service transaction history</p>
           </div>
           <CreditsBadge credits={user?.credits || 0} />
         </div>

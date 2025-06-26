@@ -1,73 +1,79 @@
-# Welcome to your Lovable project
 
-## Project info
+# EZTV Club Reseller Platform
 
-**URL**: https://lovable.dev/projects/c732f53d-4357-49e5-8df5-37e957cefb00
+## About EZTV Club
 
-## How can I edit this code?
+**Platform**: https://app.eztvclub.com
 
-There are several ways of editing your application.
+EZTV Club is a comprehensive IPTV reseller platform that enables partners to manage their streaming service customers, track credits, and grow their business efficiently.
 
-**Use Lovable**
+## Getting Started
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/c732f53d-4357-49e5-8df5-37e957cefb00) and start prompting.
+### Development Setup
 
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+To run this project locally, you'll need Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
 
 Follow these steps:
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
+# Step 1: Clone the repository
 git clone <YOUR_GIT_URL>
 
-# Step 2: Navigate to the project directory.
+# Step 2: Navigate to the project directory
 cd <YOUR_PROJECT_NAME>
 
-# Step 3: Install the necessary dependencies.
+# Step 3: Install the necessary dependencies
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Start the development server with auto-reloading and an instant preview
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Manual Code Editing
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+If you want to work with your preferred IDE:
 
-**Use GitHub Codespaces**
+- Navigate to the desired file(s)
+- Make your changes and commit them
+- Changes will be reflected in the platform
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### GitHub Integration
 
-## What technologies are used for this project?
+You can also edit files directly in GitHub or use GitHub Codespaces for a cloud-based development environment.
 
-This project is built with:
+## Technology Stack
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+This platform is built with modern web technologies:
 
-## How can I deploy this project?
+- **Frontend**: React with TypeScript
+- **Styling**: Tailwind CSS with shadcn-ui components
+- **Build Tool**: Vite
+- **Backend**: Supabase (Authentication, Database, Edge Functions)
+- **Hosting**: Enterprise-grade cloud infrastructure
 
-Simply open [Lovable](https://lovable.dev/projects/c732f53d-4357-49e5-8df5-37e957cefb00) and click on Share -> Publish.
+## Platform Features
 
-## Can I connect a custom domain to my Lovable project?
+- **Customer Management**: Add, edit, and track IPTV customers
+- **Credit System**: Manage and track credit usage for service provisioning
+- **Multi-Provider Support**: Integration with multiple IPTV service providers
+- **CRM Integration**: HighLevel CRM integration for customer relationship management
+- **Reseller Hierarchy**: Support for sub-resellers and multi-level partnerships
+- **Real-time Dashboard**: Live statistics and customer status monitoring
 
-Yes, you can!
+## Deployment
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+The platform is automatically deployed to production. Contact EZTV Club support for deployment access and configuration.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Custom Domain Setup
+
+Enterprise customers can connect custom domains to their reseller platform. Contact support for domain configuration assistance.
+
+## Support
+
+For technical support or business inquiries:
+- Email: support@eztvclub.com
+- Platform: https://app.eztvclub.com
+
+## API Documentation
+
+API documentation and integration guides are available in the platform dashboard under the "API Keys" section.
