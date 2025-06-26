@@ -162,7 +162,7 @@ serve(async (req) => {
           createUrl.searchParams.append("package_id", customerData.packageId);
           createUrl.searchParams.append("duration", customerData.planDuration.toString());
           createUrl.searchParams.append("max_connections", "1"); // Each account gets 1 connection
-          createUrl.searchParams.append("country", "us"); // Add the missing country parameter
+          createUrl.searchParams.append("country", "us"); // Add the country parameter
 
           console.log(`🔗 8K Create API URL for connection ${i}: ${createUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
 
