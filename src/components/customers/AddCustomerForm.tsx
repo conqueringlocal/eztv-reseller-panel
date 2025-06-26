@@ -350,7 +350,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                     <div className="text-xs space-y-1 p-2 bg-amber-50 rounded border">
                       <div><strong>Debug Info:</strong></div>
                       <div>• Auth format: {debugInfo.auth_format}</div>
-                      <div>• Endpoints tried: {debugInfo.total_endpoints_tried}</div>
+                      <div>• Actions tried: {debugInfo.total_actions_tried}</div>
                       {debugInfo.last_error && (
                         <div>• Last error: {debugInfo.last_error}</div>
                       )}
