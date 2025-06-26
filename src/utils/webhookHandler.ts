@@ -83,9 +83,10 @@ export const createCustomerRecord = async (
   }
 };
 
+// Legacy webhook processor for backward compatibility
 export const processWebhook = async (payload: WebhookPayload): Promise<{ success: boolean; message: string }> => {
   try {
-    console.log('Processing webhook payload:', payload);
+    console.log('📋 Processing legacy webhook payload:', payload);
 
     // Validate required fields
     if (!payload.resellerId) {
@@ -108,8 +109,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
     }
 
     if (payload.action === 'create') {
-      // Check if reseller has enough credits
-      if (resellerData.credits < 1) {
+      // Check if reseller has enough credits (legacy assumes 1 connection)
+      if (resellerData.credits < payload.customer.plan_duration_months) {
         return { success: false, message: 'Insufficient credits' };
       }
 
@@ -135,7 +136,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
         isDeactivated: false,
         cancelledAt: null,
         highlevelContactId: payload.contact_id,
-        customerGroup: undefined,
+        customerGroup: `${payload.customer.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`,
         connectionSequence: 1,
         maxConnections: 1,
         m3uUrl: '',
@@ -156,7 +157,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
       // Deduct credit
       await supabase
         .from('profiles')
-        .update({ credits: resellerData.credits - 1 })
+        .update({ credits: resellerData.credits - payload.customer.plan_duration_months })
         .eq('id', payload.resellerId);
 
       // Log credit usage
@@ -165,10 +166,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
         .insert({
           reseller_id: payload.resellerId,
           action: 'account_creation',
-          credits_used: 1,
+          credits_used: payload.customer.plan_duration_months,
           customer_name: payload.customer.name,
           customer_id: result.customerId,
-          notes: 'Customer created via webhook'
+          notes: 'Customer created via legacy webhook'
         });
 
       return { success: true, message: `Customer ${payload.customer.name} created successfully` };
@@ -188,7 +189,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
       }
 
       // Check if reseller has enough credits
-      if (resellerData.credits < 1) {
+      if (resellerData.credits < payload.customer.plan_duration_months) {
         return { success: false, message: 'Insufficient credits for renewal' };
       }
 
@@ -214,7 +215,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
       // Deduct credit
       await supabase
         .from('profiles')
-        .update({ credits: resellerData.credits - 1 })
+        .update({ credits: resellerData.credits - payload.customer.plan_duration_months })
         .eq('id', payload.resellerId);
 
       // Log credit usage
@@ -223,10 +224,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
         .insert({
           reseller_id: payload.resellerId,
           action: 'account_creation',
-          credits_used: 1,
+          credits_used: payload.customer.plan_duration_months,
           customer_name: payload.customer.name,
           customer_id: existingCustomer.id,
-          notes: 'Customer renewed via webhook'
+          notes: 'Customer renewed via legacy webhook'
         });
 
       return { success: true, message: `Customer ${payload.customer.name} renewed successfully` };
@@ -235,7 +236,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
     return { success: false, message: 'Invalid action specified' };
 
   } catch (error) {
-    console.error('Error processing webhook:', error);
+    console.error('Error processing legacy webhook:', error);
     return { success: false, message: 'Internal server error' };
   }
 };
@@ -264,7 +265,7 @@ export const processWebhookData = async (
     provider: '8k',
     cancelledAt: null,
     highlevelContactId: undefined,
-    customerGroup: undefined,
+    customerGroup: `${webhookData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`,
     connectionSequence: 1,
     m3uUrl: '',
     isTrial: false

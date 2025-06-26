@@ -1,6 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { processEnhancedWebhook, EnhancedWebhookPayload } from './enhancedWebhookHandler.ts'
 import { processWebhook, WebhookPayload } from './webhookHandler.ts'
 
 const corsHeaders = {
@@ -17,7 +17,7 @@ serve(async (req) => {
   try {
     console.log(`📞 Webhook received: ${req.method} ${req.url}`)
     
-    let payload: WebhookPayload;
+    let payload: any;
     
     if (req.method === 'POST') {
       // Handle JSON POST request (standard webhook)
@@ -63,7 +63,8 @@ serve(async (req) => {
       payload = {
         api_key: searchParams.get('api_key') || searchParams.get('apiKey') || '',
         resellerId: searchParams.get('resellerId') || '',
-        action: searchParams.get('action') as 'create' | 'renew' || 'create', // Support action parameter
+        action: searchParams.get('action') as 'create' | 'renew' | 'trial' || 'create',
+        connections: parseInt(searchParams.get('connections') || '1', 10),
         customer: {
           name: searchParams.get('name') || searchParams.get('customerName') || '',
           email: searchParams.get('email') || searchParams.get('customerEmail') || '',
@@ -72,7 +73,9 @@ serve(async (req) => {
           plan_duration_months: parseInt(searchParams.get('plan_duration_months') || searchParams.get('planDuration') || '0', 10),
           package_id: searchParams.get('package_id') || searchParams.get('packageId') || undefined
         },
-        contact_id: searchParams.get('contact_id') || searchParams.get('contactId') || undefined
+        contact_id: searchParams.get('contact_id') || searchParams.get('contactId') || undefined,
+        is_trial: searchParams.get('is_trial') === 'true' || searchParams.get('action') === 'trial',
+        trial_duration_hours: parseInt(searchParams.get('trial_duration_hours') || '24', 10)
       }
       console.log(`🔗 Query Params Payload:`, payload)
     } else {
@@ -104,8 +107,40 @@ serve(async (req) => {
 
     console.log(`🔄 Processing webhook with payload:`, payload)
     
-    // Process the webhook
-    const result = await processWebhook(payload)
+    // Determine which webhook processor to use based on payload structure
+    let result;
+    
+    // Check if this is an enhanced webhook (has action field and connections support)
+    if (payload.action && ['create', 'renew', 'trial'].includes(payload.action)) {
+      console.log('🚀 Using enhanced webhook processor')
+      result = await processEnhancedWebhook(payload as EnhancedWebhookPayload)
+    } else {
+      console.log('📋 Using legacy webhook processor')
+      // Convert to legacy format for backwards compatibility
+      const legacyPayload: WebhookPayload = {
+        api_key: payload.api_key,
+        resellerId: payload.resellerId,
+        action: payload.action || 'create',
+        contact_id: payload.contact_id,
+        is_trial: payload.is_trial,
+        customer: payload.customer || {
+          name: payload.customerName || '',
+          email: payload.customerEmail || '',
+          mac: payload.macAddress || '',
+          device_type: payload.deviceType || '',
+          plan_duration_months: payload.planDuration || 0,
+          package_id: payload.packageId
+        },
+        customerName: payload.customerName,
+        customerEmail: payload.customerEmail,
+        macAddress: payload.macAddress,
+        deviceType: payload.deviceType,
+        planDuration: payload.planDuration,
+        packageId: payload.packageId,
+        contactId: payload.contactId
+      }
+      result = await processWebhook(legacyPayload)
+    }
     
     console.log(`✅ Webhook processing result:`, result)
     
