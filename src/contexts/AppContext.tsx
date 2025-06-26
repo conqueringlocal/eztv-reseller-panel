@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
@@ -226,7 +225,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               isTrial: customerData.isTrial || false,
               bouquet: customerData.packageId,
               customerName: customerData.name,
-              resellerName: user?.user_metadata?.name || 'Unknown'
+              resellerName: user?.name || 'Unknown'
             }
           };
         } else {
