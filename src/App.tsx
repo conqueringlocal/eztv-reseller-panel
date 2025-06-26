@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from "@/components/ui/toaster";
@@ -24,6 +25,7 @@ import ResellerDashboard from "./pages/reseller/ResellerDashboard";
 import ResellerCustomers from "./pages/reseller/ResellerCustomers";
 import ResellerCredits from "./pages/reseller/ResellerCredits";
 import ResellerCreditPurchase from "./pages/reseller/ResellerCreditPurchase";
+import ResellerSubResellers from "./pages/reseller/ResellerSubResellers";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
 import Webhook from "./pages/Webhook";
 
@@ -123,6 +125,13 @@ function App() {
                     <CreditPurchaseRoute>
                       <ResellerCreditPurchase />
                     </CreditPurchaseRoute>
+                  } />
+                  
+                  {/* Sub-Resellers Route */}
+                  <Route path="/reseller/sub-resellers" element={
+                    <ProtectedRoute allowedRoles={['reseller']}>
+                      <ResellerSubResellers />
+                    </ProtectedRoute>
                   } />
                   
                   <Route path="/reseller/settings" element={
