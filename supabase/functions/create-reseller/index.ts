@@ -67,7 +67,7 @@ serve(async (req) => {
     // Check if the user is an admin or reseller using the admin client
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('role, reseller_level')
+      .select('role, reseller_level, credits')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -125,6 +125,21 @@ serve(async (req) => {
       });
     }
 
+    // For sub-resellers, validate that parent has enough credits to allocate
+    if (parent_reseller_id && profile.role === 'reseller') {
+      console.log('Validating parent reseller credits:', { parentCredits: profile.credits, requestedCredits: credits });
+      
+      if (profile.credits < credits) {
+        console.log('Insufficient parent credits:', { available: profile.credits, requested: credits });
+        return new Response(JSON.stringify({ 
+          error: `Insufficient credits. You have ${profile.credits} credits but trying to allocate ${credits} credits to the sub-reseller.` 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Validate provider
     if (provider && !['8k', 'trex'].includes(provider)) {
       console.log('Invalid provider');
@@ -151,7 +166,7 @@ serve(async (req) => {
 
     console.log('Creating user account');
 
-    // Create the user account using admin client
+    // Start database transaction by creating the user account first
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -180,36 +195,86 @@ serve(async (req) => {
 
     console.log('User created:', authData.user.id);
 
-    // Update the profile with the correct data using admin client
-    const { error: profileUpdateError } = await supabaseAdmin
-      .from('profiles')
-      .update({ 
-        credits: credits || 0,
-        name: name,
-        provider: provider || '8k',
-        parent_reseller_id: parent_reseller_id || null,
-        reseller_level: resellerLevel
-      })
-      .eq('id', authData.user.id);
+    try {
+      // Update the profile with the correct data using admin client
+      const { error: profileUpdateError } = await supabaseAdmin
+        .from('profiles')
+        .update({ 
+          credits: credits || 0,
+          name: name,
+          provider: provider || '8k',
+          parent_reseller_id: parent_reseller_id || null,
+          reseller_level: resellerLevel
+        })
+        .eq('id', authData.user.id);
 
-    if (profileUpdateError) {
-      console.error('Profile update error:', profileUpdateError);
-      return new Response(JSON.stringify({ error: 'Failed to update reseller profile' }), {
-        status: 400,
+      if (profileUpdateError) {
+        console.error('Profile update error:', profileUpdateError);
+        // Clean up by deleting the created user
+        await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+        return new Response(JSON.stringify({ error: 'Failed to update reseller profile' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      console.log('Profile updated successfully');
+
+      // If this is a sub-reseller creation, deduct credits from parent
+      if (parent_reseller_id && profile.role === 'reseller') {
+        console.log('Deducting credits from parent reseller:', { parentId: user.id, creditsToDeduct: credits });
+        
+        const newParentCredits = profile.credits - credits;
+        const { error: creditDeductionError } = await supabaseAdmin
+          .from('profiles')
+          .update({ credits: newParentCredits })
+          .eq('id', user.id);
+
+        if (creditDeductionError) {
+          console.error('Credit deduction error:', creditDeductionError);
+          // Clean up by deleting the created user and profile
+          await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+          return new Response(JSON.stringify({ error: 'Failed to deduct credits from parent reseller' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        console.log('Credits deducted from parent reseller successfully');
+
+        // Log the credit transaction
+        const { error: logError } = await supabaseAdmin
+          .from('credit_logs')
+          .insert({
+            reseller_id: user.id,
+            action: 'deduction',
+            credits_used: credits,
+            notes: `Sub-reseller creation: ${name} (${email})`
+          });
+
+        if (logError) {
+          console.error('Failed to log credit transaction:', logError);
+          // Don't fail the entire operation for logging issues
+        }
+      }
+
+      return new Response(JSON.stringify({ 
+        success: true, 
+        user: authData.user,
+        message: 'Reseller created successfully',
+        creditsAllocated: credits,
+        parentCreditsRemaining: parent_reseller_id && profile.role === 'reseller' ? profile.credits - credits : null
+      }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
       });
+
+    } catch (transactionError) {
+      console.error('Transaction error, cleaning up:', transactionError);
+      // Clean up by deleting the created user
+      await supabaseAdmin.auth.admin.deleteUser(authData.user.id);
+      throw transactionError;
     }
-
-    console.log('Profile updated successfully');
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      user: authData.user,
-      message: 'Reseller created successfully' 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200
-    });
 
   } catch (error) {
     console.error('Unexpected error:', error);
