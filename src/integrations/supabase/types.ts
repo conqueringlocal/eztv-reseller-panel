@@ -12,6 +12,7 @@ export type Database = {
       credit_logs: {
         Row: {
           action: Database["public"]["Enums"]["credit_action"]
+          connections_used: number | null
           credits_used: number
           customer_id: string | null
           customer_name: string | null
@@ -22,6 +23,7 @@ export type Database = {
         }
         Insert: {
           action: Database["public"]["Enums"]["credit_action"]
+          connections_used?: number | null
           credits_used: number
           customer_id?: string | null
           customer_name?: string | null
@@ -32,6 +34,7 @@ export type Database = {
         }
         Update: {
           action?: Database["public"]["Enums"]["credit_action"]
+          connections_used?: number | null
           credits_used?: number
           customer_id?: string | null
           customer_name?: string | null
@@ -60,8 +63,10 @@ export type Database = {
       customers: {
         Row: {
           cancelled_at: string | null
+          connection_details: Json | null
           connection_number: number | null
           created_at: string
+          current_connections: number | null
           customer_group_id: string | null
           device_type: string
           email: string
@@ -72,6 +77,7 @@ export type Database = {
           is_trial: boolean | null
           m3u_url: string | null
           mac_address: string | null
+          max_connections: number | null
           name: string
           password: string | null
           plan_duration: number
@@ -85,8 +91,10 @@ export type Database = {
         }
         Insert: {
           cancelled_at?: string | null
+          connection_details?: Json | null
           connection_number?: number | null
           created_at?: string
+          current_connections?: number | null
           customer_group_id?: string | null
           device_type: string
           email: string
@@ -97,6 +105,7 @@ export type Database = {
           is_trial?: boolean | null
           m3u_url?: string | null
           mac_address?: string | null
+          max_connections?: number | null
           name: string
           password?: string | null
           plan_duration: number
@@ -110,8 +119,10 @@ export type Database = {
         }
         Update: {
           cancelled_at?: string | null
+          connection_details?: Json | null
           connection_number?: number | null
           created_at?: string
+          current_connections?: number | null
           customer_group_id?: string | null
           device_type?: string
           email?: string
@@ -122,6 +133,7 @@ export type Database = {
           is_trial?: boolean | null
           m3u_url?: string | null
           mac_address?: string | null
+          max_connections?: number | null
           name?: string
           password?: string | null
           plan_duration?: number
@@ -421,6 +433,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_credits_required: {
+        Args: { connections?: number; duration_months?: number }
+        Returns: number
+      }
       can_purchase_credits: {
         Args: { reseller_id: string }
         Returns: boolean
@@ -447,6 +463,14 @@ export type Database = {
       }
       is_admin: {
         Args: Record<PropertyKey, never>
+        Returns: boolean
+      }
+      update_connection_count: {
+        Args: { customer_id: string; connection_change?: number }
+        Returns: boolean
+      }
+      validate_connection_limit: {
+        Args: { customer_id: string; new_connections: number }
         Returns: boolean
       }
     }

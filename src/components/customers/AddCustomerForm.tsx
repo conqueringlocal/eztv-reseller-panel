@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -25,8 +26,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
-// Form schema with validation - updated to support both M3U and MAG devices
+// Form schema with validation - updated to support multi-connection accounts
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
@@ -40,10 +42,10 @@ const formSchema = z.object({
     errorMap: () => ({ message: 'Please select a valid plan duration.' })
   }),
   connections: z.coerce
-    .number()
+    .number()  
     .int()
     .min(1, { message: 'Must have at least 1 connection.' })
-    .max(3, { message: 'Cannot exceed 3 connections.' }),
+    .max(5, { message: 'Cannot exceed 5 connections.' }),
 }).refine((data) => {
   // MAC address is required for MAG devices
   if (data.accountType === 'mag' && (!data.macAddress || data.macAddress.trim() === '')) {
@@ -84,10 +86,39 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   // Watch account type to show/hide MAC address field
   const watchAccountType = form.watch('accountType');
   
-  // Calculate total credits needed
+  // Calculate total credits needed using the new calculation
   const watchPlanDuration = form.watch('planDuration');
   const watchConnections = form.watch('connections');
-  const totalCreditsNeeded = parseInt(watchPlanDuration) * watchConnections;
+  
+  // Calculate credits based on connections and duration
+  const calculateCreditsNeeded = async (connections: number, duration: number) => {
+    try {
+      const { data, error } = await supabase.rpc('calculate_credits_required', {
+        connections: connections,
+        duration_months: duration
+      });
+      
+      if (error) {
+        console.error('Error calculating credits:', error);
+        return connections * duration; // Fallback calculation
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Error calculating credits:', error);
+      return connections * duration; // Fallback calculation
+    }
+  };
+
+  const [totalCreditsNeeded, setTotalCreditsNeeded] = React.useState(1);
+
+  React.useEffect(() => {
+    const updateCredits = async () => {
+      const credits = await calculateCreditsNeeded(watchConnections, parseInt(watchPlanDuration));
+      setTotalCreditsNeeded(credits);
+    };
+    updateCredits();
+  }, [watchConnections, watchPlanDuration]);
 
   // Handle form submission
   const onSubmit = async (data: FormData) => {
@@ -111,20 +142,21 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         resellerId,
         name: data.name,
         email: data.email,
-        macAddress: data.macAddress || '', // For MAG devices, this will be required
+        macAddress: data.macAddress || '',
         deviceType: data.deviceType,
         packageId: data.packageId,
         planDuration: parseInt(data.planDuration),
         connections: data.connections,
+        maxConnections: data.connections, // Set max connections based on selected plan
         startDate,
         expirationDate: expirationDateString,
-        accountType: data.accountType, // New field to distinguish M3U vs MAG
-        status: 'active', // Added required property
-        isDeactivated: false, // Added required property
+        accountType: data.accountType,
+        status: 'active',
+        isDeactivated: false,
       });
       
       if (success) {
-        toast.success(`${data.accountType.toUpperCase()} customer added successfully!`);
+        toast.success(`${data.accountType.toUpperCase()} customer added successfully with ${data.connections} connection${data.connections > 1 ? 's' : ''}!`);
         form.reset();
         if (onSuccess) onSuccess();
       } else {
@@ -187,14 +219,14 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="m3u">M3U (Compatible with all devices)</SelectItem>
-                  <SelectItem value="mag">MAG (STB/MAG devices only)</SelectItem>
+                  <SelectItem value="m3u">M3U (Multi-Connection Support)</SelectItem>
+                  <SelectItem value="mag">MAG (Single Connection Only)</SelectItem>
                 </SelectContent>
               </Select>
               <FormDescription>
                 {watchAccountType === 'm3u' 
-                  ? 'M3U accounts work with any IPTV player application'
-                  : 'MAG accounts are designed for STB/MAG set-top boxes'
+                  ? 'M3U accounts support multiple connections and work with any IPTV player'
+                  : 'MAG accounts are single-connection and designed for STB/MAG devices'
                 }
               </FormDescription>
               <FormMessage />
@@ -383,8 +415,13 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                       <SelectItem value="1">1 Connection</SelectItem>
                       <SelectItem value="2">2 Connections</SelectItem>
                       <SelectItem value="3">3 Connections</SelectItem>
+                      <SelectItem value="4">4 Connections</SelectItem>
+                      <SelectItem value="5">5 Connections</SelectItem>
                     </SelectContent>
                   </Select>
+                  <FormDescription>
+                    Multiple connections allow simultaneous streaming on different devices
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -395,11 +432,11 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
           <p className="text-sm text-blue-800 mb-2">
             <strong>Account Type:</strong> {watchAccountType.toUpperCase()} 
-            {watchAccountType === 'm3u' ? ' (Compatible with all device types)' : ' (STB/MAG devices only)'}
+            {watchAccountType === 'm3u' ? ` with ${watchConnections} connection${watchConnections > 1 ? 's' : ''}` : ' (Single connection)'}
           </p>
           <p className="text-sm text-amber-600 font-medium">
-            This will consume {watchAccountType === 'mag' ? parseInt(watchPlanDuration) : totalCreditsNeeded} credit{(watchAccountType === 'mag' ? parseInt(watchPlanDuration) : totalCreditsNeeded) !== 1 ? 's' : ''} 
-            {watchAccountType === 'm3u' && (
+            This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
+            {watchAccountType === 'm3u' && watchConnections > 1 && (
               <span> ({parseInt(watchPlanDuration)} month{parseInt(watchPlanDuration) !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})</span>
             )}
           </p>
@@ -407,6 +444,9 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         
         <Button type="submit" className="w-full">
           Add {watchAccountType.toUpperCase()} Customer
+          {watchAccountType === 'm3u' && watchConnections > 1 && (
+            <span> ({watchConnections} Connections)</span>
+          )}
         </Button>
       </form>
     </Form>

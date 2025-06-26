@@ -1,360 +1,281 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
-interface IPTVUserParams {
-  username: string;
-  password: string;
-  maxConnections: number;
-  expiryDate: string; // ISO string
-  isTrial: boolean;
-  bouquet?: string;
-  output?: string;
-  ip?: string;
-  customerName?: string;
-  resellerName?: string;
-}
-
-// Helper function to calculate subscription months from expiry date
-function calculateSubscriptionMonths(expiryDateStr: string): number {
-  const expiryDate = new Date(expiryDateStr);
-  const today = new Date();
-  const diffTime = expiryDate.getTime() - today.getTime();
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
-  console.log(`📊 Days until expiry: ${diffDays}`);
-  
-  // Use proper day-based thresholds to determine subscription duration
-  if (diffDays <= 45) {
-    console.log(`📅 Mapping to 1 month (${diffDays} days <= 45 days)`);
-    return 1;
-  } else if (diffDays <= 120) {
-    console.log(`📅 Mapping to 3 months (${diffDays} days <= 120 days)`);
-    return 3;
-  } else if (diffDays <= 210) {
-    console.log(`📅 Mapping to 6 months (${diffDays} days <= 210 days)`);
-    return 6;
-  } else {
-    console.log(`📅 Mapping to 12 months (${diffDays} days > 210 days)`);
-    return 12;
-  }
+interface CreateUserRequest {
+  resellerId: string;
+  customerData: {
+    name: string;
+    email: string;
+    macAddress?: string;
+    deviceType: string;
+    packageId: string;
+    planDuration: number;
+    connections: number;
+    maxConnections?: number;
+    currentConnections?: number;
+    connectionDetails?: any[];
+    startDate: string;
+    expirationDate: string;
+    accountType: 'm3u' | 'mag';
+    status: string;
+    isDeactivated: boolean;
+  };
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { userParams }: { userParams: IPTVUserParams } = await req.json()
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
 
-    // Get configuration from environment
-    const API_KEY = Deno.env.get('IPTV_API_KEY')
-    const PANEL_URL = Deno.env.get('IPTV_PANEL_URL')
+    // Get the authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'No authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify the JWT token
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     
-    if (!API_KEY) {
-      console.error('❌ IPTV API key not configured')
+    if (authError || !user) {
+      console.error('Auth error:', authError);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'IPTV API key not configured'
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
-        },
-      )
+        JSON.stringify({ error: 'Invalid token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    if (!PANEL_URL) {
-      console.error('❌ IPTV Panel URL not configured')
+    const { resellerId, customerData }: CreateUserRequest = await req.json();
+
+    console.log(`🚀 Creating M3U user for reseller: ${resellerId}`);
+    console.log(`📊 Customer data:`, customerData);
+
+    // Get reseller's profile to determine provider and check credits
+    const { data: reseller, error: resellerError } = await supabaseClient
+      .from('profiles')
+      .select('credits, provider')
+      .eq('id', resellerId)
+      .single();
+
+    if (resellerError || !reseller) {
+      console.error('Reseller not found:', resellerError);
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'IPTV Panel URL not configured'
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
-        },
-      )
+        JSON.stringify({ error: 'Reseller not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Calculate subscription duration in months
-    const subscriptionMonths = calculateSubscriptionMonths(userParams.expiryDate);
+    const provider = reseller.provider || '8k';
+    console.log(`📱 Using provider: ${provider}`);
 
-    console.log(`🔄 Creating IPTV user: ${userParams.username}`)
-    console.log(`📅 Expiry date: ${userParams.expiryDate}`)
-    console.log(`📦 Subscription duration: ${subscriptionMonths} months`)
-    console.log(`📦 Package ID: ${userParams.bouquet}`)
-    console.log(`🌐 Panel URL: ${PANEL_URL}`)
+    // Calculate required credits using the database function
+    const { data: creditsRequired, error: creditsError } = await supabaseClient.rpc('calculate_credits_required', {
+      connections: customerData.maxConnections || customerData.connections,
+      duration_months: customerData.planDuration
+    });
 
-    try {
-      // Construct the URL with the correct parameters as specified
-      const apiUrl = new URL(PANEL_URL);
-      apiUrl.searchParams.append('action', 'new');
-      apiUrl.searchParams.append('type', 'm3u');
-      apiUrl.searchParams.append('sub', subscriptionMonths.toString());
-      apiUrl.searchParams.append('pack', userParams.bouquet || '1');
-      apiUrl.searchParams.append('api_key', API_KEY);
+    if (creditsError) {
+      console.error('Error calculating credits:', creditsError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to calculate required credits' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`💰 Credits required: ${creditsRequired}, Available: ${reseller.credits}`);
+
+    // Check if reseller has enough credits
+    if (reseller.credits < creditsRequired) {
+      console.error(`❌ Insufficient credits: ${reseller.credits} available, ${creditsRequired} required`);
+      return new Response(
+        JSON.stringify({ 
+          error: `Insufficient credits. Required: ${creditsRequired}, Available: ${reseller.credits}`,
+          success: false 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get API credentials from environment
+    const iptvApiKey = Deno.env.get('IPTV_API_KEY');
+    const panelUrl = Deno.env.get('IPTV_PANEL_URL') || 'https://my8k.me/api/api.php';
+
+    if (!iptvApiKey) {
+      console.error('IPTV API key not configured in secrets');
+      return new Response(
+        JSON.stringify({ error: 'IPTV API key not configured. Please contact administrator.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Generate unique username and password
+    const timestamp = Date.now();
+    const randomNum = Math.floor(Math.random() * 1000);
+    const username = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${timestamp}_${randomNum}`.substring(0, 32);
+    const password = `pass_${timestamp}_${randomNum}`;
+
+    console.log(`🔐 Generated credentials - Username: ${username}`);
+
+    // Create IPTV user based on provider
+    let iptvResponse;
+    let iptvResult;
+
+    if (provider === '8k') {
+      console.log(`📡 Creating 8K M3U user with ${customerData.maxConnections || customerData.connections} connections`);
       
-      // Add notes parameter with customer and reseller names
-      if (userParams.customerName && userParams.resellerName) {
-        const notes = `Customer: ${userParams.customerName} | Reseller: ${userParams.resellerName}`;
-        apiUrl.searchParams.append('notes', notes);
-        console.log(`📝 Adding notes: ${notes}`);
+      const createUrl = new URL(panelUrl);
+      createUrl.searchParams.append("api_key", iptvApiKey);
+      createUrl.searchParams.append("action", "user_create");
+      createUrl.searchParams.append("username", username);
+      createUrl.searchParams.append("password", password);
+      createUrl.searchParams.append("package_id", customerData.packageId);
+      createUrl.searchParams.append("duration", customerData.planDuration.toString());
+      createUrl.searchParams.append("max_connections", (customerData.maxConnections || customerData.connections).toString());
+
+      console.log(`🔗 8K Create API URL: ${createUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+
+      iptvResponse = await fetch(createUrl.toString());
+      iptvResult = await iptvResponse.json();
+
+      console.log('8K API Response:', iptvResult);
+
+      if (!iptvResponse.ok || iptvResult.error) {
+        throw new Error(iptvResult.error || 'Failed to create IPTV user');
       }
+
+    } else if (provider === 'trex') {
+      console.log(`📡 Creating Trex M3U user with ${customerData.maxConnections || customerData.connections} connections`);
       
-      // Optional parameters
-      if (userParams.ip && userParams.ip !== '*') {
-        apiUrl.searchParams.append('country', 'ALL'); // Use ALL for VPN as suggested
+      // Trex API implementation (placeholder - adjust based on actual Trex API)
+      const createUrl = new URL('https://trex-api-endpoint.com/create-user');
+      createUrl.searchParams.append("api_key", iptvApiKey);
+      createUrl.searchParams.append("username", username);
+      createUrl.searchParams.append("password", password);
+      createUrl.searchParams.append("package", customerData.packageId);
+      createUrl.searchParams.append("duration", customerData.planDuration.toString());
+      createUrl.searchParams.append("connections", (customerData.maxConnections || customerData.connections).toString());
+
+      iptvResponse = await fetch(createUrl.toString());
+      iptvResult = await iptvResponse.json();
+
+      if (!iptvResponse.ok || !iptvResult.success) {
+        throw new Error(iptvResult.error || 'Failed to create Trex IPTV user');
       }
+
+    } else {
+      throw new Error(`Unsupported provider: ${provider}`);
+    }
+
+    // Create customer record in database with multi-connection support
+    console.log(`💾 Creating customer record with multi-connection support`);
+    const { data: newCustomer, error: createError } = await supabaseClient
+      .from('customers')
+      .insert({
+        reseller_id: resellerId,
+        name: customerData.name,
+        email: customerData.email,
+        username: username,
+        password: password,
+        mac_address: customerData.macAddress || null,
+        device_type: customerData.deviceType,
+        plan_duration: customerData.planDuration,
+        max_connections: customerData.maxConnections || customerData.connections,
+        current_connections: 0,
+        connection_details: customerData.connectionDetails || [],
+        start_date: customerData.startDate,
+        expiration_date: customerData.expirationDate,
+        status: customerData.status,
+        is_deactivated: customerData.isDeactivated,
+        provider: provider,
+        customer_group_id: iptvResult.user_info?.group_id?.toString() || null,
+        m3u_url: iptvResult.user_info?.m3u_url || null
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('Error creating customer record:', createError);
+      // Try to cleanup the IPTV user if database insert failed
+      // (Implementation depends on provider API)
       
-      console.log(`🔗 API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
-      
-      const response = await fetch(apiUrl.toString(), {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'IPTV-Management-System/1.0',
-          'Accept': 'application/json, text/plain, */*',
-          'Cache-Control': 'no-cache',
-        },
-        signal: AbortSignal.timeout(30000), // 30 second timeout
+      return new Response(
+        JSON.stringify({ error: 'Failed to create customer record', details: createError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Deduct credits from reseller
+    console.log(`💳 Deducting ${creditsRequired} credits from reseller`);
+    const { error: creditError } = await supabaseClient
+      .from('profiles')
+      .update({ credits: reseller.credits - creditsRequired })
+      .eq('id', resellerId);
+
+    if (creditError) {
+      console.error('Error deducting credits:', creditError);
+      // Customer was created but credits weren't deducted - log this for manual review
+    }
+
+    // Log the credit transaction with connection info
+    const { error: logError } = await supabaseClient
+      .from('credit_logs')
+      .insert({
+        reseller_id: resellerId,
+        action: 'account_creation',
+        credits_used: creditsRequired,
+        connections_used: customerData.maxConnections || customerData.connections,
+        customer_id: newCustomer.id,
+        customer_name: customerData.name,
+        notes: `Created M3U account with ${customerData.maxConnections || customerData.connections} connection${(customerData.maxConnections || customerData.connections) > 1 ? 's' : ''} (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''})`
       });
-      
-      const responseText = await response.text();
-      console.log(`📡 Response Status: ${response.status}`);
-      console.log(`📡 Response: ${responseText}`);
 
-      if (!response.ok) {
-        console.log(`❌ HTTP Error: ${response.status} - ${response.statusText}`);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `HTTP ${response.status}: ${response.statusText}`,
-            debug_info: {
-              panel_url: PANEL_URL,
-              package_id: userParams.bouquet,
-              subscription_months: subscriptionMonths,
-              response_text: responseText
-            }
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        )
-      }
-
-      // Check if it's an HTML error page
-      if (responseText.includes('<html') || responseText.includes('<!DOCTYPE')) {
-        console.log(`❌ Received HTML error page`);
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: 'Received HTML error page instead of API response',
-            debug_info: {
-              panel_url: PANEL_URL,
-              package_id: userParams.bouquet,
-              subscription_months: subscriptionMonths,
-              response_preview: responseText.substring(0, 200)
-            }
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        )
-      }
-
-      // Try to parse as JSON first
-      let data;
-      try {
-        data = JSON.parse(responseText);
-        console.log(`📋 Parsed JSON response:`, data);
-      } catch (parseError) {
-        // If it's not JSON, treat as text response
-        console.log(`📄 Response is not JSON, treating as text`);
-        
-        // For the my8k.me API, a successful response might be plain text with credentials
-        if (responseText.length > 10 && !responseText.toLowerCase().includes('error') && 
-            !responseText.toLowerCase().includes('fail')) {
-          // Try to extract credentials from text response
-          const lines = responseText.split('\n').filter(line => line.trim());
-          const credentialData = {
-            success: true,
-            response: responseText,
-            message: 'Account created successfully'
-          };
-          
-          // Look for username/password patterns in the response
-          for (const line of lines) {
-            if (line.toLowerCase().includes('username') || line.toLowerCase().includes('user')) {
-              credentialData.username = line.split(':')[1]?.trim() || userParams.username;
-            }
-            if (line.toLowerCase().includes('password') || line.toLowerCase().includes('pass')) {
-              credentialData.password = line.split(':')[1]?.trim() || userParams.password;
-            }
-          }
-          
-          data = credentialData;
-        } else {
-          console.log(`❌ Invalid response format: ${responseText.substring(0, 100)}`);
-          return new Response(
-            JSON.stringify({ 
-              success: false, 
-              error: `Invalid response format: ${responseText.substring(0, 100)}`,
-              debug_info: {
-                panel_url: PANEL_URL,
-                package_id: userParams.bouquet,
-                subscription_months: subscriptionMonths,
-                full_response: responseText
-              }
-            }),
-            { 
-              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-              status: 400,
-            },
-          )
-        }
-      }
-
-      // Check for API errors in the response
-      if (data.error || data.status === 'error' || data.result?.includes?.('error')) {
-        const errorMsg = data.error || data.result || data.message || 'API returned error status';
-        console.log(`❌ API Error: ${errorMsg}`);
-        
-        return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `API Error: ${errorMsg}`,
-            debug_info: {
-              panel_url: PANEL_URL,
-              package_id: userParams.bouquet,
-              subscription_months: subscriptionMonths,
-              api_response: data
-            }
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
-          },
-        )
-      }
-
-      // Process successful response and extract credentials from URL
-      let extractedUsername = userParams.username;
-      let extractedPassword = userParams.password;
-      let m3uUrl = '';
-      
-      // Extract credentials from the URL field in the API response
-      if (data.url) {
-        console.log(`🔗 Extracting credentials from URL: ${data.url}`);
-        
-        try {
-          const urlObj = new URL(data.url);
-          const urlUsername = urlObj.searchParams.get('username');
-          const urlPassword = urlObj.searchParams.get('password');
-          
-          if (urlUsername && urlPassword) {
-            extractedUsername = urlUsername;
-            extractedPassword = urlPassword;
-            console.log(`✅ Extracted credentials from URL - Username: ${extractedUsername}, Password: ${extractedPassword}`);
-          } else {
-            console.log(`⚠️ Could not extract credentials from URL, using original credentials`);
-          }
-        } catch (urlError) {
-          console.log(`⚠️ Error parsing URL for credentials: ${urlError.message}`);
-        }
-        
-        // Use the URL provided by the API as the M3U URL
-        m3uUrl = data.url;
-      } else {
-        // Fallback: Check if response contains credentials directly
-        if (data.username && data.password) {
-          extractedUsername = data.username;
-          extractedPassword = data.password;
-          console.log(`✅ Using credentials from response data - Username: ${extractedUsername}, Password: ${extractedPassword}`);
-        }
-        
-        // Generate M3U URL based on panel URL structure as fallback
-        const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
-        m3uUrl = `${baseUrl}/get.php?username=${extractedUsername}&password=${extractedPassword}&type=m3u_plus&output=ts`;
-      }
-
-      const createdUser = {
-        username: extractedUsername,
-        password: extractedPassword,
-        expiryDate: userParams.expiryDate,
-        connections: userParams.maxConnections,
-        accountType: 'M3U',
-        m3uUrl: m3uUrl,
-        userId: data.user_id || data.id || null,
-        apiResponse: data
-      };
-      
-      console.log(`✅ SUCCESS: User created successfully`);
-      console.log(`👤 Username: ${extractedUsername}`);
-      console.log(`🔑 Password: ${extractedPassword}`);
-      console.log(`🔗 M3U URL: ${m3uUrl}`);
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          data: data,
-          user: createdUser,
-          message: `IPTV M3U account created successfully for ${createdUser.username}`,
-          m3uUrl: createdUser.m3uUrl,
-          debug_info: {
-            panel_url: PANEL_URL,
-            package_used: userParams.bouquet,
-            subscription_months: subscriptionMonths,
-            api_response: data
-          }
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200,
-        },
-      )
-      
-    } catch (error) {
-      console.error(`💥 Error during API call:`, error);
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `API call failed: ${error.message}`,
-          debug_info: {
-            panel_url: PANEL_URL,
-            package_id: userParams.bouquet,
-            subscription_months: subscriptionMonths,
-            error_details: error.stack
-          }
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400,
-        },
-      )
+    if (logError) {
+      console.error('Error logging credit transaction:', logError);
     }
 
-  } catch (error) {
-    console.error('💥 Unexpected error in create-iptv-user function:', error)
+    console.log(`✅ M3U customer created successfully: ${customerData.name}`);
+
     return new Response(
       JSON.stringify({ 
-        success: false, 
-        error: error.message,
-        stack: error.stack
+        success: true,
+        customer: newCustomer,
+        credentials: {
+          username: username,
+          password: password,
+          maxConnections: customerData.maxConnections || customerData.connections,
+          m3uUrl: iptvResult.user_info?.m3u_url
+        },
+        provider: provider,
+        creditsUsed: creditsRequired
       }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500,
-      },
-    )
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Error in create-iptv-user function:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error.message,
+        success: false 
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
-})
+});

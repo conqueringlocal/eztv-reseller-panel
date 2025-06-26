@@ -1,346 +1,520 @@
 import React, {
   createContext,
   useState,
-  useContext,
   useEffect,
-  ReactNode,
+  useContext,
+  useCallback,
 } from 'react';
-import { useAuth } from './AuthContext';
-import { supabase } from '@/integrations/supabase/client';
-import { Tables } from '@/integrations/supabase/types';
+import { Session } from '@supabase/supabase-js';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { Profile } from '@/components/resellers/ResellerTable';
+
+export interface AppContextType {
+  session: Session | null;
+  user: Profile | null;
+  resellers: Profile[];
+  customers: Customer[];
+  loading: boolean;
+  refreshData: () => Promise<void>;
+  addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  addReseller: (email: string, name: string) => Promise<boolean>;
+  getReseller: (resellerId: string) => Profile | undefined;
+  addCustomer: (customerData: NewCustomerData) => Promise<boolean>;
+  cancelCustomer: (customerId: string) => Promise<boolean>;
+  deactivateCustomer: (customerId: string) => Promise<boolean>;
+  activateCustomer: (customerId: string) => Promise<boolean>;
+  updateCustomer: (customerId: string, updates: Partial<Customer>) => Promise<boolean>;
+  createTrialAccount: (email: string) => Promise<boolean>;
+  updateConnectionCount: (customerId: string, connectionChange: number) => Promise<boolean>;
+  validateConnectionLimit: (customerId: string, newConnections: number) => Promise<boolean>;
+}
 
 export interface Customer {
   id: string;
   resellerId: string;
   name: string;
   email: string;
-  macAddress: string;
-  deviceType: string;
-  planDuration: number;
-  startDate: string;
-  expirationDate: string;
-  createdAt: string;
   username?: string;
   password?: string;
-  status: 'active' | 'cancelled' | 'expired' | 'expiring_soon';
-  customerGroupId?: string;
-  connectionNumber?: number;
-  totalConnections?: number;
+  macAddress?: string;
+  deviceType: string;
+  packageId?: string;
+  planDuration: number;
+  connections?: number;
+  maxConnections?: number; // New field for multi-connection support
+  currentConnections?: number; // New field to track active connections
+  connectionDetails?: any[]; // New field to store connection-specific data
+  startDate: string;
+  expirationDate: string;
+  status: string;
   isDeactivated: boolean;
   cancelledAt?: string;
-  packageId?: string;
-  connections?: number;
-  accountType?: 'm3u' | 'mag';
+  isTrialAccount?: boolean;
   highlevelContactId?: string;
+  provider?: string;
+  connectionNumber?: number;
+  customerGroupId?: string;
   m3uUrl?: string;
-  isTrial?: boolean; // Added missing property
 }
 
-export interface CreditLog {
-  id: string;
+export interface NewCustomerData {
   resellerId: string;
-  action: 'addition' | 'deduction' | 'account_creation' | 'renewal';
-  creditsUsed: number;
-  customerId?: string;
-  customerName?: string;
-  notes?: string;
+  name: string;
+  email: string;
+  macAddress?: string;
+  deviceType: string;
+  packageId: string;
+  planDuration: number;
+  connections: number;
+  maxConnections?: number; // New field
+  startDate: string;
+  expirationDate: string;
+  accountType: 'm3u' | 'mag';
+  status: string;
+  isDeactivated: boolean;
+}
+
+interface TrialResult {
+  success: boolean;
+  message: string;
+  username?: string;
+  password?: string;
+}
+
+interface CreditLog {
+  id: string;
   date: string;
-}
-
-interface Reseller extends Tables<'profiles'> {
-  role: 'reseller';
-  accentColor?: string;
-  logoUrl?: string;
-}
-
-interface AppContextType {
-  customers: Customer[];
-  resellers: Reseller[];
-  creditLogs: CreditLog[];
-  loading: boolean;
-  isLoading: boolean;
-
-  // Customer management
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => Promise<boolean>;
-  updateCustomer: (customer: Customer) => Promise<boolean>;
-  cancelCustomer: (customerId: string) => Promise<boolean>;
-  deactivateCustomer: (customerId: string) => Promise<boolean>;
-  renewCustomer: (customerId: string, additionalMonths: number) => Promise<boolean>;
-
-  // Reseller management
-  addReseller: (reseller: Omit<Reseller, 'id' | 'created_at' | 'updated_at'>) => Promise<boolean>;
-  updateResellerCredits: (resellerId: string, newCredits: number) => Promise<boolean>;
-
-  // Credit management
-  addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
-  removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
-  getReseller: (resellerId: string) => Reseller | undefined;
-
-  // Data refresh
-  refreshData: () => Promise<void>;
+  action: string;
+  credits_used: number;
+  customer_name?: string;
+  notes?: string;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<Profile | null>(null);
+  const [resellers, setResellers] = useState<Profile[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [resellers, setResellers] = useState<Reseller[]>([]);
-  const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
 
-  // Load data when user changes or on mount
   useEffect(() => {
-    if (user) {
-      refreshData();
-    } else {
-      console.log('Not authenticated, skipping data refresh');
-      setLoading(false);
-      setIsLoading(false);
-    }
-  }, [user]);
+    const fetchSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+      
+      if (session?.user) {
+        await fetchUser(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    };
 
-  const refreshData = async () => {
-    if (!user) {
-      console.log('No user found, skipping data refresh');
-      return;
-    }
+    fetchSession();
 
+    supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      if (session?.user) {
+        fetchUser(session.user.id);
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    });
+  }, []);
+
+  const fetchUser = async (userId: string) => {
     try {
-      setLoading(true);
-      setIsLoading(true);
-      console.log('Refreshing data for user:', user.id, 'role:', user.role);
-
-      // Load customers
-      let customersQuery = supabase
-        .from('customers')
+      const { data: profile, error } = await supabase
+        .from('profiles')
         .select('*')
-        .order('created_at', { ascending: false });
+        .eq('id', userId)
+        .single();
 
-      // Filter by reseller if not admin
-      if (user.role !== 'admin') {
-        customersQuery = customersQuery.eq('reseller_id', user.id);
-      }
-
-      const { data: customersData, error: customersError } = await customersQuery;
-      
-      if (customersError) {
-        console.error('Error loading customers:', customersError);
-        toast.error('Failed to load customers');
-      } else {
-        const transformedCustomers = customersData.map(customer => ({
-          id: customer.id,
-          resellerId: customer.reseller_id,
-          name: customer.name,
-          email: customer.email,
-          macAddress: customer.mac_address,
-          deviceType: customer.device_type,
-          planDuration: customer.plan_duration,
-          startDate: customer.start_date,
-          expirationDate: customer.expiration_date,
-          createdAt: customer.created_at,
-          username: customer.username,
-          password: customer.password,
-          customerGroupId: customer.customer_group_id,
-          connectionNumber: customer.connection_number,
-          totalConnections: customer.total_connections,
-          isDeactivated: customer.is_deactivated,
-          cancelledAt: customer.cancelled_at,
-          status: customer.status as 'active' | 'cancelled' | 'expired' | 'expiring_soon',
-          highlevelContactId: customer.highlevel_contact_id,
-          m3uUrl: customer.m3u_url
-        }));
-        setCustomers(transformedCustomers);
-      }
-
-      // Load resellers (admin only)
-      if (user.role === 'admin') {
-        const { data: resellersData, error: resellersError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('role', 'reseller')
-          .order('created_at', { ascending: false });
-        
-        if (resellersError) {
-          console.error('Error loading resellers:', resellersError);
-          toast.error('Failed to load resellers');
-        } else {
-          setResellers(resellersData as Reseller[]);
-        }
-      }
-
-      // Load credit logs
-      let logsQuery = supabase
-        .from('credit_logs')
-        .select('*')
-        .order('date', { ascending: false });
-
-      // Filter by reseller if not admin
-      if (user.role !== 'admin') {
-        logsQuery = logsQuery.eq('reseller_id', user.id);
-      }
-
-      const { data: logsData, error: logsError } = await logsQuery;
-      
-      if (logsError) {
-        console.error('Error loading credit logs:', logsError);
-      } else {
-        const transformedLogs = logsData.map(log => ({
-          id: log.id,
-          resellerId: log.reseller_id,
-          action: log.action as 'addition' | 'deduction' | 'account_creation' | 'renewal',
-          creditsUsed: log.credits_used,
-          customerId: log.customer_id,
-          customerName: log.customer_name,
-          notes: log.notes,
-          date: log.date
-        }));
-        setCreditLogs(transformedLogs);
-      }
+      if (error) throw error;
+      setUser(profile);
+      await Promise.all([fetchResellers(), fetchCustomers()]);
     } catch (error) {
-      console.error('Error in refreshData:', error);
+      console.error('Error fetching user profile:', error);
+      toast.error('Failed to load user profile');
     } finally {
       setLoading(false);
-      setIsLoading(false);
     }
   };
 
-  const addCustomer = async (customer: Omit<Customer, 'id' | 'createdAt'>): Promise<boolean> => {
+  const fetchResellers = async () => {
     try {
-      const { error } = await supabase
-        .from('customers')
-        .insert({
-          reseller_id: customer.resellerId,
-          name: customer.name,
-          email: customer.email,
-          mac_address: customer.macAddress,
-          device_type: customer.deviceType,
-          plan_duration: customer.planDuration,
-          start_date: customer.startDate,
-          expiration_date: customer.expirationDate,
-          username: customer.username,
-          password: customer.password,
-          customer_group_id: customer.customerGroupId,
-          connection_number: customer.connectionNumber,
-          total_connections: customer.totalConnections,
-          highlevel_contact_id: customer.highlevelContactId,
-          status: customer.status || 'active',
-          is_deactivated: customer.isDeactivated || false,
-          m3u_url: customer.m3uUrl
-        });
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('role', 'reseller');
 
-      if (error) {
-        console.error('Error adding customer:', error);
-        toast.error('Failed to add customer');
+      if (error) throw error;
+      setResellers(data);
+    } catch (error) {
+      console.error('Error fetching resellers:', error);
+      toast.error('Failed to load resellers');
+    }
+  };
+
+  // Enhanced fetchCustomers to include new multi-connection fields
+  const fetchCustomers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('customers')
+        .select(`
+          id,
+          reseller_id,
+          name,
+          email,
+          username,
+          password,
+          mac_address,
+          device_type,
+          plan_duration,
+          max_connections,
+          current_connections,
+          connection_details,
+          start_date,
+          expiration_date,
+          status,
+          is_deactivated,
+          cancelled_at,
+          is_trial,
+          highlevel_contact_id,
+          provider,
+          connection_number,
+          customer_group_id,
+          m3u_url,
+          created_at
+        `);
+
+      if (error) throw error;
+
+      const formattedCustomers: Customer[] = data.map(customer => ({
+        id: customer.id,
+        resellerId: customer.reseller_id,
+        name: customer.name,
+        email: customer.email,
+        username: customer.username || undefined,
+        password: customer.password || undefined,
+        macAddress: customer.mac_address || undefined,
+        deviceType: customer.device_type,
+        planDuration: customer.plan_duration,
+        connections: customer.max_connections || 1, // Legacy field
+        maxConnections: customer.max_connections || 1,
+        currentConnections: customer.current_connections || 0,
+        connectionDetails: customer.connection_details || [],
+        startDate: customer.start_date,
+        expirationDate: customer.expiration_date,
+        status: customer.status || 'active',
+        isDeactivated: customer.is_deactivated || false,
+        cancelledAt: customer.cancelled_at || undefined,
+        isTrialAccount: customer.is_trial || false,
+        highlevelContactId: customer.highlevel_contact_id || undefined,
+        provider: customer.provider || '8k',
+        connectionNumber: customer.connection_number || undefined,
+        customerGroupId: customer.customer_group_id || undefined,
+        m3uUrl: customer.m3u_url || undefined,
+      }));
+
+      setCustomers(formattedCustomers);
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+      toast.error('Failed to load customers');
+    }
+  };
+
+  const refreshData = useCallback(async () => {
+    setLoading(true);
+    try {
+      await Promise.all([fetchUser(user?.id || ''), fetchResellers(), fetchCustomers()]);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  const addCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
+    try {
+      const { data: currentCreditsData, error: currentCreditsError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', resellerId)
+        .single();
+
+      if (currentCreditsError) {
+        console.error('Error fetching current credits:', currentCreditsError);
+        toast.error('Failed to fetch current credits');
         return false;
       }
 
-      await refreshData();
-      toast.success('Customer added successfully');
+      const currentCredits = currentCreditsData?.credits || 0;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ credits: currentCredits + credits })
+        .eq('id', resellerId);
+
+      if (error) {
+        console.error('Error adding credits:', error);
+        toast.error('Failed to add credits');
+        return false;
+      }
+
+      // Log the credit transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'addition',
+          credits_used: credits,
+          notes: notes || 'Credits added by admin',
+        });
+
+      if (logError) {
+        console.error('Error logging credit transaction:', logError);
+      }
+
+      await fetchResellers();
+      if (user?.role === 'admin') {
+        await fetchUser(user.id);
+      }
       return true;
     } catch (error) {
-      console.error('Error adding customer:', error);
-      toast.error('Failed to add customer');
+      console.error('Error in addCredits function:', error);
+      toast.error('An error occurred while adding credits');
       return false;
     }
   };
 
-  const updateCustomer = async (customer: Customer): Promise<boolean> => {
+  const removeCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
     try {
-      console.log('Updating customer:', customer.id, customer);
-      
-      const { error } = await supabase
-        .from('customers')
-        .update({
-          name: customer.name,
-          email: customer.email,
-          mac_address: customer.macAddress,
-          device_type: customer.deviceType,
-          plan_duration: customer.planDuration,
-          start_date: customer.startDate,
-          expiration_date: customer.expirationDate,
-          username: customer.username,
-          password: customer.password,
-          customer_group_id: customer.customerGroupId,
-          connection_number: customer.connectionNumber,
-          total_connections: customer.totalConnections,
-          is_deactivated: customer.isDeactivated,
-          status: customer.status,
-          highlevel_contact_id: customer.highlevelContactId,
-          m3u_url: customer.m3uUrl
-        })
-        .eq('id', customer.id);
+      const { data: currentCreditsData, error: currentCreditsError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', resellerId)
+        .single();
 
-      if (error) {
-        console.error('Error updating customer:', error);
-        toast.error('Failed to update customer');
+      if (currentCreditsError) {
+        console.error('Error fetching current credits:', currentCreditsError);
+        toast.error('Failed to fetch current credits');
         return false;
       }
 
-      await refreshData();
+      const currentCredits = currentCreditsData?.credits || 0;
+
+      if (currentCredits < credits) {
+        toast.error('Not enough credits available to remove.');
+        return false;
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({ credits: currentCredits - credits })
+        .eq('id', resellerId);
+
+      if (error) {
+        console.error('Error removing credits:', error);
+        toast.error('Failed to remove credits');
+        return false;
+      }
+
+      // Log the credit transaction
+      const { error: logError } = await supabase
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'deduction',
+          credits_used: credits,
+          notes: notes || 'Credits removed by admin',
+        });
+
+      if (logError) {
+        console.error('Error logging credit transaction:', logError);
+      }
+
+      await fetchResellers();
+      if (user?.role === 'admin') {
+        await fetchUser(user.id);
+      }
       return true;
     } catch (error) {
-      console.error('Error updating customer:', error);
-      toast.error('Failed to update customer');
+      console.error('Error in removeCredits function:', error);
+      toast.error('An error occurred while removing credits');
+      return false;
+    }
+  };
+
+  const addReseller = async (email: string, name: string): Promise<boolean> => {
+    try {
+      // Create a new user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: email,
+        password: 'defaultpassword', // You might want to generate a random password
+        user_metadata: {
+          name: name,
+          role: 'reseller',
+        },
+      });
+
+      if (authError) {
+        console.error('Error creating user:', authError);
+        toast.error('Failed to create user');
+        return false;
+      }
+
+      // Get the user ID from the newly created user
+      const newUserId = authData.user?.id;
+
+      // Create a new profile in the profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: newUserId,
+          email: email,
+          name: name,
+          role: 'reseller',
+          credits: 0, // Initial credits for the reseller
+        });
+
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        toast.error('Failed to create profile');
+
+        // Optionally, delete the user if profile creation fails
+        await supabase.auth.admin.deleteUser(newUserId || '');
+        return false;
+      }
+
+      await fetchResellers();
+      return true;
+    } catch (error) {
+      console.error('Error in addReseller function:', error);
+      toast.error('An error occurred while adding reseller');
+      return false;
+    }
+  };
+
+  const getReseller = (resellerId: string): Profile | undefined => {
+    return resellers.find(reseller => reseller.id === resellerId);
+  };
+
+  // Enhanced addCustomer to support multi-connection accounts
+  const addCustomer = async (customerData: NewCustomerData): Promise<boolean> => {
+    if (!user) return false;
+
+    try {
+      console.log('🚀 AppContext: Starting customer creation process');
+      console.log('📊 Customer Data:', customerData);
+
+      // Calculate total credits needed using the database function
+      const { data: creditsNeeded, error: creditsError } = await supabase.rpc('calculate_credits_required', {
+        connections: customerData.maxConnections || customerData.connections,
+        duration_months: customerData.planDuration
+      });
+
+      if (creditsError) {
+        console.error('❌ Error calculating credits:', creditsError);
+        toast.error('Failed to calculate required credits');
+        return false;
+      }
+
+      console.log(`💰 Credits needed: ${creditsNeeded}`);
+
+      // Check if reseller has enough credits
+      if (user.credits < creditsNeeded) {
+        console.error(`❌ Insufficient credits: ${user.credits} available, ${creditsNeeded} required`);
+        toast.error(`Insufficient credits. You need ${creditsNeeded} credits but only have ${user.credits}.`);
+        return false;
+      }
+
+      // Determine the appropriate edge function based on account type and provider
+      let functionName = 'create-iptv-user';
+      if (customerData.accountType === 'mag') {
+        functionName = 'create-mag-user';
+      }
+
+      console.log(`🔧 Using edge function: ${functionName}`);
+
+      // Call the appropriate edge function
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: {
+          resellerId: customerData.resellerId,
+          customerData: {
+            ...customerData,
+            maxConnections: customerData.maxConnections || customerData.connections,
+            currentConnections: 0,
+            connectionDetails: []
+          }
+        }
+      });
+
+      if (error) {
+        console.error(`❌ Edge function error:`, error);
+        toast.error(`Failed to create ${customerData.accountType.toUpperCase()} account: ${error.message}`);
+        return false;
+      }
+
+      if (!data?.success) {
+        console.error(`❌ Edge function returned failure:`, data);
+        toast.error(data?.error || `Failed to create ${customerData.accountType.toUpperCase()} account`);
+        return false;
+      }
+
+      console.log(`✅ Customer created successfully:`, data);
+
+      // Refresh data to show the new customer
+      await Promise.all([fetchCustomers(), fetchResellers()]);
+
+      toast.success(`${customerData.accountType.toUpperCase()} customer created successfully with ${customerData.maxConnections || customerData.connections} connection${(customerData.maxConnections || customerData.connections) > 1 ? 's' : ''}!`);
+      return true;
+
+    } catch (error: any) {
+      console.error('💥 AppContext: Unexpected error during customer creation:', error);
+      toast.error(`An error occurred while creating the ${customerData.accountType} customer: ${error.message}`);
       return false;
     }
   };
 
   const cancelCustomer = async (customerId: string): Promise<boolean> => {
-    console.log(`🚫 AppContext: Cancel request initiated for customer ID: ${customerId}`);
-    
     try {
-      // First, call the delete-iptv-user edge function to delete from panel
-      console.log(`🔄 AppContext: Calling delete-iptv-user function for customer ${customerId}`);
-      
-      const { data, error } = await supabase.functions.invoke('delete-iptv-user', {
-        body: { customerId }
-      });
-      
-      if (error) {
-        console.error(`❌ AppContext: Error calling delete-iptv-user function:`, error);
-        toast.error('Failed to delete user from IPTV panel');
-        return false;
-      }
-      
-      if (!data?.success) {
-        console.error(`❌ AppContext: delete-iptv-user function returned failure:`, data);
-        toast.error(data?.message || 'Failed to delete user from IPTV panel');
-        return false;
-      }
-      
-      console.log(`✅ AppContext: Successfully deleted user from IPTV panel:`, data);
-      
-      // Update customer status to cancelled
-      console.log(`🔄 AppContext: Updating customer status to cancelled for ID: ${customerId}`);
-      
+      console.log(`🚫 AppContext: Starting cancellation process for customer ID: ${customerId}`);
+
+      // Optimistically update the customer's status in the local state
+      setCustomers(prevCustomers =>
+        prevCustomers.map(customer =>
+          customer.id === customerId ? { ...customer, status: 'cancelled', cancelledAt: new Date().toISOString() } : customer
+        )
+      );
+
+      // Update the customer's status in the database
       const { error: updateError } = await supabase
         .from('customers')
-        .update({ 
-          status: 'cancelled',
-          cancelled_at: new Date().toISOString()
-        })
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
         .eq('id', customerId);
 
       if (updateError) {
-        console.error(`❌ AppContext: Error updating customer status:`, updateError);
-        toast.error('Failed to update customer status');
+        console.error(`❌ AppContext: Error updating customer status in database:`, updateError);
+        toast.error('Failed to cancel customer account');
+
+        // Revert the optimistic update if the database update fails
+        await fetchCustomers();
         return false;
       }
 
-      console.log(`✅ AppContext: Customer ${customerId} status updated to cancelled`);
-      
-      // Refresh data to show updated status
-      await refreshData();
-      console.log(`📊 AppContext: Data refreshed after customer cancellation`);
-      
-      toast.success('Customer account cancelled successfully');
+      console.log(`✅ AppContext: Customer ${customerId} cancelled successfully in database`);
+      toast.success('Customer cancelled successfully');
+
       return true;
     } catch (error) {
-      console.error(`💥 AppContext: Unexpected error during customer cancellation:`, error);
+      console.error('💥 AppContext: Unexpected error during customer cancellation:', error);
       toast.error('An error occurred while cancelling the customer account');
+
+      // Revert the optimistic update if an unexpected error occurs
+      await fetchCustomers();
       return false;
     }
   };
@@ -349,7 +523,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase
         .from('customers')
-        .update({ is_deactivated: true })
+        .update({ is_deactivated: true, status: 'deactivated' })
         .eq('id', customerId);
 
       if (error) {
@@ -357,335 +531,198 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return false;
       }
 
-      await refreshData();
+      await fetchCustomers();
       return true;
     } catch (error) {
-      console.error('Error deactivating customer:', error);
+      console.error('Error in deactivateCustomer function:', error);
       return false;
     }
   };
 
-  const renewCustomer = async (customerId: string, additionalMonths: number): Promise<boolean> => {
+  const activateCustomer = async (customerId: string): Promise<boolean> => {
     try {
-      // First, call the renew-iptv-user edge function
-      const { data, error } = await supabase.functions.invoke('renew-iptv-user', {
-        body: {
-          customerId,
-          additionalMonths
-        }
-      });
-
-      if (error || !data?.success) {
-        console.error('Error renewing customer in IPTV panel:', error || data);
-        toast.error('Failed to renew customer in IPTV panel');
-        return false;
-      }
-
-      // Get current customer data
-      const { data: customerData, error: customerError } = await supabase
+      const { error } = await supabase
         .from('customers')
-        .select('expiration_date, reseller_id')
-        .eq('id', customerId)
-        .single();
-
-      if (customerError || !customerData) {
-        console.error('Error getting customer data:', customerError);
-        toast.error('Failed to get customer data');
-        return false;
-      }
-
-      // Calculate new expiration date
-      const currentExpiry = new Date(customerData.expiration_date);
-      const newExpiry = new Date(currentExpiry);
-      newExpiry.setMonth(newExpiry.getMonth() + additionalMonths);
-
-      // Update customer record
-      const { error: updateError } = await supabase
-        .from('customers')
-        .update({ 
-          expiration_date: newExpiry.toISOString().split('T')[0],
-          is_deactivated: false, // Reactivate if deactivated
-          status: 'active' // Set status back to active
-        })
+        .update({ is_deactivated: false, status: 'active' })
         .eq('id', customerId);
 
-      if (updateError) {
-        console.error('Error updating customer:', updateError);
-        toast.error('Failed to update customer record');
+      if (error) {
+        console.error('Error activating customer:', error);
         return false;
       }
 
-      // Deduct credits from reseller
-      const { data: resellerData, error: resellerError } = await supabase
-        .from('profiles')
-        .select('credits')
-        .eq('id', customerData.reseller_id)
-        .single();
-
-      if (resellerError || !resellerData) {
-        console.error('Error getting reseller data:', resellerError);
-        toast.error('Failed to get reseller data');
-        return false;
-      }
-
-      if (resellerData.credits < additionalMonths) {
-        toast.error('Insufficient credits for renewal');
-        return false;
-      }
-
-      const { error: creditError } = await supabase
-        .from('profiles')
-        .update({ credits: resellerData.credits - additionalMonths })
-        .eq('id', customerData.reseller_id);
-
-      if (creditError) {
-        console.error('Error deducting credits:', creditError);
-        toast.error('Failed to deduct credits');
-        return false;
-      }
-
-      // Log the transaction - Fixed action type
-      const { error: logError } = await supabase
-        .from('credit_logs')
-        .insert({
-          reseller_id: customerData.reseller_id,
-          action: 'deduction', // Changed from 'renewal' to 'deduction'
-          credits_used: additionalMonths,
-          customer_id: customerId,
-          notes: `${additionalMonths} month renewal`
-        });
-
-      if (logError) {
-        console.error('Failed to log renewal transaction:', logError);
-      }
-
-      await refreshData();
-      toast.success('Customer renewed successfully');
+      await fetchCustomers();
       return true;
     } catch (error) {
-      console.error('Error renewing customer:', error);
-      toast.error('Failed to renew customer');
+      console.error('Error in activateCustomer function:', error);
       return false;
     }
   };
 
-  const addReseller = async (reseller: Omit<Reseller, 'id' | 'created_at' | 'updated_at'>): Promise<boolean> => {
+  const updateCustomer = async (customerId: string, updates: Partial<Customer>): Promise<boolean> => {
     try {
-      console.log('Starting reseller creation process');
-      
-      // Get the current session to include the auth token
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        toast.error('You must be logged in to create resellers');
+      const { error } = await supabase
+        .from('customers')
+        .update(updates)
+        .eq('id', customerId);
+
+      if (error) {
+        console.error('Error updating customer:', error);
+        toast.error('Failed to update customer');
         return false;
       }
 
-      console.log('Session found, calling edge function');
+      await fetchCustomers();
+      return true;
+    } catch (error) {
+      console.error('Error in updateCustomer function:', error);
+      toast.error('An error occurred while updating the customer');
+      return false;
+    }
+  };
 
-      // Call the edge function to create the reseller
-      const { data: result, error } = await supabase.functions.invoke('create-reseller', {
+  const createTrialAccount = async (email: string): Promise<boolean> => {
+    if (!user) return false;
+
+    try {
+      // Check daily trial limit
+      const today = new Date().toISOString().split('T')[0];
+      const { data: trialLimit, error: trialLimitError } = await supabase
+        .from('daily_trial_limits')
+        .select('trial_count')
+        .eq('date', today)
+        .eq('provider', user.provider || '8k')
+        .single();
+
+      if (trialLimitError) {
+        console.error('Error checking trial limit:', trialLimitError);
+        toast.error('Failed to check trial limit');
+        return false;
+      }
+
+      const trialCount = trialLimit?.trial_count || 0;
+      if (trialCount >= 5) {
+        toast.error('Daily trial limit reached. Please try again tomorrow.');
+        return false;
+      }
+
+      // Call the edge function to create the trial account
+      const { data, error } = await supabase.functions.invoke('create-trial-account', {
         body: {
-          name: reseller.name,
-          email: reseller.email,
-          password: 'temporary123', // Default password - should be changed by reseller
-          credits: reseller.credits,
-        },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
+          resellerId: user.id,
+          email: email,
         },
       });
-
-      console.log('Edge function response:', { result, error });
 
       if (error) {
         console.error('Edge function error:', error);
-        toast.error(`Failed to create reseller: ${error.message}`);
+        toast.error('Failed to create trial account');
         return false;
       }
 
-      if (result?.error) {
-        console.error('Result error:', result.error);
-        toast.error(`Failed to create reseller: ${result.error}`);
+      if (!data?.success) {
+        console.error('Edge function returned failure:', data);
+        toast.error(data?.error || 'Failed to create trial account');
         return false;
       }
 
-      if (!result?.success) {
-        console.error('Unexpected result:', result);
-        toast.error('Failed to create reseller: Unexpected response');
-        return false;
+      // Update the daily trial limit
+      const { error: updateError } = await supabase
+        .from('daily_trial_limits')
+        .upsert({
+          date: today,
+          provider: user.provider || '8k',
+          trial_count: trialCount + 1,
+        }, { onConflict: ['date', 'provider'] });
+
+      if (updateError) {
+        console.error('Error updating trial limit:', updateError);
       }
 
-      console.log('Reseller created successfully');
-      await refreshData();
-      toast.success('Reseller added successfully');
+      await fetchCustomers();
+      toast.success('Trial account created successfully!');
       return true;
     } catch (error) {
-      console.error('Unexpected error:', error);
-      toast.error('An unexpected error occurred');
+      console.error('Error in createTrialAccount function:', error);
+      toast.error('An error occurred while creating the trial account');
       return false;
     }
   };
 
-  const updateResellerCredits = async (resellerId: string, newCredits: number): Promise<boolean> => {
+  // New function to update connection count
+  const updateConnectionCount = async (customerId: string, connectionChange: number): Promise<boolean> => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ credits: newCredits })
-        .eq('id', resellerId);
+      const { data, error } = await supabase.rpc('update_connection_count', {
+        customer_id: customerId,
+        connection_change: connectionChange
+      });
 
       if (error) {
-        console.error('Error updating reseller credits:', error);
-        toast.error('Failed to update reseller credits');
+        console.error('Error updating connection count:', error);
         return false;
       }
 
-      await refreshData();
-      toast.success('Reseller credits updated successfully');
+      if (!data) {
+        console.error('Connection limit exceeded or invalid change');
+        return false;
+      }
+
+      // Refresh customers data
+      await fetchCustomers();
       return true;
+
     } catch (error) {
-      console.error('Error updating reseller credits:', error);
-      toast.error('Failed to update reseller credits');
+      console.error('Error updating connection count:', error);
       return false;
     }
   };
 
-  // Added missing credit management methods
-  const addCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
+  // New function to validate connection limit
+  const validateConnectionLimit = async (customerId: string, newConnections: number): Promise<boolean> => {
     try {
-      // Get current credits
-      const { data: resellerData, error: resellerError } = await supabase
-        .from('profiles')
-        .select('credits')
-        .eq('id', resellerId)
-        .single();
+      const { data, error } = await supabase.rpc('validate_connection_limit', {
+        customer_id: customerId,
+        new_connections: newConnections
+      });
 
-      if (resellerError || !resellerData) {
-        console.error('Error getting reseller data:', resellerError);
-        toast.error('Failed to get reseller data');
+      if (error) {
+        console.error('Error validating connection limit:', error);
         return false;
       }
 
-      // Update credits
-      const newCredits = resellerData.credits + credits;
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ credits: newCredits })
-        .eq('id', resellerId);
+      return data;
 
-      if (updateError) {
-        console.error('Error adding credits:', updateError);
-        toast.error('Failed to add credits');
-        return false;
-      }
-
-      // Log the transaction
-      const { error: logError } = await supabase
-        .from('credit_logs')
-        .insert({
-          reseller_id: resellerId,
-          action: 'addition',
-          credits_used: credits,
-          notes: notes || 'Manual credit addition'
-        });
-
-      if (logError) {
-        console.error('Failed to log credit addition:', logError);
-      }
-
-      await refreshData();
-      return true;
     } catch (error) {
-      console.error('Error adding credits:', error);
-      toast.error('Failed to add credits');
+      console.error('Error validating connection limit:', error);
       return false;
     }
   };
 
-  const removeCredits = async (resellerId: string, credits: number, notes?: string): Promise<boolean> => {
-    try {
-      // Get current credits
-      const { data: resellerData, error: resellerError } = await supabase
-        .from('profiles')
-        .select('credits')
-        .eq('id', resellerId)
-        .single();
-
-      if (resellerError || !resellerData) {
-        console.error('Error getting reseller data:', resellerError);
-        toast.error('Failed to get reseller data');
-        return false;
-      }
-
-      // Check if enough credits available
-      if (resellerData.credits < credits) {
-        toast.error('Insufficient credits to remove');
-        return false;
-      }
-
-      // Update credits
-      const newCredits = resellerData.credits - credits;
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ credits: newCredits })
-        .eq('id', resellerId);
-
-      if (updateError) {
-        console.error('Error removing credits:', updateError);
-        toast.error('Failed to remove credits');
-        return false;
-      }
-
-      // Log the transaction
-      const { error: logError } = await supabase
-        .from('credit_logs')
-        .insert({
-          reseller_id: resellerId,
-          action: 'deduction',
-          credits_used: credits,
-          notes: notes || 'Manual credit removal'
-        });
-
-      if (logError) {
-        console.error('Failed to log credit removal:', logError);
-      }
-
-      await refreshData();
-      return true;
-    } catch (error) {
-      console.error('Error removing credits:', error);
-      toast.error('Failed to remove credits');
-      return false;
-    }
-  };
-
-  const getReseller = (resellerId: string): Reseller | undefined => {
-    return resellers.find(r => r.id === resellerId);
-  };
-
-  const value: AppContextType = {
-    customers,
+  const value = {
+    session,
+    user,
     resellers,
-    creditLogs,
+    customers,
     loading,
-    isLoading,
-    addCustomer,
-    updateCustomer,
-    cancelCustomer,
-    deactivateCustomer,
-    renewCustomer,
-    addReseller,
-    updateResellerCredits,
+    refreshData,
     addCredits,
     removeCredits,
+    addReseller,
     getReseller,
-    refreshData,
+    addCustomer,
+    cancelCustomer,
+    deactivateCustomer,
+    activateCustomer,
+    updateCustomer,
+    createTrialAccount,
+    updateConnectionCount,
+    validateConnectionLimit,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
-export function useApp() {
+export function useApp(): AppContextType {
   const context = useContext(AppContext);
   if (context === undefined) {
     throw new Error('useApp must be used within an AppProvider');

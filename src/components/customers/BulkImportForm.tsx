@@ -30,6 +30,7 @@ interface CustomerImportData {
   macAddress?: string;
   deviceType: string;
   planDuration: number;
+  maxConnections?: number; // New field for multi-connection support
   highlevelContactId?: string;
 }
 
@@ -41,7 +42,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate CSV template (removed expirationDate column)
+  // Generate CSV template (updated with maxConnections column)
   const generateTemplate = () => {
     const headers = [
       'name',
@@ -51,6 +52,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       'macAddress',
       'deviceType',
       'planDuration',
+      'maxConnections', // New column
       'highlevelContactId'
     ];
     
@@ -62,6 +64,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       '00:1A:2B:3C:4D:5E',
       'Smart TV',
       '12',
+      '2', // Sample max connections
       'contact_abc123'
     ];
 
@@ -81,7 +84,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     toast.success('CSV template downloaded successfully');
   };
 
-  // Parse CSV file with better error handling (removed expirationDate)
+  // Parse CSV file (updated to include maxConnections)
   const parseCSV = (csvText: string): CustomerImportData[] => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) throw new Error('CSV file must contain headers and at least one data row');
@@ -107,7 +110,8 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         macAddress: cleanValues[4] || undefined,
         deviceType: cleanValues[5] || 'Smart TV',
         planDuration: parseInt(cleanValues[6]) || 1,
-        highlevelContactId: cleanValues[7] || undefined
+        maxConnections: parseInt(cleanValues[7]) || 1, // New field
+        highlevelContactId: cleanValues[8] || undefined
       };
       
       customers.push(customer);
@@ -116,7 +120,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     return customers;
   };
 
-  // Enhanced validation (removed expiration date validation)
+  // Enhanced validation (updated to include maxConnections validation)
   const validateCustomer = (customer: CustomerImportData): string[] => {
     const errors: string[] = [];
     
@@ -135,11 +139,16 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     if (customer.planDuration && (customer.planDuration < 1 || customer.planDuration > 60)) {
       errors.push('Plan duration must be between 1 and 60 months');
     }
+
+    // Validate max connections
+    if (customer.maxConnections && (customer.maxConnections < 1 || customer.maxConnections > 5)) {
+      errors.push('Max connections must be between 1 and 5');
+    }
     
     return errors;
   };
 
-  // Enhanced bulk import processing
+  // Enhanced bulk import processing (updated to handle multi-connection accounts)
   const processBulkImport = async (customers: CustomerImportData[]) => {
     const results: ImportResult['results'] = [];
     let processed = 0;
@@ -209,8 +218,8 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
           continue;
         }
 
-        // Create customer record in database using expiration date from IPTV panel
-        console.log(`💾 Creating customer record for ${customer.name} with expiration: ${iptvExpirationDate || 'default'}`);
+        // Create customer record in database with multi-connection support
+        console.log(`💾 Creating customer record for ${customer.name} with ${customer.maxConnections} max connections`);
         const { data: newCustomer, error: createError } = await supabase
           .from('customers')
           .insert({
@@ -221,9 +230,12 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
             password: customer.password.trim(),
             mac_address: customer.macAddress?.trim() || null,
             device_type: customer.deviceType?.trim() || 'Smart TV',
-            expiration_date: iptvExpirationDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default to 30 days from now if not available
+            expiration_date: iptvExpirationDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             start_date: new Date().toISOString().split('T')[0],
             plan_duration: customer.planDuration,
+            max_connections: customer.maxConnections || 1, // New field
+            current_connections: 0, // New field
+            connection_details: [], // New field
             status: 'active',
             is_trial: false,
             highlevel_contact_id: customer.highlevelContactId?.trim() || null,
@@ -266,9 +278,13 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
           }
         }
 
+        const maxConnectionsText = customer.maxConnections && customer.maxConnections > 1 
+          ? ` (${customer.maxConnections} max connections)` 
+          : '';
+
         const expirationMessage = iptvExpirationDate ? 
-          `Successfully imported with expiration date ${iptvExpirationDate} from ${existsData?.provider || 'IPTV'} panel` :
-          `Successfully imported with default expiration date (IPTV panel date not available)`;
+          `Successfully imported with expiration date ${iptvExpirationDate} from ${existsData?.provider || 'IPTV'} panel${maxConnectionsText}` :
+          `Successfully imported with default expiration date${maxConnectionsText}`;
 
         results.push({
           customerName: customer.name,
@@ -356,14 +372,14 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         <CardHeader>
           <CardTitle>Bulk Customer Import</CardTitle>
           <CardDescription>
-            Import existing customers from CSV and link them to their IPTV accounts. Expiration dates will be automatically retrieved from your IPTV panel.
+            Import existing customers from CSV and link them to their IPTV accounts. Expiration dates and connection limits will be automatically retrieved from your IPTV panel.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              <strong>Important:</strong> This feature links existing IPTV accounts to your dashboard. Expiration dates are automatically retrieved from your IPTV panel, so you don't need to include them in your CSV file.
+              <strong>Multi-Connection Support:</strong> You can now specify the maximum number of connections (1-5) for each customer. This allows customers to stream on multiple devices simultaneously.
             </AlertDescription>
           </Alert>
 
