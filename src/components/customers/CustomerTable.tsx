@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Customer } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,9 +21,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
-import { MoreVertical, Eye, RotateCcw, UserX, Settings, RefreshCw, Crown } from 'lucide-react';
+import { MoreVertical, Eye, RotateCcw, UserX, Settings, RefreshCw, Crown, ChevronUp, ChevronDown } from 'lucide-react';
 import { formatDate, isExpiringSoon } from '@/lib/utils';
 import { consolidateCustomers, ConsolidatedCustomer, getCustomerDisplayName } from '@/utils/customerGrouping';
+
+type SortField = 'name' | 'status' | 'device' | 'plan' | 'expiration';
+type SortDirection = 'asc' | 'desc';
+type StatusFilter = 'all' | 'active' | 'expiring' | 'expired' | 'cancelled' | 'deactivated';
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -33,6 +37,8 @@ interface CustomerTableProps {
   onDeactivate?: (customerId: string) => void;
   onManageCrm?: (customer: Customer) => void;
   onSyncToCrm?: (customer: Customer) => void;
+  statusFilter?: StatusFilter;
+  onStatusFilterChange?: (filter: StatusFilter) => void;
 }
 
 export function CustomerTable({ 
@@ -42,22 +48,118 @@ export function CustomerTable({
   onRenew, 
   onDeactivate,
   onManageCrm,
-  onSyncToCrm
+  onSyncToCrm,
+  statusFilter = 'all',
+  onStatusFilterChange
 }: CustomerTableProps) {
   const [search, setSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<ConsolidatedCustomer | null>(null);
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   // Consolidate customers for display
   const consolidatedCustomers = consolidateCustomers(customers);
 
-  // Filter consolidated customers based on search
-  const filteredCustomers = consolidatedCustomers.filter(
-    (customer) =>
-      customer.name.toLowerCase().includes(search.toLowerCase()) ||
-      customer.email.toLowerCase().includes(search.toLowerCase()) ||
-      customer.deviceType.toLowerCase().includes(search.toLowerCase())
-  );
+  // Filter and sort customers
+  const filteredAndSortedCustomers = useMemo(() => {
+    let filtered = consolidatedCustomers;
+
+    // Apply search filter
+    if (search) {
+      filtered = filtered.filter(
+        (customer) =>
+          customer.name.toLowerCase().includes(search.toLowerCase()) ||
+          customer.email.toLowerCase().includes(search.toLowerCase()) ||
+          customer.deviceType.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+
+    // Apply status filter
+    if (statusFilter !== 'all') {
+      const today = new Date();
+      const sevenDaysFromNow = new Date();
+      sevenDaysFromNow.setDate(today.getDate() + 7);
+
+      filtered = filtered.filter(customer => {
+        switch (statusFilter) {
+          case 'active':
+            return customer.status === 'active' && !customer.isDeactivated && !customer.cancelledAt;
+          case 'expiring':
+            if (customer.isDeactivated || customer.cancelledAt || customer.status === 'expired') return false;
+            const expirationDate = new Date(customer.expirationDate);
+            return expirationDate > today && expirationDate <= sevenDaysFromNow;
+          case 'expired':
+            return customer.status === 'expired' && !customer.isDeactivated && !customer.cancelledAt;
+          case 'cancelled':
+            return customer.cancelledAt || customer.status === 'cancelled';
+          case 'deactivated':
+            return customer.isDeactivated;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Apply sorting
+    return filtered.sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortField) {
+        case 'name':
+          aValue = getCustomerDisplayName(a).toLowerCase();
+          bValue = getCustomerDisplayName(b).toLowerCase();
+          break;
+        case 'status':
+          aValue = getStatusValue(a);
+          bValue = getStatusValue(b);
+          break;
+        case 'device':
+          aValue = a.deviceType.toLowerCase();
+          bValue = b.deviceType.toLowerCase();
+          break;
+        case 'plan':
+          aValue = a.planDuration;
+          bValue = b.planDuration;
+          break;
+        case 'expiration':
+          aValue = new Date(a.expirationDate).getTime();
+          bValue = new Date(b.expirationDate).getTime();
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [consolidatedCustomers, search, statusFilter, sortField, sortDirection]);
+
+  const getStatusValue = (customer: ConsolidatedCustomer) => {
+    if (customer.isDeactivated) return 4;
+    if (customer.status === 'cancelled') return 3;
+    if (customer.status === 'expired') return 2;
+    if (isExpiringSoon(customer.expirationDate)) return 1;
+    return 0; // active
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return null;
+    return sortDirection === 'asc' ? 
+      <ChevronUp className="h-4 w-4 ml-1" /> : 
+      <ChevronDown className="h-4 w-4 ml-1" />;
+  };
 
   const getStatusBadge = (customer: ConsolidatedCustomer) => {
     if (customer.isDeactivated) {
@@ -129,23 +231,68 @@ export function CustomerTable({
         <Table>
           <TableHeader className="bg-gray-50">
             <TableRow>
-              <TableHead>Customer</TableHead>
-              <TableHead>Device</TableHead>
-              <TableHead>Plan</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Expiration</TableHead>
+              <TableHead>
+                <Button 
+                  variant="ghost" 
+                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
+                  onClick={() => handleSort('name')}
+                >
+                  Customer
+                  {getSortIcon('name')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button 
+                  variant="ghost" 
+                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
+                  onClick={() => handleSort('device')}
+                >
+                  Device
+                  {getSortIcon('device')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button 
+                  variant="ghost" 
+                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
+                  onClick={() => handleSort('plan')}
+                >
+                  Plan
+                  {getSortIcon('plan')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button 
+                  variant="ghost" 
+                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
+                  onClick={() => handleSort('status')}
+                >
+                  Status
+                  {getSortIcon('status')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button 
+                  variant="ghost" 
+                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
+                  onClick={() => handleSort('expiration')}
+                >
+                  Expiration
+                  {getSortIcon('expiration')}
+                </Button>
+              </TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredCustomers.length === 0 ? (
+            {filteredAndSortedCustomers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-6 text-gray-500">
-                  No customers found matching your search.
+                  No customers found matching your search or filter.
                 </TableCell>
               </TableRow>
             ) : (
-              filteredCustomers.map((customer) => (
+              filteredAndSortedCustomers.map((customer) => (
                 <TableRow key={customer.id} className="hover:bg-gray-50">
                   <TableCell>
                     <div>

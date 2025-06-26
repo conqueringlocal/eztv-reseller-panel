@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -24,6 +23,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, UserCheck, Clock, AlertTriangle, UserX, Ban, Upload } from 'lucide-react';
 
+type StatusFilter = 'all' | 'active' | 'expiring' | 'expired' | 'cancelled' | 'deactivated';
+
 export default function ResellerCustomers() {
   const { user } = useAuth();
   const { customers, cancelCustomer, deactivateCustomer, refreshData } = useApp();
@@ -34,6 +35,7 @@ export default function ResellerCustomers() {
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
   const [selectedCustomerForCrm, setSelectedCustomerForCrm] = useState<Customer | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
@@ -201,52 +203,83 @@ export default function ResellerCustomers() {
         </div>
       </div>
       
-      {/* Stats Cards */}
+      {/* Stats Cards - Now clickable for filtering */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <StatCard
-          title="Active Connections"
-          value={activeCount}
-          icon={<UserCheck className="h-5 w-5" />}
-          className="border-green-200 bg-green-50"
-        />
+        <div 
+          className={`cursor-pointer transition-all ${statusFilter === 'active' ? 'ring-2 ring-green-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'active' ? 'all' : 'active')}
+        >
+          <StatCard
+            title="Active Connections"
+            value={activeCount}
+            icon={<UserCheck className="h-5 w-5" />}
+            className="border-green-200 bg-green-50 hover:bg-green-100"
+          />
+        </div>
         
-        <StatCard
-          title="Expiring Soon"
-          value={expiringSoonCount}
-          icon={<Clock className="h-5 w-5" />}
-          className="border-yellow-200 bg-yellow-50"
-        />
+        <div 
+          className={`cursor-pointer transition-all ${statusFilter === 'expiring' ? 'ring-2 ring-yellow-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'expiring' ? 'all' : 'expiring')}
+        >
+          <StatCard
+            title="Expiring Soon"
+            value={expiringSoonCount}
+            icon={<Clock className="h-5 w-5" />}
+            className="border-yellow-200 bg-yellow-50 hover:bg-yellow-100"
+          />
+        </div>
         
-        <StatCard
-          title="Expired"
-          value={expiredCount}
-          icon={<AlertTriangle className="h-5 w-5" />}
-          className="border-red-200 bg-red-50"
-        />
+        <div 
+          className={`cursor-pointer transition-all ${statusFilter === 'expired' ? 'ring-2 ring-red-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'expired' ? 'all' : 'expired')}
+        >
+          <StatCard
+            title="Expired"
+            value={expiredCount}
+            icon={<AlertTriangle className="h-5 w-5" />}
+            className="border-red-200 bg-red-50 hover:bg-red-100"
+          />
+        </div>
         
-        <StatCard
-          title="Cancelled"
-          value={cancelledCount}
-          icon={<Ban className="h-5 w-5" />}
-          className="border-orange-200 bg-orange-50"
-        />
+        <div 
+          className={`cursor-pointer transition-all ${statusFilter === 'cancelled' ? 'ring-2 ring-orange-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'cancelled' ? 'all' : 'cancelled')}
+        >
+          <StatCard
+            title="Cancelled"
+            value={cancelledCount}
+            icon={<Ban className="h-5 w-5" />}
+            className="border-orange-200 bg-orange-50 hover:bg-orange-100"
+          />
+        </div>
         
-        <StatCard
-          title="Deactivated"
-          value={deactivatedCount}
-          icon={<UserX className="h-5 w-5" />}
-          className="border-gray-200 bg-gray-50"
-        />
+        <div 
+          className={`cursor-pointer transition-all ${statusFilter === 'deactivated' ? 'ring-2 ring-gray-500' : ''}`}
+          onClick={() => setStatusFilter(statusFilter === 'deactivated' ? 'all' : 'deactivated')}
+        >
+          <StatCard
+            title="Deactivated"
+            value={deactivatedCount}
+            icon={<UserX className="h-5 w-5" />}
+            className="border-gray-200 bg-gray-50 hover:bg-gray-100"
+          />
+        </div>
       </div>
       
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            All Customers ({resellerCustomers.length})
+            {statusFilter === 'all' ? 
+              `All Customers (${resellerCustomers.length})` : 
+              `${statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)} Customers`
+            }
           </CardTitle>
           <CardDescription>
-            View and manage all your customers
+            {statusFilter === 'all' ? 
+              'View and manage all your customers' : 
+              `Showing ${statusFilter} customers - click any stat card to filter or click again to show all`
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -258,6 +291,8 @@ export default function ResellerCustomers() {
             onDeactivate={handleDeactivateCustomer}
             onManageCrm={handleManageCrmContact}
             onSyncToCrm={handleSyncToCrm}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
           />
         </CardContent>
       </Card>
