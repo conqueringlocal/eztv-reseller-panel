@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +31,7 @@ interface CustomerImportData {
   macAddress?: string;
   deviceType: string;
   planDuration: number;
-  maxConnections?: number; // New field for multi-connection support
+  maxConnections?: number;
   highlevelContactId?: string;
 }
 
@@ -42,7 +43,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate CSV template (updated with maxConnections column)
+  // Generate CSV template
   const generateTemplate = () => {
     const headers = [
       'name',
@@ -52,7 +53,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       'macAddress',
       'deviceType',
       'planDuration',
-      'maxConnections', // New column
+      'maxConnections',
       'highlevelContactId'
     ];
     
@@ -64,7 +65,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       '00:1A:2B:3C:4D:5E',
       'Smart TV',
       '12',
-      '2', // Sample max connections
+      '2',
       'contact_abc123'
     ];
 
@@ -84,7 +85,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     toast.success('CSV template downloaded successfully');
   };
 
-  // Parse CSV file (updated to include maxConnections)
+  // Parse CSV file
   const parseCSV = (csvText: string): CustomerImportData[] => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) throw new Error('CSV file must contain headers and at least one data row');
@@ -110,7 +111,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         macAddress: cleanValues[4] || undefined,
         deviceType: cleanValues[5] || 'Smart TV',
         planDuration: parseInt(cleanValues[6]) || 1,
-        maxConnections: parseInt(cleanValues[7]) || 1, // New field
+        maxConnections: parseInt(cleanValues[7]) || 1,
         highlevelContactId: cleanValues[8] || undefined
       };
       
@@ -120,7 +121,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     return customers;
   };
 
-  // Enhanced validation (updated to include maxConnections validation)
+  // Enhanced validation
   const validateCustomer = (customer: CustomerImportData): string[] => {
     const errors: string[] = [];
     
@@ -148,7 +149,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     return errors;
   };
 
-  // Enhanced bulk import processing (updated to handle multi-connection accounts)
+  // Enhanced bulk import processing
   const processBulkImport = async (customers: CustomerImportData[]) => {
     const results: ImportResult['results'] = [];
     let processed = 0;
@@ -163,6 +164,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       
       try {
         console.log(`📋 Processing customer ${i + 1}/${customers.length}: ${customer.name}`);
+        console.log(`🔍 Customer data - Device Type: ${customer.deviceType}, Plan Duration: ${customer.planDuration}`);
         
         // Validate customer data
         const validationErrors = validateCustomer(customer);
@@ -175,7 +177,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         const { data: existsData, error: existsError } = await supabase.functions.invoke('check-iptv-user-exists', {
           body: {
             username: customer.username,
-            password: customer.password, // Now passing password as well
+            password: customer.password,
             resellerId: user?.id
           }
         });
@@ -222,8 +224,10 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         // Generate customer group ID
         const customerGroupId = `${customer.email.toLowerCase()}_${user?.id}`;
 
-        // Create customer record in database with multi-connection support
-        console.log(`💾 Creating customer record for ${customer.name} with ${customer.maxConnections} max connections`);
+        // Create customer record in database with CORRECTED field mapping
+        console.log(`💾 Creating customer record for ${customer.name}`);
+        console.log(`📝 Database values - device_type: ${customer.deviceType}, plan_duration: ${customer.planDuration}`);
+        
         const { data: newCustomer, error: createError } = await supabase
           .from('customers')
           .insert({
@@ -233,15 +237,15 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
             username: customer.username.trim(),
             password: customer.password.trim(),
             mac_address: customer.macAddress?.trim() || null,
-            device_type: customer.deviceType?.trim() || 'Smart TV',
+            device_type: customer.deviceType?.trim() || 'Smart TV', // FIXED: Correct mapping
+            plan_duration: customer.planDuration, // FIXED: Correct mapping
             expiration_date: iptvExpirationDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             start_date: new Date().toISOString().split('T')[0],
-            plan_duration: customer.planDuration,
             max_connections: customer.maxConnections || 1,
             current_connections: 0,
             connection_details: [],
-            customer_group: customerGroupId, // Add required customer_group field
-            connection_sequence: 1, // Add connection sequence
+            customer_group: customerGroupId,
+            connection_sequence: 1,
             status: 'active',
             is_trial: false,
             highlevel_contact_id: customer.highlevelContactId?.trim() || null,
@@ -280,7 +284,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
             }
           } catch (crmError) {
             console.warn(`⚠️ CRM sync failed for ${customer.name}:`, crmError);
-            // Don't fail the import if CRM sync fails
           }
         }
 
