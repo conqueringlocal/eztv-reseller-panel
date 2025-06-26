@@ -201,97 +201,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const createCustomer = async (customerData: any) => {
     try {
-      console.log('🚀 Creating customer:', customerData);
+      console.log('Creating customer:', customerData);
 
-      // Get user's provider for determining which edge function to call
-      const userProvider = user?.provider || '8k';
-      console.log(`📱 User provider: ${userProvider}`);
-
-      let functionName: string;
-      let requestBody: any;
-
-      // Determine which edge function to call based on account type
-      if (customerData.accountType === 'mag') {
-        console.log('📺 Creating MAG account');
-        functionName = 'create-mag-user';
-        requestBody = {
-          userParams: {
-            macAddress: customerData.macAddress,
-            maxConnections: customerData.maxConnections || 1,
-            expiryDate: customerData.expirationDate,
-            isTrial: false,
-            bouquet: customerData.packageId || '1',
-            customerName: customerData.name,
-            resellerName: user?.name || 'Unknown'
-          }
-        };
-      } else if (customerData.accountType === 'm3u') {
-        console.log('📡 Creating M3U account');
-        
-        // Choose function based on provider
-        if (userProvider === 'trex') {
-          functionName = 'create-trex-user';
-        } else {
-          functionName = 'create-iptv-user';
-        }
-
-        requestBody = {
-          resellerId: user?.id,
-          customerData: {
-            name: customerData.name,
-            email: customerData.email,
-            macAddress: customerData.macAddress,
-            deviceType: customerData.deviceType,
-            packageId: customerData.packageId || '1',
-            planDuration: customerData.planDuration,
-            connections: customerData.maxConnections || 1,
-            maxConnections: customerData.maxConnections || 1,
-            currentConnections: 0,
-            connectionDetails: [],
-            startDate: customerData.startDate,
-            expirationDate: customerData.expirationDate,
-            accountType: 'm3u',
-            status: 'active',
-            isDeactivated: false
-          }
-        };
-      } else {
-        console.error('❌ Invalid account type:', customerData.accountType);
-        toast.error('Invalid account type specified');
-        return false;
-      }
-
-      console.log(`🔗 Calling edge function: ${functionName}`);
-      console.log('📦 Request body:', JSON.stringify(requestBody, null, 2));
-
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: requestBody,
+      const { data, error } = await supabase.functions.invoke('create-customer', {
+        body: { ...customerData, resellerId: user?.id },
       });
 
       if (error) {
-        console.error('❌ Function invoke error:', error);
-        toast.error(`Failed to create customer: ${error.message}`);
+        console.error('Function invoke error:', error);
+        toast.error(error.message);
         return false;
       }
 
-      if (data?.error || !data?.success) {
-        console.error('❌ Customer creation error:', data?.error);
-        toast.error(data?.error || 'Failed to create customer account');
+      if (data.error) {
+        console.error('Customer creation error:', data.error);
+        toast.error(data.error);
         return false;
       }
 
-      console.log('✅ Customer creation successful:', data);
-      
-      // Show success message with connection info for multi-connection accounts
-      const connectionInfo = customerData.maxConnections > 1 
-        ? ` with ${customerData.maxConnections} connections` 
-        : '';
-      
-      toast.success(`Customer created successfully${connectionInfo}!`);
+      toast.success('Customer created successfully!');
       await fetchData();
       return true;
     } catch (error) {
-      console.error('💥 Unexpected error during customer creation:', error);
+      console.error('Unexpected error during customer creation:', error);
       toast.error('An unexpected error occurred while creating the customer');
       return false;
     }
@@ -569,7 +501,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     creditLogs,
     isLoading,
     createCustomer,
-    addCustomer: createCustomer, // Alias for backwards compatibility
+    addCustomer,
     updateCustomer,
     cancelCustomer,
     deactivateCustomer,
