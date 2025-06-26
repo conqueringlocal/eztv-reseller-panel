@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +29,6 @@ interface CustomerImportData {
   password: string;
   macAddress?: string;
   deviceType: string;
-  expirationDate: string;
   planDuration: number;
   highlevelContactId?: string;
 }
@@ -43,7 +41,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate CSV template
+  // Generate CSV template (removed expirationDate column)
   const generateTemplate = () => {
     const headers = [
       'name',
@@ -52,7 +50,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       'password',
       'macAddress',
       'deviceType',
-      'expirationDate',
       'planDuration',
       'highlevelContactId'
     ];
@@ -64,7 +61,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       'password123',
       '00:1A:2B:3C:4D:5E',
       'Smart TV',
-      '2025-12-31',
       '12',
       'contact_abc123'
     ];
@@ -85,7 +81,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     toast.success('CSV template downloaded successfully');
   };
 
-  // Parse CSV file with better error handling
+  // Parse CSV file with better error handling (removed expirationDate)
   const parseCSV = (csvText: string): CustomerImportData[] => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) throw new Error('CSV file must contain headers and at least one data row');
@@ -110,9 +106,8 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         password: cleanValues[3] || '',
         macAddress: cleanValues[4] || undefined,
         deviceType: cleanValues[5] || 'Smart TV',
-        expirationDate: cleanValues[6] || '',
-        planDuration: parseInt(cleanValues[7]) || 1,
-        highlevelContactId: cleanValues[8] || undefined
+        planDuration: parseInt(cleanValues[6]) || 1,
+        highlevelContactId: cleanValues[7] || undefined
       };
       
       customers.push(customer);
@@ -121,7 +116,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     return customers;
   };
 
-  // Enhanced validation
+  // Enhanced validation (removed expiration date validation)
   const validateCustomer = (customer: CustomerImportData): string[] => {
     const errors: string[] = [];
     
@@ -129,22 +124,11 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     if (!customer.email?.trim()) errors.push('Email is required');
     if (!customer.username?.trim()) errors.push('Username is required');
     if (!customer.password?.trim()) errors.push('Password is required');
-    if (!customer.expirationDate?.trim()) errors.push('Expiration date is required');
     
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (customer.email && !emailRegex.test(customer.email.trim())) {
       errors.push('Invalid email format');
-    }
-    
-    // Validate expiration date
-    if (customer.expirationDate) {
-      const expDate = new Date(customer.expirationDate);
-      if (isNaN(expDate.getTime())) {
-        errors.push('Invalid expiration date format (use YYYY-MM-DD)');
-      } else if (expDate <= new Date()) {
-        errors.push('Expiration date must be in the future');
-      }
     }
     
     // Validate plan duration
@@ -177,7 +161,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
           throw new Error(validationErrors.join(', '));
         }
 
-        // Check if username exists in IPTV panel
+        // Check if username exists in IPTV panel and get expiration date
         console.log(`🔍 Checking if username ${customer.username} exists in IPTV panel`);
         const { data: existsData, error: existsError } = await supabase.functions.invoke('check-iptv-user-exists', {
           body: {
@@ -195,6 +179,12 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
 
         if (!existsData?.exists) {
           throw new Error(`Username ${customer.username} does not exist in ${existsData?.provider || 'IPTV'} panel`);
+        }
+
+        // Use expiration date from IPTV API response
+        const iptvExpirationDate = existsData.expirationDate;
+        if (!iptvExpirationDate) {
+          console.warn(`⚠️ No expiration date found in IPTV panel for ${customer.username}, using default`);
         }
 
         // Check if customer already exists in our database
@@ -219,8 +209,8 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
           continue;
         }
 
-        // Create customer record in database
-        console.log(`💾 Creating customer record for ${customer.name}`);
+        // Create customer record in database using expiration date from IPTV panel
+        console.log(`💾 Creating customer record for ${customer.name} with expiration: ${iptvExpirationDate || 'default'}`);
         const { data: newCustomer, error: createError } = await supabase
           .from('customers')
           .insert({
@@ -231,7 +221,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
             password: customer.password.trim(),
             mac_address: customer.macAddress?.trim() || null,
             device_type: customer.deviceType?.trim() || 'Smart TV',
-            expiration_date: customer.expirationDate,
+            expiration_date: iptvExpirationDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Default to 30 days from now if not available
             start_date: new Date().toISOString().split('T')[0],
             plan_duration: customer.planDuration,
             status: 'active',
@@ -276,10 +266,14 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
           }
         }
 
+        const expirationMessage = iptvExpirationDate ? 
+          `Successfully imported with expiration date ${iptvExpirationDate} from ${existsData?.provider || 'IPTV'} panel` :
+          `Successfully imported with default expiration date (IPTV panel date not available)`;
+
         results.push({
           customerName: customer.name,
           status: 'success',
-          message: `Successfully imported and linked to existing ${existsData?.provider || 'IPTV'} account`
+          message: expirationMessage
         });
         processed++;
 
@@ -310,7 +304,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     };
   };
 
-  // Handle file upload and processing
   const handleImport = async () => {
     if (!file) {
       toast.error('Please select a CSV file');
@@ -363,15 +356,14 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         <CardHeader>
           <CardTitle>Bulk Customer Import</CardTitle>
           <CardDescription>
-            Import existing customers from CSV and link them to their IPTV accounts. This will verify each username exists in your IPTV panel before importing.
+            Import existing customers from CSV and link them to their IPTV accounts. Expiration dates will be automatically retrieved from your IPTV panel.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              <strong>Important:</strong> This feature links existing IPTV accounts to your dashboard. It does not create new IPTV accounts. 
-              Make sure all usernames in your CSV file already exist in your IPTV panel.
+              <strong>Important:</strong> This feature links existing IPTV accounts to your dashboard. Expiration dates are automatically retrieved from your IPTV panel, so you don't need to include them in your CSV file.
             </AlertDescription>
           </Alert>
 

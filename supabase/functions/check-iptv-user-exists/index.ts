@@ -81,6 +81,7 @@ serve(async (req) => {
 
     let userExists = false;
     let apiResponse = null;
+    let expirationDate = null;
 
     // Check user existence based on provider
     if (provider === '8k') {
@@ -105,6 +106,18 @@ serve(async (req) => {
                    apiResponse.user_info &&
                    typeof apiResponse.user_info === 'object';
 
+      // Extract expiration date from 8K API response
+      if (userExists && apiResponse.user_info) {
+        // 8K API typically returns exp_date as timestamp
+        if (apiResponse.user_info.exp_date) {
+          const expTimestamp = parseInt(apiResponse.user_info.exp_date);
+          if (!isNaN(expTimestamp)) {
+            expirationDate = new Date(expTimestamp * 1000).toISOString().split('T')[0];
+            console.log(`📅 8K User expiration date: ${expirationDate}`);
+          }
+        }
+      }
+
     } else if (provider === 'trex') {
       console.log(`📡 Checking Trex user: ${username}`);
       
@@ -124,6 +137,12 @@ serve(async (req) => {
         
         // Adjust this based on actual Trex API response format
         userExists = trexResponse.ok && apiResponse && apiResponse.exists === true;
+        
+        // Extract expiration date from Trex API response
+        if (userExists && apiResponse.expiration_date) {
+          expirationDate = apiResponse.expiration_date;
+          console.log(`📅 Trex User expiration date: ${expirationDate}`);
+        }
       } catch (error) {
         console.error('Trex API error:', error);
         userExists = false;
@@ -149,6 +168,12 @@ serve(async (req) => {
         
         // Adjust this based on actual MAG API response format
         userExists = magResponse.ok && apiResponse && apiResponse.user_exists === true;
+        
+        // Extract expiration date from MAG API response
+        if (userExists && apiResponse.expiration_date) {
+          expirationDate = apiResponse.expiration_date;
+          console.log(`📅 MAG User expiration date: ${expirationDate}`);
+        }
       } catch (error) {
         console.error('MAG API error:', error);
         userExists = false;
@@ -174,6 +199,7 @@ serve(async (req) => {
         exists: userExists,
         username: username,
         provider: provider,
+        expirationDate: expirationDate,
         message: userExists ? `User found in ${provider.toUpperCase()} panel` : `User not found in ${provider.toUpperCase()} panel`,
         apiResponse: apiResponse
       }),
