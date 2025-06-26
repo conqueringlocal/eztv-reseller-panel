@@ -80,8 +80,6 @@ export function consolidateCustomers(customers: Customer[]): ConsolidatedCustome
 }
 
 export function getCustomerDisplayName(customer: ConsolidatedCustomer): string {
-  if (customer.totalConnections > 1) {
-    return `${customer.name} (${customer.totalConnections} connections)`;
-  }
+  // Simply return the customer name without any connection information
   return customer.name;
 }

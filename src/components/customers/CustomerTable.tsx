@@ -313,7 +313,7 @@ export function CustomerTable({
                   <TableCell>
                     <div>
                       <div className="flex items-center space-x-2">
-                        <div className="font-medium">{getCustomerDisplayName(customer)}</div>
+                        <div className="font-medium">{customer.name}</div>
                         {customer.isTrial && (
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                             <Crown className="h-3 w-3 mr-1" />
