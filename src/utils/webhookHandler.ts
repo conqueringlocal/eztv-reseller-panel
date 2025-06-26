@@ -1,3 +1,4 @@
+
 import { Customer } from "../contexts/AppContext";
 import { supabase } from "@/integrations/supabase/client";
 import { generateUsername, generatePassword, dateToUnixTimestamp } from "./iptvApi";
@@ -208,7 +209,6 @@ const findCustomerByNameAndEmail = async (
       customerGroup: customer.customer_group || '', // Add customerGroup mapping
       connectionNumber: customer.connection_number,
       maxConnections: customer.max_connections || 1, // Fix: use maxConnections instead of connections
-      packageId: customer.customer_group_id, // Map customer_group_id to packageId
       highlevelContactId: customer.highlevel_contact_id,
       m3uUrl: customer.m3u_url,
       connectionSequence: customer.connection_sequence
@@ -495,10 +495,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       };
     }
 
-    // Check if reseller exists and has enough credits
+    // Check if reseller exists and has enough credits - select provider as well
     const { data: reseller, error: resellerError } = await supabase
       .from('profiles')
-      .select('credits, name')
+      .select('credits, name, provider')
       .eq('id', resellerId)
       .single();
 
