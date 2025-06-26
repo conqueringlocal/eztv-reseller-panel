@@ -32,7 +32,7 @@ export function CreditLogTable({ logs, filter = 'all' }: CreditLogTableProps) {
     })
     .filter(
       (log) =>
-        log.customerName?.toLowerCase().includes(search.toLowerCase()) ||
+        log.customer_name?.toLowerCase().includes(search.toLowerCase()) ||
         log.notes?.toLowerCase().includes(search.toLowerCase()) ||
         ''
     );
@@ -116,9 +116,9 @@ export function CreditLogTable({ logs, filter = 'all' }: CreditLogTableProps) {
                           : 'text-red-600 font-medium'
                       }
                     >
-                      {log.action === 'addition' ? '+' : '-'}{log.creditsUsed}
+                      {log.action === 'addition' ? '+' : '-'}{log.credits_used}
                     </TableCell>
-                    <TableCell>{log.customerName || 'N/A'}</TableCell>
+                    <TableCell>{log.customer_name || 'N/A'}</TableCell>
                     <TableCell className="text-sm text-gray-600">{log.notes || 'No notes'}</TableCell>
                   </TableRow>
                 );

@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/form';
 import { useApp } from '@/contexts/AppContext';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 
 // Form schema with validation
 const formSchema = z.object({
