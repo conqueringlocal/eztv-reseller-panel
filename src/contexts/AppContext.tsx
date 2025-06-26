@@ -239,6 +239,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           provider,
           connection_number,
           customer_group_id,
+          customer_group,
+          connection_sequence,
           m3u_url,
           created_at
         `);
@@ -255,7 +257,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         macAddress: customer.mac_address || undefined,
         deviceType: customer.device_type,
         planDuration: customer.plan_duration,
-        connections: customer.max_connections || 1,
         maxConnections: customer.max_connections || 1,
         currentConnections: customer.current_connections || 0,
         connectionDetails: Array.isArray(customer.connection_details) ? customer.connection_details : [],
@@ -264,12 +265,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         status: customer.status || 'active',
         isDeactivated: customer.is_deactivated || false,
         cancelledAt: customer.cancelled_at || undefined,
-        isTrialAccount: customer.is_trial || false,
-        isTrial: customer.is_trial || false, // Add for backward compatibility
+        isTrial: customer.is_trial || false,
         highlevelContactId: customer.highlevel_contact_id || undefined,
         provider: customer.provider || '8k',
         connectionNumber: customer.connection_number || undefined,
         customerGroupId: customer.customer_group_id || undefined,
+        customerGroup: customer.customer_group || '', // Map customer_group to customerGroup
+        connectionSequence: customer.connection_sequence || 1,
         m3uUrl: customer.m3u_url || undefined,
         createdAt: customer.created_at,
       }));

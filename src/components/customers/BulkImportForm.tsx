@@ -219,6 +219,9 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
           continue;
         }
 
+        // Generate customer group ID
+        const customerGroupId = `${customer.email.toLowerCase()}_${user?.id}`;
+
         // Create customer record in database with multi-connection support
         console.log(`💾 Creating customer record for ${customer.name} with ${customer.maxConnections} max connections`);
         const { data: newCustomer, error: createError } = await supabase
@@ -234,9 +237,11 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
             expiration_date: iptvExpirationDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
             start_date: new Date().toISOString().split('T')[0],
             plan_duration: customer.planDuration,
-            max_connections: customer.maxConnections || 1, // New field
-            current_connections: 0, // New field
-            connection_details: [], // New field
+            max_connections: customer.maxConnections || 1,
+            current_connections: 0,
+            connection_details: [],
+            customer_group: customerGroupId, // Add required customer_group field
+            connection_sequence: 1, // Add connection sequence
             status: 'active',
             is_trial: false,
             highlevel_contact_id: customer.highlevelContactId?.trim() || null,

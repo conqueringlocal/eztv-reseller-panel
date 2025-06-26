@@ -1,4 +1,3 @@
-
 import { Customer } from "../contexts/AppContext";
 import { supabase } from "@/integrations/supabase/client";
 import { generateUsername, generatePassword, dateToUnixTimestamp } from "./iptvApi";
@@ -206,11 +205,13 @@ const findCustomerByNameAndEmail = async (
       isDeactivated: customer.is_deactivated,
       cancelledAt: customer.cancelled_at,
       customerGroupId: customer.customer_group_id,
+      customerGroup: customer.customer_group || '', // Add customerGroup mapping
       connectionNumber: customer.connection_number,
-      connections: customer.total_connections || 1, // Map total_connections to connections with fallback
+      maxConnections: customer.max_connections || 1, // Fix: use maxConnections instead of connections
       packageId: customer.customer_group_id, // Map customer_group_id to packageId
       highlevelContactId: customer.highlevel_contact_id,
-      m3uUrl: customer.m3u_url
+      m3uUrl: customer.m3u_url,
+      connectionSequence: customer.connection_sequence
     };
   } catch (error) {
     console.error('💥 Error in findCustomerByNameAndEmail:', error);
@@ -592,6 +593,9 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       await updateHighLevelContactCredentials(contactId, resellerId, iptvCredentials);
     }
 
+    // Generate customer group ID
+    const customerGroupId = `${customerEmail.toLowerCase()}_${resellerId}`;
+
     // Create customer record in database with the actual credentials
     const customerData = {
       reseller_id: resellerId,
@@ -605,7 +609,13 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       username: finalUsername,  // Use actual credentials from API
       password: finalPassword,   // Use actual credentials from API
       m3u_url: data.user?.m3u_url,
-      highlevel_contact_id: contactId  // Store the HighLevel contact ID
+      highlevel_contact_id: contactId,  // Store the HighLevel contact ID
+      customer_group: customerGroupId, // Add required customer_group field
+      connection_sequence: 1, // Add connection sequence
+      max_connections: 1, // Add max connections
+      current_connections: 0, // Add current connections
+      connection_details: [], // Add connection details
+      provider: reseller.provider || '8k' // Add provider
     };
 
     const { data: customer, error: customerError } = await supabase
@@ -678,8 +688,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         planDuration,
         startDate,
         expirationDate,
-        status: 'active', // Added required property
-        isDeactivated: false, // Added required property
+        status: 'active',
+        isDeactivated: false,
+        customerGroup: customerGroupId, // Add required customerGroup field
+        maxConnections: 1, // Add maxConnections instead of connections
       }
     };
   } catch (error) {
