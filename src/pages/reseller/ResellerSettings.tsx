@@ -5,7 +5,7 @@ import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { useApp } from '@/contexts/AppContext';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
-import { Badge } from '@/components/ui/badge';
+import { AccountUpdateForm } from '@/components/reseller/AccountUpdateForm';
 
 export default function ResellerSettings() {
   const { user } = useAuth();
@@ -17,11 +17,6 @@ export default function ResellerSettings() {
   // Get customer statistics
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
   const activeConnections = resellerCustomers.filter(c => c.status === 'active' && !c.isDeactivated).length;
-
-  // Format provider display
-  const formatProvider = (provider: string) => {
-    return provider === '8k' ? '8K' : provider === 'trex' ? 'Trex' : provider;
-  };
 
   return (
     <DashboardLayout>
@@ -44,17 +39,11 @@ export default function ResellerSettings() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center py-2 border-b border-gray-100">
                       <span className="text-sm text-gray-600">Name:</span>
-                      <span className="text-sm font-medium">{reseller?.name || 'N/A'}</span>
+                      <span className="text-sm font-medium">{user?.name || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-gray-100">
                       <span className="text-sm text-gray-600">Email:</span>
-                      <span className="text-sm font-medium">{reseller?.email || user?.email || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                      <span className="text-sm text-gray-600">Provider:</span>
-                      <Badge variant="secondary">
-                        {formatProvider(reseller?.provider || '8k')}
-                      </Badge>
+                      <span className="text-sm font-medium">{user?.email || 'N/A'}</span>
                     </div>
                   </div>
                 </div>
@@ -66,7 +55,7 @@ export default function ResellerSettings() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center py-2 border-b border-gray-100">
                       <span className="text-sm text-gray-600">Available Credits:</span>
-                      <CreditsBadge credits={reseller?.credits || 0} />
+                      <CreditsBadge credits={user?.credits || 0} />
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-gray-100">
                       <span className="text-sm text-gray-600">Total Customers:</span>
@@ -111,17 +100,24 @@ export default function ResellerSettings() {
                 </div>
               </div>
             )}
-
-            {/* Contact Admin Info */}
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-              <h4 className="font-medium text-blue-900 mb-2">Need Help?</h4>
-              <p className="text-sm text-blue-800">
-                For account changes, additional settings, or technical support, please contact your administrator. 
-                API integrations and advanced configurations are managed centrally for security and consistency.
-              </p>
-            </div>
           </div>
         </DashboardCard>
+
+        <DashboardCard
+          title="Account Management"
+          description="Update your email address and password"
+        >
+          <AccountUpdateForm />
+        </DashboardCard>
+
+        {/* Contact Admin Info */}
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <h4 className="font-medium text-blue-900 mb-2">Need Help?</h4>
+          <p className="text-sm text-blue-800">
+            For account changes, additional settings, or technical support, please contact your administrator. 
+            API integrations and advanced configurations are managed centrally for security and consistency.
+          </p>
+        </div>
       </div>
     </DashboardLayout>
   );
