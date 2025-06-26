@@ -1,3 +1,4 @@
+
 import React, {
   createContext,
   useState,
@@ -8,14 +9,39 @@ import React, {
 import { Session } from '@supabase/supabase-js';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { Profile } from '@/components/resellers/ResellerTable';
+
+export interface Profile {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'reseller';
+  credits: number;
+  created_at?: string;
+  parent_reseller_id?: string;
+  reseller_level?: number;
+  provider?: string;
+}
+
+export interface CreditLog {
+  id: string;
+  resellerId: string;
+  date: string;
+  action: string;
+  creditsUsed: number;
+  customerName?: string;
+  notes?: string;
+  customerId?: string;
+  connectionsUsed?: number;
+}
 
 export interface AppContextType {
   session: Session | null;
   user: Profile | null;
   resellers: Profile[];
   customers: Customer[];
+  creditLogs: CreditLog[];
   loading: boolean;
+  isLoading: boolean;
   refreshData: () => Promise<void>;
   addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
   removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
@@ -26,6 +52,7 @@ export interface AppContextType {
   deactivateCustomer: (customerId: string) => Promise<boolean>;
   activateCustomer: (customerId: string) => Promise<boolean>;
   updateCustomer: (customerId: string, updates: Partial<Customer>) => Promise<boolean>;
+  renewCustomer: (customerId: string, duration: number) => Promise<boolean>;
   createTrialAccount: (email: string) => Promise<boolean>;
   updateConnectionCount: (customerId: string, connectionChange: number) => Promise<boolean>;
   validateConnectionLimit: (customerId: string, newConnections: number) => Promise<boolean>;
@@ -43,9 +70,9 @@ export interface Customer {
   packageId?: string;
   planDuration: number;
   connections?: number;
-  maxConnections?: number; // New field for multi-connection support
-  currentConnections?: number; // New field to track active connections
-  connectionDetails?: any[]; // New field to store connection-specific data
+  maxConnections?: number;
+  currentConnections?: number;
+  connectionDetails?: any[];
   startDate: string;
   expirationDate: string;
   status: string;
@@ -57,6 +84,7 @@ export interface Customer {
   connectionNumber?: number;
   customerGroupId?: string;
   m3uUrl?: string;
+  createdAt?: string;
 }
 
 export interface NewCustomerData {
@@ -68,7 +96,7 @@ export interface NewCustomerData {
   packageId: string;
   planDuration: number;
   connections: number;
-  maxConnections?: number; // New field
+  maxConnections?: number;
   startDate: string;
   expirationDate: string;
   accountType: 'm3u' | 'mag';
@@ -83,15 +111,6 @@ interface TrialResult {
   password?: string;
 }
 
-interface CreditLog {
-  id: string;
-  date: string;
-  action: string;
-  credits_used: number;
-  customer_name?: string;
-  notes?: string;
-}
-
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
@@ -99,7 +118,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
   const [resellers, setResellers] = useState<Profile[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -136,7 +157,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (error) throw error;
       setUser(profile);
-      await Promise.all([fetchResellers(), fetchCustomers()]);
+      await Promise.all([fetchResellers(), fetchCustomers(), fetchCreditLogs()]);
     } catch (error) {
       console.error('Error fetching user profile:', error);
       toast.error('Failed to load user profile');
@@ -160,7 +181,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Enhanced fetchCustomers to include new multi-connection fields
+  const fetchCreditLogs = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('credit_logs')
+        .select('*')
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedLogs: CreditLog[] = data.map(log => ({
+        id: log.id,
+        resellerId: log.reseller_id,
+        date: log.date,
+        action: log.action,
+        creditsUsed: log.credits_used,
+        customerName: log.customer_name || undefined,
+        notes: log.notes || undefined,
+        customerId: log.customer_id || undefined,
+        connectionsUsed: log.connections_used || 1,
+      }));
+
+      setCreditLogs(formattedLogs);
+    } catch (error) {
+      console.error('Error fetching credit logs:', error);
+      toast.error('Failed to load credit logs');
+    }
+  };
+
   const fetchCustomers = async () => {
     try {
       const { data, error } = await supabase
@@ -204,10 +252,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         macAddress: customer.mac_address || undefined,
         deviceType: customer.device_type,
         planDuration: customer.plan_duration,
-        connections: customer.max_connections || 1, // Legacy field
+        connections: customer.max_connections || 1,
         maxConnections: customer.max_connections || 1,
         currentConnections: customer.current_connections || 0,
-        connectionDetails: customer.connection_details || [],
+        connectionDetails: Array.isArray(customer.connection_details) ? customer.connection_details : [],
         startDate: customer.start_date,
         expirationDate: customer.expiration_date,
         status: customer.status || 'active',
@@ -219,6 +267,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         connectionNumber: customer.connection_number || undefined,
         customerGroupId: customer.customer_group_id || undefined,
         m3uUrl: customer.m3u_url || undefined,
+        createdAt: customer.created_at,
       }));
 
       setCustomers(formattedCustomers);
@@ -230,10 +279,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshData = useCallback(async () => {
     setLoading(true);
+    setIsLoading(true);
     try {
-      await Promise.all([fetchUser(user?.id || ''), fetchResellers(), fetchCustomers()]);
+      await Promise.all([fetchUser(user?.id || ''), fetchResellers(), fetchCustomers(), fetchCreditLogs()]);
     } finally {
       setLoading(false);
+      setIsLoading(false);
     }
   }, [user?.id]);
 
@@ -264,7 +315,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // Log the credit transaction
       const { error: logError } = await supabase
         .from('credit_logs')
         .insert({
@@ -278,7 +328,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.error('Error logging credit transaction:', logError);
       }
 
-      await fetchResellers();
+      await Promise.all([fetchResellers(), fetchCreditLogs()]);
       if (user?.role === 'admin') {
         await fetchUser(user.id);
       }
@@ -322,7 +372,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // Log the credit transaction
       const { error: logError } = await supabase
         .from('credit_logs')
         .insert({
@@ -336,7 +385,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.error('Error logging credit transaction:', logError);
       }
 
-      await fetchResellers();
+      await Promise.all([fetchResellers(), fetchCreditLogs()]);
       if (user?.role === 'admin') {
         await fetchUser(user.id);
       }
@@ -350,10 +399,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addReseller = async (email: string, name: string): Promise<boolean> => {
     try {
-      // Create a new user in Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: email,
-        password: 'defaultpassword', // You might want to generate a random password
+        password: 'defaultpassword',
         user_metadata: {
           name: name,
           role: 'reseller',
@@ -366,10 +414,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // Get the user ID from the newly created user
       const newUserId = authData.user?.id;
 
-      // Create a new profile in the profiles table
       const { error: profileError } = await supabase
         .from('profiles')
         .insert({
@@ -377,14 +423,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           email: email,
           name: name,
           role: 'reseller',
-          credits: 0, // Initial credits for the reseller
+          credits: 0,
         });
 
       if (profileError) {
         console.error('Error creating profile:', profileError);
         toast.error('Failed to create profile');
-
-        // Optionally, delete the user if profile creation fails
         await supabase.auth.admin.deleteUser(newUserId || '');
         return false;
       }
@@ -402,7 +446,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return resellers.find(reseller => reseller.id === resellerId);
   };
 
-  // Enhanced addCustomer to support multi-connection accounts
   const addCustomer = async (customerData: NewCustomerData): Promise<boolean> => {
     if (!user) return false;
 
@@ -410,7 +453,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       console.log('🚀 AppContext: Starting customer creation process');
       console.log('📊 Customer Data:', customerData);
 
-      // Calculate total credits needed using the database function
       const { data: creditsNeeded, error: creditsError } = await supabase.rpc('calculate_credits_required', {
         connections: customerData.maxConnections || customerData.connections,
         duration_months: customerData.planDuration
@@ -424,14 +466,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       console.log(`💰 Credits needed: ${creditsNeeded}`);
 
-      // Check if reseller has enough credits
       if (user.credits < creditsNeeded) {
         console.error(`❌ Insufficient credits: ${user.credits} available, ${creditsNeeded} required`);
         toast.error(`Insufficient credits. You need ${creditsNeeded} credits but only have ${user.credits}.`);
         return false;
       }
 
-      // Determine the appropriate edge function based on account type and provider
       let functionName = 'create-iptv-user';
       if (customerData.accountType === 'mag') {
         functionName = 'create-mag-user';
@@ -439,7 +479,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       console.log(`🔧 Using edge function: ${functionName}`);
 
-      // Call the appropriate edge function
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
           resellerId: customerData.resellerId,
@@ -466,8 +505,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       console.log(`✅ Customer created successfully:`, data);
 
-      // Refresh data to show the new customer
-      await Promise.all([fetchCustomers(), fetchResellers()]);
+      await Promise.all([fetchCustomers(), fetchResellers(), fetchCreditLogs()]);
 
       toast.success(`${customerData.accountType.toUpperCase()} customer created successfully with ${customerData.maxConnections || customerData.connections} connection${(customerData.maxConnections || customerData.connections) > 1 ? 's' : ''}!`);
       return true;
@@ -483,14 +521,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log(`🚫 AppContext: Starting cancellation process for customer ID: ${customerId}`);
 
-      // Optimistically update the customer's status in the local state
       setCustomers(prevCustomers =>
         prevCustomers.map(customer =>
           customer.id === customerId ? { ...customer, status: 'cancelled', cancelledAt: new Date().toISOString() } : customer
         )
       );
 
-      // Update the customer's status in the database
       const { error: updateError } = await supabase
         .from('customers')
         .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
@@ -499,21 +535,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (updateError) {
         console.error(`❌ AppContext: Error updating customer status in database:`, updateError);
         toast.error('Failed to cancel customer account');
-
-        // Revert the optimistic update if the database update fails
         await fetchCustomers();
         return false;
       }
 
       console.log(`✅ AppContext: Customer ${customerId} cancelled successfully in database`);
       toast.success('Customer cancelled successfully');
-
       return true;
     } catch (error) {
       console.error('💥 AppContext: Unexpected error during customer cancellation:', error);
       toast.error('An error occurred while cancelling the customer account');
-
-      // Revert the optimistic update if an unexpected error occurs
       await fetchCustomers();
       return false;
     }
@@ -581,11 +612,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const renewCustomer = async (customerId: string, duration: number): Promise<boolean> => {
+    try {
+      const customer = customers.find(c => c.id === customerId);
+      if (!customer) {
+        toast.error('Customer not found');
+        return false;
+      }
+
+      const creditsNeeded = await supabase.rpc('calculate_credits_required', {
+        connections: customer.maxConnections || 1,
+        duration_months: duration
+      });
+
+      if (!user || user.credits < creditsNeeded.data) {
+        toast.error('Insufficient credits');
+        return false;
+      }
+
+      const newExpirationDate = new Date(customer.expirationDate);
+      newExpirationDate.setMonth(newExpirationDate.getMonth() + duration);
+
+      const { error } = await supabase
+        .from('customers')
+        .update({ 
+          expiration_date: newExpirationDate.toISOString().split('T')[0],
+          status: 'active'
+        })
+        .eq('id', customerId);
+
+      if (error) {
+        console.error('Error renewing customer:', error);
+        toast.error('Failed to renew customer');
+        return false;
+      }
+
+      await Promise.all([fetchCustomers(), fetchResellers(), fetchCreditLogs()]);
+      toast.success('Customer renewed successfully');
+      return true;
+    } catch (error) {
+      console.error('Error in renewCustomer function:', error);
+      toast.error('An error occurred while renewing the customer');
+      return false;
+    }
+  };
+
   const createTrialAccount = async (email: string): Promise<boolean> => {
     if (!user) return false;
 
     try {
-      // Check daily trial limit
       const today = new Date().toISOString().split('T')[0];
       const { data: trialLimit, error: trialLimitError } = await supabase
         .from('daily_trial_limits')
@@ -606,7 +681,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // Call the edge function to create the trial account
       const { data, error } = await supabase.functions.invoke('create-trial-account', {
         body: {
           resellerId: user.id,
@@ -626,14 +700,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // Update the daily trial limit
       const { error: updateError } = await supabase
         .from('daily_trial_limits')
         .upsert({
           date: today,
           provider: user.provider || '8k',
           trial_count: trialCount + 1,
-        }, { onConflict: ['date', 'provider'] });
+        }, { onConflict: 'date,provider' });
 
       if (updateError) {
         console.error('Error updating trial limit:', updateError);
@@ -649,7 +722,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // New function to update connection count
   const updateConnectionCount = async (customerId: string, connectionChange: number): Promise<boolean> => {
     try {
       const { data, error } = await supabase.rpc('update_connection_count', {
@@ -667,17 +739,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      // Refresh customers data
       await fetchCustomers();
       return true;
-
     } catch (error) {
       console.error('Error updating connection count:', error);
       return false;
     }
   };
 
-  // New function to validate connection limit
   const validateConnectionLimit = async (customerId: string, newConnections: number): Promise<boolean> => {
     try {
       const { data, error } = await supabase.rpc('validate_connection_limit', {
@@ -691,7 +760,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       return data;
-
     } catch (error) {
       console.error('Error validating connection limit:', error);
       return false;
@@ -703,7 +771,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     user,
     resellers,
     customers,
+    creditLogs,
     loading,
+    isLoading,
     refreshData,
     addCredits,
     removeCredits,
@@ -714,6 +784,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     deactivateCustomer,
     activateCustomer,
     updateCustomer,
+    renewCustomer,
     createTrialAccount,
     updateConnectionCount,
     validateConnectionLimit,

@@ -32,7 +32,7 @@ Username: ${customer.username}
 Password: ${customer.password}
 Server: my8k.me
 Expires: ${new Date(customer.expirationDate).toLocaleDateString()}
-Max Connections: ${customer.totalConnections || 1}
+Max Connections: ${customer.maxConnections || 1}
 M3U URL: ${customer.m3uUrl || 'Not available'}
     `.trim();
 
@@ -153,7 +153,7 @@ M3U URL: ${customer.m3uUrl || 'Not available'}
           <div className="space-y-2">
             <Label>Max Connections</Label>
             <Input 
-              value={customer.totalConnections || 1} 
+              value={customer.maxConnections || 1} 
               readOnly 
             />
           </div>
