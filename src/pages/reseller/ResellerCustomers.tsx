@@ -79,7 +79,7 @@ export default function ResellerCustomers() {
     }
   };
 
-  // Handle customer renew
+  // Handle customer renew - simplified since form handles everything now
   const handleRenewCustomer = (customer: Customer) => {
     setCustomerToRenew(customer);
     setIsRenewCustomerOpen(true);
@@ -349,7 +349,7 @@ export default function ResellerCustomers() {
             <DialogHeader>
               <DialogTitle>Renew Subscription</DialogTitle>
               <DialogDescription>
-                Extend {customerToRenew.name}'s IPTV subscription. This will consume credits.
+                Extend {customerToRenew.name}'s IPTV subscription. This will consume credits based on the number of linked accounts.
               </DialogDescription>
             </DialogHeader>
             <RenewCustomerForm 

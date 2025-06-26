@@ -443,6 +443,14 @@ export type Database = {
         Args: { connections?: number; duration_months?: number }
         Returns: number
       }
+      calculate_renewal_credits_required: {
+        Args: { customer_id_param: string; duration_months: number }
+        Returns: {
+          credits_required: number
+          accounts_count: number
+          customer_group_name: string
+        }[]
+      }
       can_purchase_credits: {
         Args: { reseller_id: string }
         Returns: boolean
@@ -470,6 +478,19 @@ export type Database = {
       is_admin: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      renew_customer_group: {
+        Args: {
+          customer_id_param: string
+          duration_months: number
+          reseller_id_param: string
+        }
+        Returns: {
+          success: boolean
+          accounts_renewed: number
+          credits_used: number
+          error_message: string
+        }[]
       }
       update_connection_count: {
         Args: { customer_id: string; connection_change?: number }

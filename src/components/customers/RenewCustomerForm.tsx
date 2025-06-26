@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -18,6 +18,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Customer } from '@/contexts/AppContext';
+import { supabase } from '@/integrations/supabase/client';
 
 // Form schema with validation - using numbers directly instead of enum transformation
 const formSchema = z.object({
@@ -33,9 +34,17 @@ interface RenewCustomerFormProps {
   onSuccess?: () => void;
 }
 
+interface RenewalCostInfo {
+  creditsRequired: number;
+  accountsCount: number;
+  customerGroupName: string;
+}
+
 export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProps) {
   const { user } = useAuth();
-  const { renewCustomer, resellers } = useApp();
+  const { resellers, refreshData } = useApp();
+  const [renewalCostInfo, setRenewalCostInfo] = useState<RenewalCostInfo | null>(null);
+  const [isLoadingCost, setIsLoadingCost] = useState(false);
   
   // Get current reseller to show available credits
   const currentReseller = resellers.find(r => r.id === user?.id);
@@ -51,6 +60,47 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
   // Watch plan duration to show real-time credit calculation
   const planDuration = form.watch('planDuration');
 
+  // Calculate renewal cost when plan duration changes
+  useEffect(() => {
+    const calculateRenewalCost = async () => {
+      if (!planDuration || !customer.id) return;
+      
+      setIsLoadingCost(true);
+      try {
+        console.log(`💰 Calculating renewal cost for customer ${customer.id} with ${planDuration} months`);
+        
+        const { data, error } = await supabase.rpc('calculate_renewal_credits_required', {
+          customer_id_param: customer.id,
+          duration_months: planDuration
+        });
+
+        if (error) {
+          console.error('Error calculating renewal cost:', error);
+          toast.error('Failed to calculate renewal cost');
+          return;
+        }
+
+        if (data && data.length > 0) {
+          const costInfo = data[0];
+          console.log('📊 Renewal cost calculation result:', costInfo);
+          
+          setRenewalCostInfo({
+            creditsRequired: costInfo.credits_required,
+            accountsCount: costInfo.accounts_count,
+            customerGroupName: costInfo.customer_group_name
+          });
+        }
+      } catch (error) {
+        console.error('Unexpected error calculating renewal cost:', error);
+        toast.error('Failed to calculate renewal cost');
+      } finally {
+        setIsLoadingCost(false);
+      }
+    };
+
+    calculateRenewalCost();
+  }, [planDuration, customer.id]);
+
   // Handle form submission
   const onSubmit = async (data: FormData) => {
     if (!user) {
@@ -58,25 +108,60 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
       return;
     }
 
+    if (!renewalCostInfo) {
+      toast.error('Please wait for cost calculation to complete.');
+      return;
+    }
+
     // Check credits before attempting renewal
-    if (currentReseller && currentReseller.credits < data.planDuration) {
-      toast.error(`Insufficient credits. You need ${data.planDuration} credits but only have ${currentReseller.credits}.`);
+    if (currentReseller && currentReseller.credits < renewalCostInfo.creditsRequired) {
+      toast.error(`Insufficient credits. You need ${renewalCostInfo.creditsRequired} credits but only have ${currentReseller.credits}.`);
       return;
     }
     
     try {
-      console.log(`🔄 RenewCustomerForm: Starting renewal for ${customer.name}`);
+      console.log(`🔄 RenewCustomerForm: Starting group renewal for ${customer.name}`);
+      console.log(`📋 Renewal details:`, {
+        customerId: customer.id,
+        planDuration: data.planDuration,
+        accountsCount: renewalCostInfo.accountsCount,
+        creditsRequired: renewalCostInfo.creditsRequired
+      });
       
-      // Pass customer ID instead of customer object
-      const success = await renewCustomer(customer.id, data.planDuration);
-      
-      if (success) {
-        console.log(`✅ RenewCustomerForm: Renewal successful for ${customer.name}`);
-        form.reset();
-        if (onSuccess) onSuccess();
+      const { data: renewalResult, error } = await supabase.rpc('renew_customer_group', {
+        customer_id_param: customer.id,
+        duration_months: data.planDuration,
+        reseller_id_param: user.id
+      });
+
+      if (error) {
+        console.error('❌ Database error during renewal:', error);
+        toast.error('Failed to renew subscription - database error');
+        return;
+      }
+
+      if (renewalResult && renewalResult.length > 0) {
+        const result = renewalResult[0];
+        console.log('📊 Renewal result:', result);
+        
+        if (result.success) {
+          console.log(`✅ RenewCustomerForm: Group renewal successful for ${customer.name}`);
+          console.log(`📈 Renewed ${result.accounts_renewed} accounts using ${result.credits_used} credits`);
+          
+          toast.success(
+            `Successfully renewed ${result.accounts_renewed} account${result.accounts_renewed !== 1 ? 's' : ''} for ${data.planDuration} month${data.planDuration !== 1 ? 's' : ''}. Used ${result.credits_used} credits.`
+          );
+          
+          form.reset();
+          await refreshData(); // Refresh data to show updated customer info
+          if (onSuccess) onSuccess();
+        } else {
+          console.error(`❌ RenewCustomerForm: Renewal failed - ${result.error_message}`);
+          toast.error(result.error_message || 'Failed to renew subscription');
+        }
       } else {
-        console.error(`❌ RenewCustomerForm: Renewal failed for ${customer.name}`);
-        // Error toast is already shown by AppContext
+        console.error('❌ RenewCustomerForm: No renewal result returned');
+        toast.error('Failed to renew subscription - no result');
       }
     } catch (error) {
       console.error('💥 RenewCustomerForm: Unexpected error during renewal:', error);
@@ -95,10 +180,6 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
               <p className="text-sm">{customer.name}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">MAC Address</p>
-              <p className="text-sm font-mono">{customer.macAddress}</p>
-            </div>
-            <div>
               <p className="text-xs text-gray-500">Email</p>
               <p className="text-sm">{customer.email}</p>
             </div>
@@ -114,6 +195,12 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
               <p className="text-xs text-gray-500">Status</p>
               <p className="text-sm capitalize">{customer.status}</p>
             </div>
+            {customer.macAddress && (
+              <div>
+                <p className="text-xs text-gray-500">MAC Address</p>
+                <p className="text-sm font-mono">{customer.macAddress}</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -127,16 +214,35 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
             </div>
             <div className="mt-1 flex justify-between items-center">
               <span className="text-sm text-blue-700">Required Credits:</span>
-              <span className="text-sm font-semibold text-blue-900">{planDuration || 0}</span>
+              <span className="text-sm font-semibold text-blue-900">
+                {isLoadingCost ? '...' : (renewalCostInfo?.creditsRequired || 0)}
+              </span>
             </div>
+            {renewalCostInfo && (
+              <div className="mt-1 flex justify-between items-center">
+                <span className="text-sm text-blue-700">Accounts to Renew:</span>
+                <span className="text-sm font-semibold text-blue-900">{renewalCostInfo.accountsCount}</span>
+              </div>
+            )}
             <div className="mt-1 flex justify-between items-center border-t border-blue-200 pt-2">
               <span className="text-sm text-blue-700">Remaining After Renewal:</span>
               <span className={`text-sm font-semibold ${
-                (currentReseller.credits - (planDuration || 0)) >= 0 ? 'text-green-700' : 'text-red-700'
+                (currentReseller.credits - (renewalCostInfo?.creditsRequired || 0)) >= 0 ? 'text-green-700' : 'text-red-700'
               }`}>
-                {currentReseller.credits - (planDuration || 0)}
+                {currentReseller.credits - (renewalCostInfo?.creditsRequired || 0)}
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Group information */}
+        {renewalCostInfo && renewalCostInfo.accountsCount > 1 && (
+          <div className="rounded-md bg-amber-50 p-4 mb-4 border border-amber-200">
+            <h3 className="text-sm font-medium text-amber-900">⚠️ Group Renewal Notice</h3>
+            <p className="mt-1 text-sm text-amber-700">
+              This customer has <strong>{renewalCostInfo.accountsCount} linked accounts</strong> that will all be renewed together. 
+              This ensures all their connections remain active and synchronized.
+            </p>
           </div>
         )}
         
@@ -163,7 +269,14 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
                 </SelectContent>
               </Select>
               <FormDescription>
-                This will consume {field.value || 0} credit{field.value !== 1 ? 's' : ''} and extend the subscription accordingly.
+                {renewalCostInfo ? (
+                  <>
+                    This will renew <strong>{renewalCostInfo.accountsCount} account{renewalCostInfo.accountsCount !== 1 ? 's' : ''}</strong> and 
+                    consume <strong>{renewalCostInfo.creditsRequired} credit{renewalCostInfo.creditsRequired !== 1 ? 's' : ''}</strong>.
+                  </>
+                ) : (
+                  `Calculating renewal cost...`
+                )}
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -176,9 +289,14 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
           </Button>
           <Button 
             type="submit" 
-            disabled={currentReseller && currentReseller.credits < planDuration}
+            disabled={
+              isLoadingCost || 
+              !renewalCostInfo ||
+              (currentReseller && currentReseller.credits < (renewalCostInfo?.creditsRequired || 0))
+            }
           >
-            {currentReseller && currentReseller.credits < planDuration 
+            {isLoadingCost ? 'Calculating...' : 
+             (currentReseller && renewalCostInfo && currentReseller.credits < renewalCostInfo.creditsRequired) 
               ? 'Insufficient Credits' 
               : 'Renew Subscription'
             }
