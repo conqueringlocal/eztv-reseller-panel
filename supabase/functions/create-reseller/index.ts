@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const MINIMUM_CREDITS_FOR_SUB_RESELLER = 100;
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -107,6 +109,17 @@ serve(async (req) => {
     if (password.length < 6) {
       console.log('Password too short');
       return new Response(JSON.stringify({ error: 'Password must be at least 6 characters long' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate minimum credits for sub-resellers
+    if (parent_reseller_id && (credits < MINIMUM_CREDITS_FOR_SUB_RESELLER)) {
+      console.log('Credits below minimum for sub-reseller:', credits);
+      return new Response(JSON.stringify({ 
+        error: `Sub-resellers require a minimum of ${MINIMUM_CREDITS_FOR_SUB_RESELLER} credits. Provided: ${credits}` 
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

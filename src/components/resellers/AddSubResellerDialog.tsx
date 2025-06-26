@@ -32,7 +32,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
     name: '',
     email: '',
     password: '',
-    credits: 0,
+    credits: 100,
     provider: '8k',
   });
 
@@ -52,6 +52,15 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       toast({
         title: "Error",
         description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (formData.credits < 100) {
+      toast({
+        title: "Error",
+        description: "Minimum credit requirement is 100 credits for sub-resellers",
         variant: "destructive",
       });
       return;
@@ -91,7 +100,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       });
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', password: '', credits: 0, provider: '8k' });
+      setFormData({ name: '', email: '', password: '', credits: 100, provider: '8k' });
       onOpenChange(false);
       
       // Refresh the page to show the new sub-reseller
@@ -172,16 +181,19 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="credits">Initial Credits</Label>
+            <Label htmlFor="credits">Initial Credits (Minimum: 100)</Label>
             <Input
               id="credits"
               type="number"
-              min="0"
+              min="100"
               value={formData.credits}
-              onChange={(e) => handleInputChange('credits', parseInt(e.target.value) || 0)}
-              placeholder="Enter initial credits"
+              onChange={(e) => handleInputChange('credits', parseInt(e.target.value) || 100)}
+              placeholder="Enter initial credits (minimum 100)"
               required
             />
+            <p className="text-sm text-muted-foreground">
+              Sub-resellers require a minimum of 100 credits to be created.
+            </p>
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">
