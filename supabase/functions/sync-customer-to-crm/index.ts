@@ -65,6 +65,8 @@ serve(async (req) => {
     console.log('👤 Customer found:', { 
       name: customer.name, 
       email: customer.email, 
+      deviceType: customer.device_type,
+      planDuration: customer.plan_duration,
       highlevelContactId: customer.highlevel_contact_id,
       hasCredentials: !!(customer.username && customer.password)
     });
@@ -167,7 +169,9 @@ serve(async (req) => {
         customerName: customer.name,
         customerEmail: customer.email,
         resellerId: resellerId,
-        iptvCredentials: iptvCredentials
+        iptvCredentials: iptvCredentials,
+        deviceType: customer.device_type,
+        planDuration: customer.plan_duration
       }
     });
 
@@ -232,6 +236,8 @@ serve(async (req) => {
       contactId: contactId,
       message: forceSync ? 'Customer force-synced to CRM successfully' : 'Customer successfully synced to CRM',
       credentialsAdded: !!iptvCredentials,
+      deviceTypeAdded: !!customer.device_type,
+      tagsAdded: true,
       debugInfo: createContactResponse.data?.debugInfo || null
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

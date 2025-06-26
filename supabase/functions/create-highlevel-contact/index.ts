@@ -15,6 +15,8 @@ interface CreateContactRequest {
     password?: string;
     m3uUrl?: string;
   };
+  deviceType?: string;
+  planDuration?: number;
 }
 
 serve(async (req) => {
@@ -29,10 +31,19 @@ serve(async (req) => {
       customerName, 
       customerEmail, 
       resellerId,
-      iptvCredentials
+      iptvCredentials,
+      deviceType,
+      planDuration
     }: CreateContactRequest = await req.json();
 
-    console.log('📋 Request data:', { customerName, customerEmail, resellerId, hasCredentials: !!iptvCredentials });
+    console.log('📋 Request data:', { 
+      customerName, 
+      customerEmail, 
+      resellerId, 
+      hasCredentials: !!iptvCredentials,
+      deviceType,
+      planDuration
+    });
 
     // Get Supabase client
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
@@ -85,7 +96,7 @@ serve(async (req) => {
       locationId: locationId
     });
 
-    // Prepare custom field values for IPTV credentials
+    // Prepare custom field values for IPTV credentials and device type
     const customField: any[] = [];
     
     if (iptvCredentials?.username) {
@@ -109,6 +120,27 @@ serve(async (req) => {
       });
     }
 
+    // Add device type to custom fields
+    if (deviceType) {
+      customField.push({
+        id: 'device_type_optional',
+        field_value: deviceType
+      });
+      console.log('📱 Added device type to custom fields:', deviceType);
+    }
+
+    // Prepare tags array
+    const tags: string[] = ['customer-active'];
+    
+    // Add plan duration tag based on the plan duration
+    if (planDuration) {
+      const planTag = `purchased-${planDuration}month${planDuration !== 1 ? 's' : ''}`;
+      tags.push(planTag);
+      console.log('🏷️ Added plan duration tag:', planTag);
+    }
+
+    console.log('🏷️ Tags to be added:', tags);
+
     // Create contact in HighLevel using the v1 API endpoint with Location API Key
     console.log('🔄 Creating contact in HighLevel...');
     
@@ -118,7 +150,8 @@ serve(async (req) => {
       email: customerEmail,
       locationId: locationId,
       source: 'IPTV Customer Creation',
-      customField: customField.length > 0 ? customField : undefined
+      customField: customField.length > 0 ? customField : undefined,
+      tags: tags
     };
 
     console.log('📤 Contact payload:', contactPayload);
@@ -225,12 +258,22 @@ serve(async (req) => {
     }
 
     console.log('🎉 Contact creation successful - Contact ID:', contactId);
+    console.log('📱 Device type added:', !!deviceType);
+    console.log('🏷️ Tags added:', tags);
 
     return new Response(JSON.stringify({ 
       success: true, 
       contactId: contactId,
       message: 'Contact created successfully in HighLevel',
-      credentialsAdded: customField.length > 0
+      credentialsAdded: customField.length > 0,
+      deviceTypeAdded: !!deviceType,
+      tagsAdded: tags,
+      debugInfo: {
+        customFieldsCount: customField.length,
+        tagsCount: tags.length,
+        deviceType: deviceType,
+        planDuration: planDuration
+      }
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

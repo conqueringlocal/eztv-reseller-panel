@@ -62,7 +62,9 @@ const createHighLevelContact = async (
     username?: string;
     password?: string;
     m3uUrl?: string;
-  }
+  },
+  deviceType?: string,
+  planDuration?: number
 ): Promise<string | null> => {
   try {
     console.log('🎯 Creating HighLevel contact for customer:', customerName);
@@ -72,7 +74,9 @@ const createHighLevelContact = async (
         customerName,
         customerEmail,
         resellerId,
-        iptvCredentials
+        iptvCredentials,
+        deviceType,
+        planDuration
       }
     });
 
@@ -577,13 +581,20 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       m3uUrl: data.user?.m3u_url
     };
 
-    // Create HighLevel contact with IPTV credentials if not provided
+    // Create HighLevel contact with IPTV credentials and additional data if not provided
     if (!contactId) {
-      console.log('🔄 No contact ID provided, attempting to create HighLevel contact with IPTV credentials...');
-      contactId = await createHighLevelContact(customerName, customerEmail, resellerId, iptvCredentials);
+      console.log('🔄 No contact ID provided, attempting to create HighLevel contact with IPTV credentials and additional data...');
+      contactId = await createHighLevelContact(
+        customerName, 
+        customerEmail, 
+        resellerId, 
+        iptvCredentials,
+        deviceType,
+        planDuration
+      );
       
       if (contactId) {
-        console.log('✅ HighLevel contact created with ID and credentials:', contactId);
+        console.log('✅ HighLevel contact created with ID, credentials, device type, and tags:', contactId);
       } else {
         console.log('ℹ️ HighLevel contact creation failed or not configured, continuing without HighLevel integration');
       }
@@ -653,7 +664,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         credits_used: planDuration,
         customer_id: customer.id,
         customer_name: customerName,
-        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId}) - Credentials: ${finalUsername}/${finalPassword}${contactId ? ` - HL Contact: ${contactId}` : ''}`
+        notes: `${planDuration} month subscription via ${payload.api_key ? 'API key' : 'webhook'} (Package: ${finalPackageId}) - Credentials: ${finalUsername}/${finalPassword}${contactId ? ` - HL Contact: ${contactId}` : ''} - Device: ${deviceType}`
       });
 
     if (logError) {
@@ -678,7 +689,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     // Return success with customer data (using actual credentials) - Fixed to include required properties
     return {
       success: true,
-      message: "Customer provisioned successfully with IPTV credentials added to CRM",
+      message: "Customer provisioned successfully with IPTV credentials, device type, and tags added to CRM",
       customer: {
         resellerId,
         name: customerName,
