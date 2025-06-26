@@ -101,23 +101,19 @@ serve(async (req) => {
 
       console.log('8K API Response:', apiResponse);
 
-      // For 8K provider, check if the response indicates success
+      // For 8K provider, check if the response indicates user exists
+      // The 8K API returns { status: "true", username: "...", password: "...", expire: "..." }
       userExists = iptvResponse.ok && 
                    apiResponse && 
-                   apiResponse.status === 'success' &&
-                   apiResponse.result &&
-                   typeof apiResponse.result === 'object';
+                   apiResponse.status === 'true' &&
+                   apiResponse.username &&
+                   apiResponse.expire;
 
       // Extract expiration date from 8K API response
-      if (userExists && apiResponse.result) {
-        // 8K API typically returns expire_date as timestamp
-        if (apiResponse.result.expire_date) {
-          const expTimestamp = parseInt(apiResponse.result.expire_date);
-          if (!isNaN(expTimestamp)) {
-            expirationDate = new Date(expTimestamp * 1000).toISOString().split('T')[0];
-            console.log(`📅 8K User expiration date: ${expirationDate}`);
-          }
-        }
+      if (userExists && apiResponse.expire) {
+        // 8K API returns expire as a date string like "2025-12-15"
+        expirationDate = apiResponse.expire;
+        console.log(`📅 8K User expiration date: ${expirationDate}`);
       }
 
     } else if (provider === 'trex') {
