@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { Download, Upload, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Download, Upload, AlertTriangle, CheckCircle, XCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -18,7 +18,7 @@ interface ImportResult {
   errors: string[];
   results: Array<{
     customerName: string;
-    status: 'success' | 'error';
+    status: 'success' | 'error' | 'warning';
     message: string;
   }>;
 }
@@ -85,30 +85,34 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     toast.success('CSV template downloaded successfully');
   };
 
-  // Parse CSV file
+  // Parse CSV file with better error handling
   const parseCSV = (csvText: string): CustomerImportData[] => {
     const lines = csvText.split('\n').filter(line => line.trim());
     if (lines.length < 2) throw new Error('CSV file must contain headers and at least one data row');
     
-    const headers = lines[0].split(',').map(h => h.trim());
+    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
     const customers: CustomerImportData[] = [];
     
     for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(',').map(v => v.trim());
-      if (values.length !== headers.length) {
-        throw new Error(`Row ${i + 1} has incorrect number of columns`);
+      // Better CSV parsing to handle quoted values
+      const values = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+      const cleanValues = values.map(v => v.replace(/^"|"$/g, '').trim());
+      
+      if (cleanValues.length < 4) {
+        console.warn(`Row ${i + 1} has insufficient columns, skipping`);
+        continue;
       }
       
       const customer: CustomerImportData = {
-        name: values[0] || '',
-        email: values[1] || '',
-        username: values[2] || '',
-        password: values[3] || '',
-        macAddress: values[4] || undefined,
-        deviceType: values[5] || 'Smart TV',
-        expirationDate: values[6] || '',
-        planDuration: parseInt(values[7]) || 1,
-        highlevelContactId: values[8] || undefined
+        name: cleanValues[0] || '',
+        email: cleanValues[1] || '',
+        username: cleanValues[2] || '',
+        password: cleanValues[3] || '',
+        macAddress: cleanValues[4] || undefined,
+        deviceType: cleanValues[5] || 'Smart TV',
+        expirationDate: cleanValues[6] || '',
+        planDuration: parseInt(cleanValues[7]) || 1,
+        highlevelContactId: cleanValues[8] || undefined
       };
       
       customers.push(customer);
@@ -117,19 +121,19 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
     return customers;
   };
 
-  // Validate customer data
+  // Enhanced validation
   const validateCustomer = (customer: CustomerImportData): string[] => {
     const errors: string[] = [];
     
-    if (!customer.name) errors.push('Name is required');
-    if (!customer.email) errors.push('Email is required');
-    if (!customer.username) errors.push('Username is required');
-    if (!customer.password) errors.push('Password is required');
-    if (!customer.expirationDate) errors.push('Expiration date is required');
+    if (!customer.name?.trim()) errors.push('Name is required');
+    if (!customer.email?.trim()) errors.push('Email is required');
+    if (!customer.username?.trim()) errors.push('Username is required');
+    if (!customer.password?.trim()) errors.push('Password is required');
+    if (!customer.expirationDate?.trim()) errors.push('Expiration date is required');
     
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (customer.email && !emailRegex.test(customer.email)) {
+    if (customer.email && !emailRegex.test(customer.email.trim())) {
       errors.push('Invalid email format');
     }
     
@@ -143,21 +147,30 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       }
     }
     
+    // Validate plan duration
+    if (customer.planDuration && (customer.planDuration < 1 || customer.planDuration > 60)) {
+      errors.push('Plan duration must be between 1 and 60 months');
+    }
+    
     return errors;
   };
 
-  // Process bulk import
+  // Enhanced bulk import processing
   const processBulkImport = async (customers: CustomerImportData[]) => {
     const results: ImportResult['results'] = [];
     let processed = 0;
     let failed = 0;
     const allErrors: string[] = [];
 
+    console.log(`🚀 Starting bulk import for ${customers.length} customers`);
+
     for (let i = 0; i < customers.length; i++) {
       const customer = customers[i];
       setProgress(((i + 1) / customers.length) * 100);
       
       try {
+        console.log(`📋 Processing customer ${i + 1}/${customers.length}: ${customer.name}`);
+        
         // Validate customer data
         const validationErrors = validateCustomer(customer);
         if (validationErrors.length > 0) {
@@ -165,6 +178,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         }
 
         // Check if username exists in IPTV panel
+        console.log(`🔍 Checking if username ${customer.username} exists in IPTV panel`);
         const { data: existsData, error: existsError } = await supabase.functions.invoke('check-iptv-user-exists', {
           body: {
             username: customer.username,
@@ -173,55 +187,91 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         });
 
         if (existsError) {
+          console.error(`❌ Error checking username ${customer.username}:`, existsError);
           throw new Error(`Failed to verify username: ${existsError.message}`);
         }
 
+        console.log(`📊 Username check result for ${customer.username}:`, existsData);
+
         if (!existsData?.exists) {
-          throw new Error(`Username ${customer.username} does not exist in IPTV panel`);
+          throw new Error(`Username ${customer.username} does not exist in ${existsData?.provider || 'IPTV'} panel`);
+        }
+
+        // Check if customer already exists in our database
+        const { data: existingCustomer, error: checkError } = await supabase
+          .from('customers')
+          .select('id, name')
+          .eq('reseller_id', user?.id)
+          .eq('username', customer.username)
+          .maybeSingle();
+
+        if (checkError) {
+          console.error(`❌ Error checking existing customer:`, checkError);
+          throw new Error(`Database error: ${checkError.message}`);
+        }
+
+        if (existingCustomer) {
+          results.push({
+            customerName: customer.name,
+            status: 'warning',
+            message: `Customer with username ${customer.username} already exists in your database`
+          });
+          continue;
         }
 
         // Create customer record in database
+        console.log(`💾 Creating customer record for ${customer.name}`);
         const { data: newCustomer, error: createError } = await supabase
           .from('customers')
           .insert({
             reseller_id: user?.id,
-            name: customer.name,
-            email: customer.email,
-            username: customer.username,
-            password: customer.password,
-            mac_address: customer.macAddress,
-            device_type: customer.deviceType,
+            name: customer.name.trim(),
+            email: customer.email.trim(),
+            username: customer.username.trim(),
+            password: customer.password.trim(),
+            mac_address: customer.macAddress?.trim() || null,
+            device_type: customer.deviceType?.trim() || 'Smart TV',
             expiration_date: customer.expirationDate,
             start_date: new Date().toISOString().split('T')[0],
             plan_duration: customer.planDuration,
             status: 'active',
             is_trial: false,
-            highlevel_contact_id: customer.highlevelContactId,
+            highlevel_contact_id: customer.highlevelContactId?.trim() || null,
             provider: user?.provider || '8k'
           })
           .select()
           .single();
 
         if (createError) {
+          console.error(`❌ Error creating customer ${customer.name}:`, createError);
           throw new Error(`Failed to create customer record: ${createError.message}`);
         }
 
+        console.log(`✅ Successfully created customer: ${customer.name}`);
+
         // If HighLevel contact ID provided, sync to CRM
-        if (customer.highlevelContactId) {
+        if (customer.highlevelContactId?.trim()) {
+          console.log(`🔄 Syncing ${customer.name} to CRM with contact ID: ${customer.highlevelContactId}`);
           try {
-            await supabase.functions.invoke('update-highlevel-contact-credentials', {
+            const { data: crmData, error: crmError } = await supabase.functions.invoke('update-highlevel-contact-credentials', {
               body: {
-                contactId: customer.highlevelContactId,
+                contactId: customer.highlevelContactId.trim(),
                 resellerId: user?.id,
                 credentials: {
-                  username: customer.username,
-                  password: customer.password,
-                  macAddress: customer.macAddress
+                  username: customer.username.trim(),
+                  password: customer.password.trim(),
+                  macAddress: customer.macAddress?.trim()
                 }
               }
             });
+
+            if (crmError) {
+              console.warn(`⚠️ CRM sync failed for ${customer.name}:`, crmError);
+            } else {
+              console.log(`✅ CRM sync successful for ${customer.name}`);
+            }
           } catch (crmError) {
-            console.warn(`CRM sync failed for ${customer.name}:`, crmError);
+            console.warn(`⚠️ CRM sync failed for ${customer.name}:`, crmError);
             // Don't fail the import if CRM sync fails
           }
         }
@@ -229,11 +279,12 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         results.push({
           customerName: customer.name,
           status: 'success',
-          message: 'Successfully imported and linked to existing IPTV account'
+          message: `Successfully imported and linked to existing ${existsData?.provider || 'IPTV'} account`
         });
         processed++;
 
       } catch (error: any) {
+        console.error(`❌ Error processing customer ${customer.name}:`, error);
         const errorMessage = error.message || 'Unknown error occurred';
         results.push({
           customerName: customer.name,
@@ -245,8 +296,10 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       }
 
       // Small delay to prevent overwhelming the API
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
+
+    console.log(`📊 Bulk import completed: ${processed} successful, ${failed} failed`);
 
     return {
       success: failed === 0,
@@ -273,10 +326,10 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       const customers = parseCSV(csvText);
       
       if (customers.length === 0) {
-        throw new Error('No customer data found in CSV file');
+        throw new Error('No valid customer data found in CSV file');
       }
 
-      console.log(`Processing ${customers.length} customers for bulk import`);
+      console.log(`🚀 Processing ${customers.length} customers for bulk import`);
       
       const result = await processBulkImport(customers);
       setImportResult(result);
@@ -310,10 +363,18 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         <CardHeader>
           <CardTitle>Bulk Customer Import</CardTitle>
           <CardDescription>
-            Import existing customers from CSV and link them to their IPTV accounts
+            Import existing customers from CSV and link them to their IPTV accounts. This will verify each username exists in your IPTV panel before importing.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Important:</strong> This feature links existing IPTV accounts to your dashboard. It does not create new IPTV accounts. 
+              Make sure all usernames in your CSV file already exist in your IPTV panel.
+            </AlertDescription>
+          </Alert>
+
           <div className="flex flex-col sm:flex-row gap-4">
             <Button
               onClick={generateTemplate}
@@ -405,6 +466,8 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
                       className={`p-2 rounded text-sm ${
                         result.status === 'success'
                           ? 'bg-green-50 text-green-800'
+                          : result.status === 'warning'
+                          ? 'bg-yellow-50 text-yellow-800'
                           : 'bg-red-50 text-red-800'
                       }`}
                     >

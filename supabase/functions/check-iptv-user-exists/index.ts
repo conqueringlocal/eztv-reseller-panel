@@ -49,10 +49,10 @@ serve(async (req) => {
 
     console.log(`🔍 Checking if user exists: ${username} for reseller: ${resellerId}`);
 
-    // Get reseller's IPTV credentials
+    // Get reseller's profile to determine provider
     const { data: reseller, error: resellerError } = await supabaseClient
       .from('profiles')
-      .select('*')
+      .select('provider')
       .eq('id', resellerId)
       .single();
 
@@ -64,7 +64,10 @@ serve(async (req) => {
       );
     }
 
-    // Get IPTV panel credentials from Supabase secrets
+    const provider = reseller.provider || '8k';
+    console.log(`📱 Using provider: ${provider}`);
+
+    // Get API credentials from environment
     const iptvApiKey = Deno.env.get('IPTV_API_KEY');
     const panelUrl = Deno.env.get('IPTV_PANEL_URL') || 'https://my8k.me/api/api.php';
 
@@ -76,36 +79,103 @@ serve(async (req) => {
       );
     }
 
-    // Check if user exists in IPTV panel
-    console.log(`📡 Calling IPTV panel to check user: ${username}`);
-    
-    const checkUrl = new URL(panelUrl);
-    checkUrl.searchParams.append("api_key", iptvApiKey);
-    checkUrl.searchParams.append("action", "get");
-    checkUrl.searchParams.append("username", username);
+    let userExists = false;
+    let apiResponse = null;
 
-    console.log(`🔗 User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+    // Check user existence based on provider
+    if (provider === '8k') {
+      console.log(`📡 Checking 8K user: ${username}`);
+      
+      const checkUrl = new URL(panelUrl);
+      checkUrl.searchParams.append("api_key", iptvApiKey);
+      checkUrl.searchParams.append("action", "user_info");
+      checkUrl.searchParams.append("username", username);
 
-    const iptvResponse = await fetch(checkUrl.toString());
-    const iptvData = await iptvResponse.json();
+      console.log(`🔗 8K User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
 
-    console.log('IPTV API Response:', iptvData);
+      const iptvResponse = await fetch(checkUrl.toString());
+      apiResponse = await iptvResponse.json();
 
-    // Check if the user exists based on the API response
-    const userExists = iptvResponse.ok && 
-                      iptvData && 
-                      !iptvData.error && 
-                      iptvData.status !== 'error' &&
-                      iptvData.user_info;
+      console.log('8K API Response:', apiResponse);
 
-    console.log(`✅ User ${username} exists: ${userExists}`);
+      // For 8K provider, check if user_info exists and is valid
+      userExists = iptvResponse.ok && 
+                   apiResponse && 
+                   !apiResponse.error && 
+                   apiResponse.user_info &&
+                   typeof apiResponse.user_info === 'object';
+
+    } else if (provider === 'trex') {
+      console.log(`📡 Checking Trex user: ${username}`);
+      
+      // For Trex provider, use different API endpoint/format
+      // This is a placeholder for Trex API - adjust based on actual Trex API documentation
+      const checkUrl = new URL('https://trex-api-endpoint.com/check-user'); // Replace with actual Trex endpoint
+      checkUrl.searchParams.append("api_key", iptvApiKey);
+      checkUrl.searchParams.append("username", username);
+
+      console.log(`🔗 Trex User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+
+      try {
+        const trexResponse = await fetch(checkUrl.toString());
+        apiResponse = await trexResponse.json();
+        
+        console.log('Trex API Response:', apiResponse);
+        
+        // Adjust this based on actual Trex API response format
+        userExists = trexResponse.ok && apiResponse && apiResponse.exists === true;
+      } catch (error) {
+        console.error('Trex API error:', error);
+        userExists = false;
+        apiResponse = { error: 'Failed to check Trex user' };
+      }
+
+    } else if (provider === 'mag') {
+      console.log(`📡 Checking MAG user: ${username}`);
+      
+      // For MAG provider, use different API endpoint/format
+      // This is a placeholder for MAG API - adjust based on actual MAG API documentation
+      const checkUrl = new URL('https://mag-api-endpoint.com/check-user'); // Replace with actual MAG endpoint
+      checkUrl.searchParams.append("api_key", iptvApiKey);
+      checkUrl.searchParams.append("username", username);
+
+      console.log(`🔗 MAG User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+
+      try {
+        const magResponse = await fetch(checkUrl.toString());
+        apiResponse = await magResponse.json();
+        
+        console.log('MAG API Response:', apiResponse);
+        
+        // Adjust this based on actual MAG API response format
+        userExists = magResponse.ok && apiResponse && apiResponse.user_exists === true;
+      } catch (error) {
+        console.error('MAG API error:', error);
+        userExists = false;
+        apiResponse = { error: 'Failed to check MAG user' };
+      }
+
+    } else {
+      console.error(`❌ Unsupported provider: ${provider}`);
+      return new Response(
+        JSON.stringify({ 
+          error: `Unsupported provider: ${provider}`,
+          exists: false,
+          username: username
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`✅ User ${username} exists: ${userExists} (Provider: ${provider})`);
 
     return new Response(
       JSON.stringify({ 
         exists: userExists,
         username: username,
-        message: userExists ? 'User found in IPTV panel' : 'User not found in IPTV panel',
-        iptvResponse: iptvData
+        provider: provider,
+        message: userExists ? `User found in ${provider.toUpperCase()} panel` : `User not found in ${provider.toUpperCase()} panel`,
+        apiResponse: apiResponse
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -113,7 +183,11 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in check-iptv-user-exists function:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        details: error.message,
+        exists: false
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
