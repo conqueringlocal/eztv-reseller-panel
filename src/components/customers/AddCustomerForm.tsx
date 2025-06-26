@@ -176,7 +176,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   // Test connection handler
   const handleTestConnection = async () => {
     console.log('🧪 Manual connection test triggered');
-    toast.info('🔄 Testing IPTV connection...');
+    toast.info('🔄 Testing streaming service connection...');
     await refetch();
   };
   
@@ -230,7 +230,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
               </Select>
               <FormDescription>
                 {watchAccountType === 'm3u' 
-                  ? 'M3U accounts support multiple connections and work with any IPTV player'
+                  ? 'M3U accounts support multiple connections and work with any streaming player'
                   : 'MAG accounts are single-connection and designed for STB/MAG devices'
                 }
               </FormDescription>
@@ -306,7 +306,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
           render={({ field }) => (
             <FormItem>
               <FormLabel className="flex items-center justify-between">
-                <span>IPTV Package</span>
+                <span>Streaming Package</span>
                 <Button
                   type="button"
                   variant="outline"
@@ -350,7 +350,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
               {source === 'default' && (
                 <FormDescription className="text-amber-600 space-y-2">
                   <div className="font-medium">⚠️ Using Fallback Packages</div>
-                  <div>IPTV API connection failed - using default options for testing</div>
+                  <div>Streaming service API connection failed - using default options for testing</div>
                   {debugInfo && (
                     <div className="text-xs space-y-1 p-2 bg-amber-50 rounded border">
                       <div><strong>Debug Info:</strong></div>
@@ -368,7 +368,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                 <FormDescription className="text-green-600">
                   <div className="flex items-center space-x-1">
                     <span>✅</span>
-                    <span>Connected to your IPTV panel ({packages.length} packages loaded)</span>
+                    <span>Connected to streaming service ({packages.length} packages loaded)</span>
                   </div>
                 </FormDescription>
               )}

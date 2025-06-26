@@ -43,7 +43,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       return;
     }
 
-    // Use the reseller's assigned provider
+    // Use the reseller's assigned provider for backend routing
     const provider = user.provider || '8k'; // Default to '8k' if no provider is set
 
     setIsLoading(true);
@@ -67,19 +67,19 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       });
 
       if (error) {
-        console.error(`❌ Error creating ${provider} trial account:`, error);
-        toast.error(`Failed to create ${provider} trial account: ${error.message}`);
+        console.error(`❌ Error creating trial account:`, error);
+        toast.error(`Failed to create trial account: ${error.message}`);
         return;
       }
 
       if (!result.success) {
-        console.error(`❌ ${provider} trial creation failed:`, result.error);
-        toast.error(result.error || `Failed to create ${provider} trial account`);
+        console.error(`❌ Trial creation failed:`, result.error);
+        toast.error(result.error || `Failed to create trial account`);
         return;
       }
 
-      console.log(`✅ ${provider} trial account created successfully:`, result);
-      toast.success(`24-hour ${provider.toUpperCase()} trial account created successfully!`);
+      console.log(`✅ Trial account created successfully:`, result);
+      toast.success(`24-hour EZTV trial account created successfully!`);
       
       // Refresh data to show the new trial customer
       await refreshData();
@@ -89,23 +89,20 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       onSuccess();
       
     } catch (error) {
-      console.error(`💥 Unexpected error creating ${provider} trial:`, error);
+      console.error(`💥 Unexpected error creating trial:`, error);
       toast.error('An error occurred while creating the trial account');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Get provider display name
-  const providerDisplayName = user?.provider === 'trex' ? 'Trex' : '8K';
-
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <h4 className="font-medium text-green-800 mb-2">Provider Information</h4>
+          <h4 className="font-medium text-green-800 mb-2">EZTV Trial Information</h4>
           <p className="text-sm text-green-700">
-            Trial will be created using your assigned provider: <strong>{providerDisplayName}</strong>
+            Trial will be created using our premium streaming service platform
           </p>
         </div>
 
@@ -157,9 +154,9 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
             <li>• Trial duration: 24 hours from creation</li>
             <li>• No credits will be consumed</li>
             <li>• Credentials will be automatically generated</li>
-            <li>• Uses {providerDisplayName} provider for account creation</li>
+            <li>• Uses premium EZTV streaming service</li>
             <li>• Customer will receive login details via CRM (if configured)</li>
-            <li>• Daily trial limits apply per provider</li>
+            <li>• Daily trial limits apply per account</li>
           </ul>
         </div>
 
@@ -168,7 +165,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
             Reset
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Creating Trial...' : `Create 24-Hour ${providerDisplayName} Trial`}
+            {isLoading ? 'Creating Trial...' : `Create 24-Hour EZTV Trial`}
           </Button>
         </div>
       </form>

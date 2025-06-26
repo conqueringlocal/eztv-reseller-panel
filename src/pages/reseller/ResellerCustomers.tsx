@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -40,8 +41,8 @@ export default function ResellerCustomers() {
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
 
-  // Check if user can create trials (only Trex-enabled resellers)
-  const canCreateTrials = user?.provider === 'trex';
+  // Check if user can create trials
+  const canCreateTrials = true; // Always allow trial creation for EZTV
 
   // Handle customer cancel
   const handleCancelCustomer = async (customerId: string) => {
@@ -175,7 +176,7 @@ export default function ResellerCustomers() {
       <div className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-center">
         <div>
           <h1 className="text-2xl font-bold mb-2">Customers</h1>
-          <p className="text-gray-500">Manage all your IPTV customers</p>
+          <p className="text-gray-500">Manage all your EZTV streaming customers</p>
         </div>
         <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
           <Button 
@@ -210,7 +211,7 @@ export default function ResellerCustomers() {
           onClick={() => setStatusFilter(statusFilter === 'active' ? 'all' : 'active')}
         >
           <StatCard
-            title="Active Connections"
+            title="Active Subscriptions"
             value={activeCount}
             icon={<UserCheck className="h-5 w-5" />}
             className="border-green-200 bg-green-50 hover:bg-green-100 h-full"
@@ -303,8 +304,8 @@ export default function ResellerCustomers() {
           <DialogHeader>
             <DialogTitle>Bulk Import Customers</DialogTitle>
             <DialogDescription>
-              Import existing customers from CSV and link them to their IPTV accounts. 
-              This will not create new IPTV accounts, only link existing ones.
+              Import existing customers from CSV and link them to their streaming accounts. 
+              This will not create new streaming accounts, only link existing ones.
             </DialogDescription>
           </DialogHeader>
           <BulkImportForm onSuccess={() => {
@@ -320,14 +321,14 @@ export default function ResellerCustomers() {
           <DialogHeader>
             <DialogTitle>Add New Customer</DialogTitle>
             <DialogDescription>
-              Add a new customer and provision their IPTV account. This will consume credits.
+              Add a new customer and provision their EZTV streaming account. This will consume credits.
             </DialogDescription>
           </DialogHeader>
           <AddCustomerForm onSuccess={() => setIsAddCustomerOpen(false)} />
         </DialogContent>
       </Dialog>
 
-      {/* Create Trial Dialog - Only show if user can create trials */}
+      {/* Create Trial Dialog */}
       {canCreateTrials && (
         <Dialog open={isCreateTrialOpen} onOpenChange={setIsCreateTrialOpen}>
           <DialogContent>
@@ -349,7 +350,7 @@ export default function ResellerCustomers() {
             <DialogHeader>
               <DialogTitle>Renew Subscription</DialogTitle>
               <DialogDescription>
-                Extend {customerToRenew.name}'s IPTV subscription. This will consume credits based on the number of linked accounts.
+                Extend {customerToRenew.name}'s EZTV streaming subscription. This will consume credits based on the number of linked accounts.
               </DialogDescription>
             </DialogHeader>
             <RenewCustomerForm 

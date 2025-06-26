@@ -41,7 +41,7 @@ export default function ResellerDashboard() {
   return (
     <DashboardLayout>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2 text-brand-dark">Reseller Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-2 text-brand-dark">EZTV Reseller Dashboard</h1>
         <p className="text-gray-500">Welcome back, {user?.name}</p>
       </div>
       
@@ -53,7 +53,7 @@ export default function ResellerDashboard() {
             <div>
               <h2 className="text-lg font-medium opacity-90">Your Credit Balance</h2>
               <p className="text-3xl font-bold mt-2">{user?.credits} Credits</p>
-              <p className="text-sm opacity-75 mt-1">1 credit = 1 month of service</p>
+              <p className="text-sm opacity-75 mt-1">1 credit = 1 month of streaming service</p>
             </div>
             <div className="mt-4 md:mt-0">
               <Button 
@@ -86,7 +86,7 @@ export default function ResellerDashboard() {
           title="Available Credits"
           value={user?.credits || 0}
           icon={<CreditCard className="h-5 w-5 text-green-500" />}
-          description="1 credit = 1 month of service"
+          description="1 credit = 1 month of streaming service"
         />
       </div>
       
@@ -119,7 +119,7 @@ export default function ResellerDashboard() {
           <DialogHeader>
             <DialogTitle className="text-brand-primary">Add New Customer</DialogTitle>
             <DialogDescription>
-              Add a new customer and provision their IPTV account. This will consume credits.
+              Add a new customer and provision their EZTV streaming account. This will consume credits.
             </DialogDescription>
           </DialogHeader>
           <AddCustomerForm onSuccess={() => setIsAddCustomerOpen(false)} />

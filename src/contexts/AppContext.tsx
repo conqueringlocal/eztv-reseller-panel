@@ -282,26 +282,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error(`❌ Error calling ${functionName}:`, error);
-        toast.error(`Failed to create ${userProvider.toUpperCase()} customer: ${error.message}`);
+        toast.error(`Failed to create streaming customer: ${error.message}`);
         return false;
       }
 
       if (!data.success) {
         console.error(`❌ ${functionName} returned failure:`, data.error);
-        toast.error(data.error || `Failed to create ${userProvider.toUpperCase()} customer`);
+        toast.error(data.error || `Failed to create streaming customer`);
         return false;
       }
 
       console.log(`✅ ${functionName} success:`, data);
       
-      // Show success message with provider information
+      // Show success message
       const totalCreated = data.customers?.length || 1;
-      const providerName = userProvider.toUpperCase();
       
       if (totalCreated > 1) {
-        toast.success(`${providerName} customer created successfully with ${totalCreated} connections!`);
+        toast.success(`EZTV streaming customer created successfully with ${totalCreated} connections!`);
       } else {
-        toast.success(`${providerName} customer created successfully!`);
+        toast.success(`EZTV streaming customer created successfully!`);
       }
 
       // Refresh data to show new customer
