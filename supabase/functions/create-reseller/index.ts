@@ -67,7 +67,7 @@ serve(async (req) => {
     // Check if the user is an admin or reseller using the admin client
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('role, reseller_level, credits')
+      .select('role, reseller_level, credits, provider')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -91,10 +91,10 @@ serve(async (req) => {
 
     console.log('User verified, parsing request body');
 
-    // Parse the request body
-    const { name, email, password, credits, provider, parent_reseller_id } = await req.json();
+    // Parse the request body (provider is no longer expected from frontend)
+    const { name, email, password, credits, parent_reseller_id } = await req.json();
 
-    console.log('Request data:', { name, email, credits, provider, parent_reseller_id });
+    console.log('Request data:', { name, email, credits, parent_reseller_id });
 
     // Validate required fields
     if (!email || !password || !name) {
@@ -140,13 +140,17 @@ serve(async (req) => {
       }
     }
 
-    // Validate provider
-    if (provider && !['8k', 'trex'].includes(provider)) {
-      console.log('Invalid provider');
-      return new Response(JSON.stringify({ error: 'Invalid provider. Must be 8k or trex' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Determine the provider to use
+    let providerToUse = '8k'; // Default provider
+    
+    if (parent_reseller_id) {
+      // For sub-resellers, inherit provider from parent
+      providerToUse = profile.provider || '8k';
+      console.log('Sub-reseller will inherit provider from parent:', providerToUse);
+    } else {
+      // For direct resellers created by admin, use default or allow override
+      providerToUse = '8k'; // Could be made configurable in the future
+      console.log('Direct reseller will use default provider:', providerToUse);
     }
 
     // Calculate reseller level
@@ -202,7 +206,7 @@ serve(async (req) => {
         .update({ 
           credits: credits || 0,
           name: name,
-          provider: provider || '8k',
+          provider: providerToUse,
           parent_reseller_id: parent_reseller_id || null,
           reseller_level: resellerLevel
         })
@@ -218,7 +222,7 @@ serve(async (req) => {
         });
       }
 
-      console.log('Profile updated successfully');
+      console.log('Profile updated successfully with provider:', providerToUse);
 
       // If this is a sub-reseller creation, deduct credits from parent
       if (parent_reseller_id && profile.role === 'reseller') {
@@ -249,7 +253,7 @@ serve(async (req) => {
             reseller_id: user.id,
             action: 'deduction',
             credits_used: credits,
-            notes: `Sub-reseller creation: ${name} (${email})`
+            notes: `Sub-reseller creation: ${name} (${email}) with inherited ${providerToUse} provider`
           });
 
         if (logError) {
@@ -261,8 +265,9 @@ serve(async (req) => {
       return new Response(JSON.stringify({ 
         success: true, 
         user: authData.user,
-        message: 'Reseller created successfully',
+        message: `Reseller created successfully with inherited ${providerToUse} provider`,
         creditsAllocated: credits,
+        providerInherited: providerToUse,
         parentCreditsRemaining: parent_reseller_id && profile.role === 'reseller' ? profile.credits - credits : null
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
