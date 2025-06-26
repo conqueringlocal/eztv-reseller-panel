@@ -203,8 +203,8 @@ export default function ResellerCustomers() {
         </div>
       </div>
       
-      {/* Stats Cards - Now clickable for filtering */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      {/* Stats Cards - Fixed grid to ensure consistent sizing */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div 
           className={`cursor-pointer transition-all ${statusFilter === 'active' ? 'ring-2 ring-green-500' : ''}`}
           onClick={() => setStatusFilter(statusFilter === 'active' ? 'all' : 'active')}
@@ -213,7 +213,7 @@ export default function ResellerCustomers() {
             title="Active Connections"
             value={activeCount}
             icon={<UserCheck className="h-5 w-5" />}
-            className="border-green-200 bg-green-50 hover:bg-green-100"
+            className="border-green-200 bg-green-50 hover:bg-green-100 h-full"
           />
         </div>
         
@@ -225,7 +225,7 @@ export default function ResellerCustomers() {
             title="Expiring Soon"
             value={expiringSoonCount}
             icon={<Clock className="h-5 w-5" />}
-            className="border-yellow-200 bg-yellow-50 hover:bg-yellow-100"
+            className="border-yellow-200 bg-yellow-50 hover:bg-yellow-100 h-full"
           />
         </div>
         
@@ -237,7 +237,7 @@ export default function ResellerCustomers() {
             title="Expired"
             value={expiredCount}
             icon={<AlertTriangle className="h-5 w-5" />}
-            className="border-red-200 bg-red-50 hover:bg-red-100"
+            className="border-red-200 bg-red-50 hover:bg-red-100 h-full"
           />
         </div>
         
@@ -249,7 +249,7 @@ export default function ResellerCustomers() {
             title="Cancelled"
             value={cancelledCount}
             icon={<Ban className="h-5 w-5" />}
-            className="border-orange-200 bg-orange-50 hover:bg-orange-100"
+            className="border-orange-200 bg-orange-50 hover:bg-orange-100 h-full"
           />
         </div>
         
@@ -261,7 +261,7 @@ export default function ResellerCustomers() {
             title="Deactivated"
             value={deactivatedCount}
             icon={<UserX className="h-5 w-5" />}
-            className="border-gray-200 bg-gray-50 hover:bg-gray-100"
+            className="border-gray-200 bg-gray-50 hover:bg-gray-100 h-full"
           />
         </div>
       </div>

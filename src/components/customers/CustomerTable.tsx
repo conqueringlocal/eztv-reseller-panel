@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Customer } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
@@ -60,6 +59,15 @@ export function CustomerTable({
 
   // Consolidate customers for display
   const consolidatedCustomers = consolidateCustomers(customers);
+
+  // Define getStatusValue function BEFORE using it in useMemo
+  const getStatusValue = (customer: ConsolidatedCustomer) => {
+    if (customer.isDeactivated) return 4;
+    if (customer.status === 'cancelled') return 3;
+    if (customer.status === 'expired') return 2;
+    if (isExpiringSoon(customer.expirationDate)) return 1;
+    return 0; // active
+  };
 
   // Filter and sort customers
   const filteredAndSortedCustomers = useMemo(() => {
@@ -135,15 +143,7 @@ export function CustomerTable({
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [consolidatedCustomers, search, statusFilter, sortField, sortDirection]);
-
-  const getStatusValue = (customer: ConsolidatedCustomer) => {
-    if (customer.isDeactivated) return 4;
-    if (customer.status === 'cancelled') return 3;
-    if (customer.status === 'expired') return 2;
-    if (isExpiringSoon(customer.expirationDate)) return 1;
-    return 0; // active
-  };
+  }, [consolidatedCustomers, search, statusFilter, sortField, sortDirection, getStatusValue]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
