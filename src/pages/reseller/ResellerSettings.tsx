@@ -6,6 +6,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useApp } from '@/contexts/AppContext';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { AccountUpdateForm } from '@/components/reseller/AccountUpdateForm';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FileText, Upload, Users, Link } from 'lucide-react';
 
 export default function ResellerSettings() {
   const { user } = useAuth();
@@ -102,6 +104,77 @@ export default function ResellerSettings() {
             )}
           </div>
         </DashboardCard>
+
+        {/* Bulk Import Information */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Bulk Import Features
+            </CardTitle>
+            <CardDescription>
+              Import existing customers from CSV files and link them to IPTV accounts
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <FileText className="h-5 w-5 text-blue-500 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-gray-900">CSV Template</h4>
+                    <p className="text-sm text-gray-600">
+                      Download a CSV template with all required fields for customer import
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-3">
+                  <Users className="h-5 w-5 text-green-500 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-gray-900">Account Verification</h4>
+                    <p className="text-sm text-gray-600">
+                      Automatically verifies that IPTV accounts exist before importing
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="flex items-start space-x-3">
+                  <Link className="h-5 w-5 text-purple-500 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-gray-900">CRM Integration</h4>
+                    <p className="text-sm text-gray-600">
+                      Links customers to HighLevel contacts and updates credentials automatically
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-3">
+                  <Upload className="h-5 w-5 text-orange-500 mt-0.5" />
+                  <div>
+                    <h4 className="font-medium text-gray-900">Batch Processing</h4>
+                    <p className="text-sm text-gray-600">
+                      Process multiple customers at once with detailed progress tracking and error reporting
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <h4 className="font-medium text-blue-900 mb-2">How to Use Bulk Import</h4>
+              <ol className="text-sm text-blue-800 space-y-1">
+                <li>1. Go to the Customers page and click "Bulk Import"</li>
+                <li>2. Download the CSV template and fill it with your customer data</li>
+                <li>3. Make sure the usernames match existing IPTV accounts</li>
+                <li>4. Upload the CSV file and review the validation results</li>
+                <li>5. The system will verify accounts and link customers automatically</li>
+              </ol>
+            </div>
+          </CardContent>
+        </Card>
 
         <DashboardCard
           title="Account Management"

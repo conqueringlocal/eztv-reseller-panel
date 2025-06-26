@@ -19,9 +19,10 @@ import { toast } from 'sonner';
 import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
 import { CrmContactManager } from '@/components/crm/CrmContactManager';
 import { CreateTrialForm } from '@/components/customers/CreateTrialForm';
+import { BulkImportForm } from '@/components/customers/BulkImportForm';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, UserCheck, Clock, AlertTriangle, UserX, Ban } from 'lucide-react';
+import { Users, UserCheck, Clock, AlertTriangle, UserX, Ban, Upload } from 'lucide-react';
 
 export default function ResellerCustomers() {
   const { user } = useAuth();
@@ -30,6 +31,7 @@ export default function ResellerCustomers() {
   const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
   const [isCrmManagerOpen, setIsCrmManagerOpen] = useState(false);
   const [isCreateTrialOpen, setIsCreateTrialOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
   const [selectedCustomerForCrm, setSelectedCustomerForCrm] = useState<Customer | null>(null);
   
@@ -173,7 +175,15 @@ export default function ResellerCustomers() {
           <h1 className="text-2xl font-bold mb-2">Customers</h1>
           <p className="text-gray-500">Manage all your IPTV customers</p>
         </div>
-        <div className="flex space-x-2 mt-4 sm:mt-0">
+        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
+          <Button 
+            onClick={() => setIsBulkImportOpen(true)}
+            variant="outline"
+            className="bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200 flex items-center gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Bulk Import
+          </Button>
           {canCreateTrials && (
             <Button 
               onClick={() => setIsCreateTrialOpen(true)}
@@ -252,6 +262,23 @@ export default function ResellerCustomers() {
         </CardContent>
       </Card>
       
+      {/* Bulk Import Dialog */}
+      <Dialog open={isBulkImportOpen} onOpenChange={setIsBulkImportOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bulk Import Customers</DialogTitle>
+            <DialogDescription>
+              Import existing customers from CSV and link them to their IPTV accounts. 
+              This will not create new IPTV accounts, only link existing ones.
+            </DialogDescription>
+          </DialogHeader>
+          <BulkImportForm onSuccess={() => {
+            setIsBulkImportOpen(false);
+            refreshData();
+          }} />
+        </DialogContent>
+      </Dialog>
+
       {/* Add Customer Dialog */}
       <Dialog open={isAddCustomerOpen} onOpenChange={setIsAddCustomerOpen}>
         <DialogContent>
