@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from "sonner";
@@ -52,6 +53,10 @@ const cleanupAuthState = () => {
 };
 
 export const useAuth = () => useContext(AuthContext);
+export const useUser = () => {
+  const { user, isLoading } = useContext(AuthContext);
+  return { user, isLoading, session: user ? { user } : null };
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);

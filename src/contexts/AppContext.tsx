@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { useUser } from '@/contexts/AuthContext';
@@ -30,6 +31,23 @@ export interface Customer {
   connection_sequence?: number | null;
   cancelledAt?: string | null;
   highlevelContactId?: string | null;
+  // Add missing properties for compatibility
+  customerGroup?: string;
+  connectionSequence?: number | null;
+  m3uUrl?: string | null;
+  isTrial?: boolean;
+}
+
+export interface CreditLog {
+  id: string;
+  reseller_id: string;
+  date: string;
+  action: string;
+  credits_used: number;
+  customer_id?: string;
+  connections_used?: number;
+  notes?: string;
+  customer_name?: string;
 }
 
 interface AppContextType {
@@ -54,6 +72,44 @@ export const useAppContext = () => {
   return context;
 };
 
+export const useApp = () => useAppContext();
+
+// Helper function to convert database customer to interface Customer
+const convertDbCustomerToCustomer = (dbCustomer: any): Customer => {
+  return {
+    id: dbCustomer.id,
+    createdAt: dbCustomer.created_at,
+    resellerId: dbCustomer.reseller_id,
+    name: dbCustomer.name,
+    email: dbCustomer.email,
+    username: dbCustomer.username || '',
+    password: dbCustomer.password,
+    macAddress: dbCustomer.mac_address,
+    deviceType: dbCustomer.device_type,
+    packageId: dbCustomer.customer_group_id || 'default',
+    planDuration: dbCustomer.plan_duration,
+    maxConnections: dbCustomer.max_connections || 1,
+    currentConnections: dbCustomer.current_connections || 0,
+    connectionDetails: dbCustomer.connection_details || [],
+    startDate: dbCustomer.start_date,
+    expirationDate: dbCustomer.expiration_date,
+    status: dbCustomer.status,
+    isDeactivated: dbCustomer.is_deactivated || false,
+    provider: dbCustomer.provider || '8k',
+    customer_group: dbCustomer.customer_group,
+    customer_group_id: dbCustomer.customer_group_id,
+    m3u_url: dbCustomer.m3u_url,
+    connection_sequence: dbCustomer.connection_sequence,
+    cancelledAt: dbCustomer.cancelled_at,
+    highlevelContactId: dbCustomer.highlevel_contact_id,
+    // Add compatibility properties
+    customerGroup: dbCustomer.customer_group,
+    connectionSequence: dbCustomer.connection_sequence,
+    m3uUrl: dbCustomer.m3u_url,
+    isTrial: dbCustomer.is_trial || false,
+  };
+};
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const { session, user } = useUser();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -71,14 +127,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .from('customers')
         .select('*')
         .eq('reseller_id', user.id)
-        .order('createdAt', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching customers:', error);
         toast.error('Failed to load customer data');
       } else {
         console.log(`Successfully fetched ${data.length} customers`);
-        setCustomers(data);
+        const convertedCustomers = data.map(convertDbCustomerToCustomer);
+        setCustomers(convertedCustomers);
       }
     } catch (error) {
       console.error('Unexpected error fetching customers:', error);
@@ -128,11 +185,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             deviceType: customerData.deviceType,
             packageId: customerData.packageId,
             planDuration: customerData.planDuration,
-            connections: customerData.connections,
+            connections: customerData.maxConnections,
             maxConnections: customerData.maxConnections,
             startDate: customerData.startDate,
             expirationDate: customerData.expirationDate,
-            accountType: customerData.accountType,
             status: customerData.status,
             isDeactivated: customerData.isDeactivated,
           }
@@ -179,7 +235,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('customers')
-        .update({ status: 'cancelled', cancelledAt: new Date().toISOString() })
+        .update({ status: 'cancelled', cancelled_at: new Date().toISOString() })
         .eq('id', customerId)
         .select()
         .single();

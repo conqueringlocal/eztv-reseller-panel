@@ -8,7 +8,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { useApp } from '@/contexts/AppContext';
+import { useAppContext } from '@/contexts/AppContext';
 import { supabase } from '@/integrations/supabase/client';
 
 const formSchema = z.object({
@@ -25,7 +25,7 @@ interface CreateTrialFormProps {
 
 export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
   const { user } = useAuth();
-  const { refreshData } = useApp();
+  const { refreshData } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<FormData>({

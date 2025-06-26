@@ -151,7 +151,7 @@ serve(async (req) => {
 
     // Get API configuration
     const API_KEY = Deno.env.get('TREX_API_KEY')
-    const PANEL_URL = Deno.env.get('TREX_PANEL_URL')
+    const PANEL_URL = Deno.env.get('TREX_PANEL_URL') || 'https://activationpanel.net'
     
     if (!API_KEY) {
       console.error('❌ Trex API key not configured')
@@ -167,36 +167,21 @@ serve(async (req) => {
       )
     }
 
-    if (!PANEL_URL) {
-      console.error('❌ Trex Panel URL not configured')
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Trex Panel URL not configured'
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 500,
-        },
-      )
-    }
-
-    console.log('🎯 Creating trial Trex user via API call using same format as 8K')
+    console.log('🎯 Creating trial Trex user via API call using correct parameters')
 
     try {
-      // Use the same API format as 8K for consistency
+      // Use the correct API format as specified by the user
       const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
       const apiUrl = new URL(`${baseUrl}/api/api.php`);
       
-      // Use the same parameters as 8K for consistency
+      // Add parameters in the exact order specified by the user
+      // https://activationpanel.net/api/api.php?action=new&type=m3u&sub=12&pack=132&api_key=KEY
+      apiUrl.searchParams.append('action', 'new');
+      apiUrl.searchParams.append('type', 'm3u');
+      apiUrl.searchParams.append('sub', '99'); // 99 is for demo, uses 1 Demo Ticket
+      apiUrl.searchParams.append('pack', packageId);
+      apiUrl.searchParams.append('note', `${customerData.name} | 24 hour trial`);
       apiUrl.searchParams.append('api_key', API_KEY);
-      apiUrl.searchParams.append('action', 'user_create');
-      apiUrl.searchParams.append('username', username);
-      apiUrl.searchParams.append('password', password);
-      apiUrl.searchParams.append('package_id', packageId);
-      apiUrl.searchParams.append('duration', '1'); // 1 month duration for trial (will be limited by expiry date)
-      apiUrl.searchParams.append('max_connections', '1');
-      apiUrl.searchParams.append('country', 'us');
       
       console.log(`🔗 Trex trial API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`)
       
@@ -233,29 +218,67 @@ serve(async (req) => {
         )
       }
 
-      // Try to parse as JSON
+      // Try to parse as JSON first
       let apiResult;
       try {
         apiResult = JSON.parse(responseText);
       } catch (parseError) {
-        // If it's not JSON, treat as success if no error indicators
-        if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
+        // If it's not JSON, check if it contains credentials in text format
+        console.log(`📄 Parsing text response for trial`);
+        
+        // Look for common patterns in text responses that might contain credentials
+        if (responseText.includes('username') || responseText.includes('password') || responseText.includes('m3u')) {
+          // Try to extract credentials from text response
+          const lines = responseText.split('\n');
+          let extractedUsername = username; // fallback to generated username
+          let extractedPassword = password; // fallback to generated password
+          
+          // Look for username/password patterns in the response
+          for (const line of lines) {
+            if (line.toLowerCase().includes('username') && line.includes(':')) {
+              const match = line.split(':')[1]?.trim();
+              if (match) extractedUsername = match;
+            }
+            if (line.toLowerCase().includes('password') && line.includes(':')) {
+              const match = line.split(':')[1]?.trim();
+              if (match) extractedPassword = match;
+            }
+          }
+          
+          apiResult = {
+            success: true,
+            username: extractedUsername,
+            password: extractedPassword,
+            response: responseText
+          };
+        } else if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
           throw new Error(`API Error: ${responseText}`);
+        } else {
+          // Assume success if no error indicators and use generated credentials
+          apiResult = {
+            success: true,
+            username: username,
+            password: password,
+            response: responseText
+          };
         }
-        apiResult = { success: true, response: responseText };
       }
 
-      // Check for API errors
+      // Check for API errors in JSON response
       if (apiResult.error || apiResult.status === 'error') {
         throw new Error(apiResult.error || apiResult.result || 'Failed to create Trex trial user');
       }
 
+      // Use credentials from API response or fallback to generated ones
+      const finalUsername = apiResult.username || username;
+      const finalPassword = apiResult.password || password;
+
       console.log('✅ Trex trial account created successfully')
 
       // Generate M3U URL
-      const m3uUrl = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`;
+      const m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
 
-      console.log(`🔐 Final Trex trial credentials - Username: ${username}, Password: ${password}`)
+      console.log(`🔐 Final Trex trial credentials - Username: ${finalUsername}, Password: ${finalPassword}`)
       console.log(`🔗 Trex M3U URL: ${m3uUrl}`)
 
       // Create HighLevel contact with trial credentials if needed
@@ -271,8 +294,8 @@ serve(async (req) => {
               customerEmail: customerData.email,
               resellerId: resellerId,
               iptvCredentials: {
-                username: username,
-                password: password,
+                username: finalUsername,
+                password: finalPassword,
                 m3uUrl: m3uUrl
               }
             }
@@ -299,8 +322,8 @@ serve(async (req) => {
           plan_duration: 1, // Duration is not relevant for trials, but keep it as 1
           start_date: startDate,
           expiration_date: expirationDate,
-          username: username,
-          password: password,
+          username: finalUsername,
+          password: finalPassword,
           m3u_url: m3uUrl,
           highlevel_contact_id: contactId,
           status: 'active',
@@ -308,7 +331,7 @@ serve(async (req) => {
           trial_created_at: new Date().toISOString(),
           is_deactivated: false,
           provider: 'trex',
-          customer_group: `trial_${username}`,
+          customer_group: `trial_${finalUsername}`,
           connection_sequence: 1,
           max_connections: 1,
           current_connections: 0
@@ -359,8 +382,8 @@ serve(async (req) => {
             body: {
               contactId,
               customerName: customerData.name,
-              username: username,
-              password: password,
+              username: finalUsername,
+              password: finalPassword,
               m3uUrl: m3uUrl,
               resellerId: resellerId,
               messageType: 'SMS'
@@ -380,8 +403,8 @@ serve(async (req) => {
           message: '24-hour Trex trial account created successfully',
           customer: {
             id: customer.id,
-            username: username,
-            password: password,
+            username: finalUsername,
+            password: finalPassword,
             expirationDate: expirationDate,
             m3uUrl: m3uUrl,
             isTrial: true,
