@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -19,7 +20,7 @@ export default function AdminResellerDetail() {
 
   const reseller = resellers.find(r => r.id === id);
   const resellerCustomers = customers.filter(c => c.resellerId === id);
-  const resellerCreditLogs = creditLogs.filter(log => log.reseller_id === id); // Fixed: use reseller_id instead of resellerId
+  const resellerCreditLogs = creditLogs.filter(log => log.reseller_id === id);
 
   useEffect(() => {
     if (!id) {
@@ -156,7 +157,11 @@ export default function AdminResellerDetail() {
           </CardHeader>
           {showCreditForm && (
             <CardContent>
-              <CreditManageForm onAdd={handleAddCredits} onRemove={handleRemoveCredits} />
+              <CreditManageForm 
+                resellerId={id!} 
+                type="add" 
+                onSuccess={() => setShowCreditForm(false)} 
+              />
             </CardContent>
           )}
         </Card>

@@ -12,7 +12,7 @@ export default function ResellerCredits() {
   const { creditLogs } = useApp();
 
   // Filter credit logs for current reseller
-  const userCreditLogs = creditLogs.filter(log => log.reseller_id === user?.id); // Fixed: use reseller_id instead of resellerId
+  const userCreditLogs = creditLogs.filter(log => log.reseller_id === user?.id);
 
   return (
     <DashboardLayout>
@@ -22,7 +22,7 @@ export default function ResellerCredits() {
             <h1 className="text-2xl font-bold mb-2">Credits & Usage</h1>
             <p className="text-gray-500">Monitor your credit usage and transaction history</p>
           </div>
-          <CreditsBadge />
+          <CreditsBadge credits={user?.credits || 0} />
         </div>
       </div>
 

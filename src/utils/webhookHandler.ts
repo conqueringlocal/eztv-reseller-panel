@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { Customer } from '@/contexts/AppContext';
 
@@ -13,6 +14,19 @@ export interface WebhookPayload {
     device_type?: string;
     plan_duration_months: number;
   };
+}
+
+export interface WebhookData {
+  name: string;
+  email: string;
+  macAddress?: string;
+  deviceType?: string;
+  password?: string;
+  expirationDate: string;
+  status?: string;
+  planDuration?: number;
+  maxConnections?: number;
+  packageId?: string;
 }
 
 export const determineCustomerStatus = (expirationDate: string): 'active' | 'expired' | 'cancelled' | 'pending' => {
@@ -126,7 +140,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
         maxConnections: 1,
         m3uUrl: '',
         isTrial: false,
-        startDate: new Date().toISOString().split('T')[0]
+        startDate: new Date().toISOString().split('T')[0],
+        packageId: 'default',
+        currentConnections: 0,
+        connectionDetails: [],
+        provider: '8k'
       };
 
       const result = await createCustomerRecord(customerData, payload.resellerId);
@@ -229,20 +247,26 @@ export const processWebhookData = async (
   return {
     name: webhookData.name,
     email: webhookData.email,
-    username: `${webhookData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`, // Fixed: Added username
+    username: `${webhookData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`,
     macAddress: webhookData.macAddress || '',
     deviceType: webhookData.deviceType || 'Smart TV',
-    packageId: webhookData.packageId || 'default', // Fixed: Added packageId
+    packageId: webhookData.packageId || 'default',
     password: webhookData.password || '',
     expirationDate: webhookData.expirationDate,
     status: webhookData.status || 'active',
     resellerId: resellerId,
     planDuration: webhookData.planDuration || 1,
-    maxConnections: webhookData.maxConnections || 1, // Fixed: Added maxConnections
-    currentConnections: 0, // Fixed: Added currentConnections
-    connectionDetails: [], // Fixed: Added connectionDetails
+    maxConnections: webhookData.maxConnections || 1,
+    currentConnections: 0,
+    connectionDetails: [],
     isDeactivated: false,
     startDate: new Date().toISOString().split('T')[0],
-    provider: '8k', // Fixed: Added provider
+    provider: '8k',
+    cancelledAt: null,
+    highlevelContactId: undefined,
+    customerGroup: undefined,
+    connectionSequence: 1,
+    m3uUrl: '',
+    isTrial: false
   };
 };
