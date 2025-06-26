@@ -22,6 +22,10 @@ export interface Customer {
   highlevelContactId?: string;
   customerGroup?: string;
   connectionSequence?: number;
+  maxConnections?: number;
+  m3uUrl?: string;
+  isTrial?: boolean;
+  startDate?: string;
 }
 
 export interface Reseller {
@@ -33,11 +37,13 @@ export interface Reseller {
   stripeCustomerId?: string;
   logoUrl?: string;
   accentColor?: string;
+  provider?: string;
 }
 
 export interface CreditLog {
   id: string;
   createdAt: string;
+  date: string;
   resellerId: string;
   action: 'account_creation' | 'addition' | 'deduction';
   creditsUsed: number;
@@ -110,7 +116,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           username: customer.username,
           password: customer.password,
           expirationDate: customer.expiration_date,
-          status: customer.status || 'active',
+          status: (customer.status || 'active') as 'active' | 'expired' | 'cancelled' | 'pending',
           resellerId: customer.reseller_id,
           deviceType: customer.device_type,
           planDuration: customer.plan_duration,
@@ -118,7 +124,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           cancelledAt: customer.cancelled_at,
           highlevelContactId: customer.highlevel_contact_id,
           customerGroup: customer.customer_group,
-          connectionSequence: customer.connection_sequence
+          connectionSequence: customer.connection_sequence,
+          maxConnections: customer.max_connections,
+          m3uUrl: customer.m3u_url,
+          isTrial: customer.is_trial,
+          startDate: customer.start_date
         }));
         setCustomers(transformedCustomers);
         console.log(`Fetched ${transformedCustomers.length} customers`);
@@ -142,7 +152,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           email: reseller.email,
           credits: reseller.credits,
           logoUrl: undefined, // This field doesn't exist in database yet
-          accentColor: undefined // This field doesn't exist in database yet
+          accentColor: undefined, // This field doesn't exist in database yet
+          provider: reseller.provider
         }));
         setResellers(transformedResellers);
         console.log(`Fetched ${transformedResellers.length} resellers`);
@@ -162,6 +173,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const transformedCreditLogs: CreditLog[] = (creditLogsData || []).map(log => ({
           id: log.id,
           createdAt: log.date,
+          date: log.date,
           resellerId: log.reseller_id,
           action: log.action,
           creditsUsed: log.credits_used,

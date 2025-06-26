@@ -1,60 +1,87 @@
 
 import { Customer } from '@/contexts/AppContext';
 
-export interface ConsolidatedCustomer extends Omit<Customer, 'maxConnections' | 'currentConnections'> {
+export interface ConsolidatedCustomer {
+  id: string;
+  name: string;
+  email: string;
+  deviceType: string;
+  planDuration: number;
+  expirationDate: string;
+  status: 'active' | 'expired' | 'cancelled' | 'pending';
+  isDeactivated: boolean;
+  cancelledAt: string | null;
+  highlevelContactId?: string;
+  customerGroup?: string;
+  macAddress?: string;
+  isTrial?: boolean;
+  startDate?: string;
+  
+  // Consolidated properties
   totalConnections: number;
   connectionEntries: Customer[];
   connectionDetails: Array<{
     connectionNumber: number;
-    username: string;
-    password: string;
+    username?: string;
+    password?: string;
     macAddress?: string;
     m3uUrl?: string;
   }>;
 }
 
 export function consolidateCustomers(customers: Customer[]): ConsolidatedCustomer[] {
+  const groupedCustomers = new Map<string, Customer[]>();
+
   // Group customers by customer_group
-  const grouped = customers.reduce((acc, customer) => {
-    const groupId = customer.customerGroup || customer.id;
-    
-    if (!acc[groupId]) {
-      acc[groupId] = [];
+  customers.forEach(customer => {
+    const groupKey = customer.customerGroup || customer.id;
+    if (!groupedCustomers.has(groupKey)) {
+      groupedCustomers.set(groupKey, []);
     }
-    acc[groupId].push(customer);
-    return acc;
-  }, {} as Record<string, Customer[]>);
+    groupedCustomers.get(groupKey)!.push(customer);
+  });
 
   // Convert groups to consolidated customers
-  return Object.values(grouped).map(group => {
-    // Sort by connection_sequence to maintain proper order
-    const sortedGroup = group.sort((a, b) => (a.connectionSequence || 1) - (b.connectionSequence || 1));
+  return Array.from(groupedCustomers.entries()).map(([groupKey, groupCustomers]) => {
+    // Sort by connection sequence to ensure consistent ordering
+    const sortedCustomers = groupCustomers.sort((a, b) => 
+      (a.connectionSequence || 1) - (b.connectionSequence || 1)
+    );
     
-    // Use the first customer as the base, but aggregate connection data
-    const primaryCustomer = sortedGroup[0];
-    const totalConnections = sortedGroup.length;
+    const primaryCustomer = sortedCustomers[0];
     
-    // Create connection details from all customers in the group, ordered by sequence
-    const connectionDetails = sortedGroup.map((customer) => ({
-      connectionNumber: customer.connectionSequence || 1,
-      username: customer.username || '',
-      password: customer.password || '',
-      macAddress: customer.macAddress,
-      m3uUrl: customer.m3uUrl,
-    }));
-
-    const consolidated: ConsolidatedCustomer = {
-      ...primaryCustomer,
-      totalConnections,
-      connectionEntries: sortedGroup,
-      connectionDetails,
+    return {
+      id: groupKey,
+      name: primaryCustomer.name,
+      email: primaryCustomer.email,
+      deviceType: primaryCustomer.deviceType,
+      planDuration: primaryCustomer.planDuration,
+      expirationDate: primaryCustomer.expirationDate,
+      status: primaryCustomer.status,
+      isDeactivated: primaryCustomer.isDeactivated,
+      cancelledAt: primaryCustomer.cancelledAt,
+      highlevelContactId: primaryCustomer.highlevelContactId,
+      customerGroup: primaryCustomer.customerGroup,
+      macAddress: sortedCustomers.length === 1 ? primaryCustomer.macAddress : undefined,
+      isTrial: primaryCustomer.isTrial,
+      startDate: primaryCustomer.startDate,
+      
+      totalConnections: sortedCustomers.length,
+      connectionEntries: sortedCustomers,
+      connectionDetails: sortedCustomers.map(customer => ({
+        connectionNumber: customer.connectionSequence || 1,
+        username: customer.username,
+        password: customer.password,
+        macAddress: customer.macAddress,
+        m3uUrl: customer.m3uUrl || ''
+      }))
     };
-
-    return consolidated;
   });
 }
 
 export function getCustomerDisplayName(customer: ConsolidatedCustomer): string {
-  // Simply return the customer name without connection count
+  if (customer.totalConnections > 1) {
+    return `${customer.name} (${customer.totalConnections} connections)`;
+  }
   return customer.name;
 }
