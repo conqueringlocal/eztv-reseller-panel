@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Customer } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
-import { MoreVertical, Eye, RotateCcw, UserX, Settings, RefreshCw, Crown, ChevronUp, ChevronDown } from 'lucide-react';
+import { EditCustomerForm } from './EditCustomerForm';
+import { MoreVertical, Eye, RotateCcw, UserX, Settings, RefreshCw, Crown, ChevronUp, ChevronDown, Edit } from 'lucide-react';
 import { formatDate, isExpiringSoon } from '@/lib/utils';
 import { consolidateCustomers, ConsolidatedCustomer, getCustomerDisplayName } from '@/utils/customerGrouping';
 
@@ -54,6 +63,8 @@ export function CustomerTable({
   const [search, setSearch] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState<ConsolidatedCustomer | null>(null);
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [customerToEdit, setCustomerToEdit] = useState<ConsolidatedCustomer | null>(null);
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
@@ -184,6 +195,11 @@ export function CustomerTable({
   const handleViewCredentials = (customer: ConsolidatedCustomer) => {
     setSelectedCustomer(customer);
     setIsCredentialsOpen(true);
+  };
+
+  const handleEditCustomer = (customer: ConsolidatedCustomer) => {
+    setCustomerToEdit(customer);
+    setIsEditOpen(true);
   };
 
   const handleRenew = (customer: ConsolidatedCustomer) => {
@@ -353,6 +369,14 @@ export function CustomerTable({
                           View Credentials
                         </DropdownMenuItem>
                         
+                        <DropdownMenuItem 
+                          onClick={() => handleEditCustomer(customer)}
+                          className="cursor-pointer"
+                        >
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit Customer
+                        </DropdownMenuItem>
+                        
                         {!customer.isDeactivated && customer.status !== 'cancelled' && (
                           <>
                             {onRenew && (
@@ -429,6 +453,26 @@ export function CustomerTable({
             }
           }}
         />
+      )}
+
+      {customerToEdit && (
+        <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Customer</DialogTitle>
+              <DialogDescription>
+                Update customer information. Changes will be applied to all connections for this customer.
+              </DialogDescription>
+            </DialogHeader>
+            <EditCustomerForm 
+              customer={customerToEdit.connectionEntries[0]} 
+              onSuccess={() => {
+                setIsEditOpen(false);
+                setCustomerToEdit(null);
+              }} 
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

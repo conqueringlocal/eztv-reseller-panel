@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -23,7 +24,7 @@ import { useApp } from '@/contexts/AppContext';
 import { Customer } from '@/contexts/AppContext';
 import { toast } from 'sonner';
 
-// Form schema with validation - removed macAddress
+// Form schema with validation
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
@@ -40,7 +41,7 @@ interface EditCustomerFormProps {
 export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps) {
   const { updateCustomer } = useApp();
   
-  // Initialize form with customer values - removed macAddress
+  // Initialize form with customer values
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
