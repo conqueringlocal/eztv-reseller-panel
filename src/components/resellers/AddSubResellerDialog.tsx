@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { ProviderSelect } from '@/components/customers/ProviderSelect';
 
 interface AddSubResellerDialogProps {
   open: boolean;
@@ -30,7 +31,9 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    password: '',
     credits: 0,
+    provider: '8k',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,6 +48,15 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       return;
     }
 
+    if (!formData.password || formData.password.length < 6) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 6 characters long",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -54,7 +66,9 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
         body: {
           name: formData.name,
           email: formData.email,
+          password: formData.password,
           credits: formData.credits,
+          provider: formData.provider,
           parent_reseller_id: user.id,
         },
       });
@@ -77,7 +91,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       });
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', credits: 0 });
+      setFormData({ name: '', email: '', password: '', credits: 0, provider: '8k' });
       onOpenChange(false);
       
       // Refresh the page to show the new sub-reseller
@@ -133,6 +147,27 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
               onChange={(e) => handleInputChange('email', e.target.value)}
               placeholder="Enter email address"
               required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={formData.password}
+              onChange={(e) => handleInputChange('password', e.target.value)}
+              placeholder="Enter password (min 6 characters)"
+              required
+              minLength={6}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="provider">IPTV Provider</Label>
+            <ProviderSelect
+              value={formData.provider}
+              onChange={(value) => handleInputChange('provider', value)}
             />
           </div>
 

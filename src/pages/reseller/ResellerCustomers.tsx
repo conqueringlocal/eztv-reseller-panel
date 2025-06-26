@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { DashboardCard } from '@/components/dashboard/DashboardCard';
+import { StatCard } from '@/components/dashboard/StatCard';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,8 @@ import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
 import { CrmContactManager } from '@/components/crm/CrmContactManager';
 import { CreateTrialForm } from '@/components/customers/CreateTrialForm';
 import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Users, UserCheck, Clock, AlertTriangle, UserX, Ban } from 'lucide-react';
 
 export default function ResellerCustomers() {
   const { user } = useAuth();
@@ -129,13 +132,27 @@ export default function ResellerCustomers() {
     }
   };
   
-  // Get customer counts by status
-  const activeCount = resellerCustomers.filter(c => c.status === 'active' && !c.isDeactivated).length;
-  const expiringSoonCount = resellerCustomers.filter(c => c.status === 'expiring_soon' && !c.isDeactivated).length;
-  const expiredCount = resellerCustomers.filter(c => c.status === 'expired' && !c.isDeactivated).length;
+  // Get customer counts by status - Fixed logic
+  const today = new Date();
+  const sevenDaysFromNow = new Date();
+  sevenDaysFromNow.setDate(today.getDate() + 7);
+  
+  const activeCount = resellerCustomers.filter(c => 
+    c.status === 'active' && !c.isDeactivated && !c.cancelled_at
+  ).length;
+  
+  const expiringSoonCount = resellerCustomers.filter(c => {
+    if (c.isDeactivated || c.cancelled_at || c.status === 'expired') return false;
+    const expirationDate = new Date(c.expiration_date);
+    return expirationDate > today && expirationDate <= sevenDaysFromNow;
+  }).length;
+  
+  const expiredCount = resellerCustomers.filter(c => 
+    c.status === 'expired' && !c.isDeactivated && !c.cancelled_at
+  ).length;
+  
   const deactivatedCount = resellerCustomers.filter(c => c.isDeactivated).length;
-  const cancelledCount = resellerCustomers.filter(c => c.status === 'cancelled').length;
-  const totalActiveConnections = resellerCustomers.filter(c => c.status === 'active' && !c.isDeactivated).length;
+  const cancelledCount = resellerCustomers.filter(c => c.cancelled_at || c.status === 'cancelled').length;
   
   // Parse token from query string for HighLevel integration
   React.useEffect(() => {
@@ -176,56 +193,64 @@ export default function ResellerCustomers() {
       
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <DashboardCard title="Active Connections">
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Active Connections</div>
-            <div className="text-2xl font-bold text-green-600">{totalActiveConnections}</div>
-          </div>
-        </DashboardCard>
+        <StatCard
+          title="Active Connections"
+          value={activeCount}
+          icon={<UserCheck className="h-5 w-5" />}
+          className="border-green-200 bg-green-50"
+        />
         
-        <DashboardCard title="Expiring Soon">
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Expiring Soon</div>
-            <div className="text-2xl font-bold text-yellow-600">{expiringSoonCount}</div>
-          </div>
-        </DashboardCard>
+        <StatCard
+          title="Expiring Soon"
+          value={expiringSoonCount}
+          icon={<Clock className="h-5 w-5" />}
+          className="border-yellow-200 bg-yellow-50"
+        />
         
-        <DashboardCard title="Expired">
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Expired</div>
-            <div className="text-2xl font-bold text-red-600">{expiredCount}</div>
-          </div>
-        </DashboardCard>
+        <StatCard
+          title="Expired"
+          value={expiredCount}
+          icon={<AlertTriangle className="h-5 w-5" />}
+          className="border-red-200 bg-red-50"
+        />
         
-        <DashboardCard title="Cancelled">
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Cancelled</div>
-            <div className="text-2xl font-bold text-orange-600">{cancelledCount}</div>
-          </div>
-        </DashboardCard>
+        <StatCard
+          title="Cancelled"
+          value={cancelledCount}
+          icon={<Ban className="h-5 w-5" />}
+          className="border-orange-200 bg-orange-50"
+        />
         
-        <DashboardCard title="Deactivated">
-          <div className="p-4">
-            <div className="text-sm font-medium text-gray-500">Deactivated</div>
-            <div className="text-2xl font-bold text-gray-600">{deactivatedCount}</div>
-          </div>
-        </DashboardCard>
+        <StatCard
+          title="Deactivated"
+          value={deactivatedCount}
+          icon={<UserX className="h-5 w-5" />}
+          className="border-gray-200 bg-gray-50"
+        />
       </div>
       
-      <DashboardCard
-        title={`All Customers (${resellerCustomers.length})`}
-        description="View and manage all your customers"
-      >
-        <CustomerTable 
-          customers={resellerCustomers}
-          onAddClick={() => setIsAddCustomerOpen(true)}
-          onCancel={handleCancelCustomer}
-          onRenew={handleRenewCustomer}
-          onDeactivate={handleDeactivateCustomer}
-          onManageCrm={handleManageCrmContact}
-          onSyncToCrm={handleSyncToCrm}
-        />
-      </DashboardCard>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            All Customers ({resellerCustomers.length})
+          </CardTitle>
+          <CardDescription>
+            View and manage all your customers
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CustomerTable 
+            customers={resellerCustomers}
+            onAddClick={() => setIsAddCustomerOpen(true)}
+            onCancel={handleCancelCustomer}
+            onRenew={handleRenewCustomer}
+            onDeactivate={handleDeactivateCustomer}
+            onManageCrm={handleManageCrmContact}
+            onSyncToCrm={handleSyncToCrm}
+          />
+        </CardContent>
+      </Card>
       
       {/* Add Customer Dialog */}
       <Dialog open={isAddCustomerOpen} onOpenChange={setIsAddCustomerOpen}>

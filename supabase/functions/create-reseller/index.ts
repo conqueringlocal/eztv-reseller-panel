@@ -29,7 +29,7 @@ serve(async (req) => {
 
     console.log('Admin client created');
 
-    // Get the authorization header and verify the user is an admin
+    // Get the authorization header and verify the user is an admin or reseller
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       console.log('No authorization header');
@@ -62,10 +62,10 @@ serve(async (req) => {
 
     console.log('User found:', user.id);
 
-    // Check if the user is an admin using the admin client
+    // Check if the user is an admin or reseller using the admin client
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('role')
+      .select('role, reseller_level')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -79,25 +79,34 @@ serve(async (req) => {
       });
     }
 
-    if (!profile || profile.role !== 'admin') {
-      console.log('User is not admin:', { profile, userRole: profile?.role });
-      return new Response(JSON.stringify({ error: 'Insufficient permissions - admin role required' }), {
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'reseller')) {
+      console.log('User is not admin or reseller:', { profile, userRole: profile?.role });
+      return new Response(JSON.stringify({ error: 'Insufficient permissions - admin or reseller role required' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('Admin verified, parsing request body');
+    console.log('User verified, parsing request body');
 
     // Parse the request body
-    const { name, email, password, credits, provider } = await req.json();
+    const { name, email, password, credits, provider, parent_reseller_id } = await req.json();
 
-    console.log('Request data:', { name, email, credits, provider });
+    console.log('Request data:', { name, email, credits, provider, parent_reseller_id });
 
     // Validate required fields
     if (!email || !password || !name) {
       console.log('Missing required fields');
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+      return new Response(JSON.stringify({ error: 'Missing required fields: name, email, and password are required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate password length
+    if (password.length < 6) {
+      console.log('Password too short');
+      return new Response(JSON.stringify({ error: 'Password must be at least 6 characters long' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -110,6 +119,21 @@ serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Calculate reseller level
+    let resellerLevel = 1;
+    if (parent_reseller_id && profile.role === 'reseller') {
+      // If this is a sub-reseller, increment the parent's level
+      const { data: parentProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('reseller_level')
+        .eq('id', parent_reseller_id)
+        .maybeSingle();
+      
+      if (parentProfile) {
+        resellerLevel = (parentProfile.reseller_level || 1) + 1;
+      }
     }
 
     console.log('Creating user account');
@@ -143,13 +167,15 @@ serve(async (req) => {
 
     console.log('User created:', authData.user.id);
 
-    // Update the profile with the correct credits and provider using admin client
+    // Update the profile with the correct data using admin client
     const { error: profileUpdateError } = await supabaseAdmin
       .from('profiles')
       .update({ 
         credits: credits || 0,
         name: name,
-        provider: provider || '8k'
+        provider: provider || '8k',
+        parent_reseller_id: parent_reseller_id || null,
+        reseller_level: resellerLevel
       })
       .eq('id', authData.user.id);
 
