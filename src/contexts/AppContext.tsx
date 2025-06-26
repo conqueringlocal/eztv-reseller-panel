@@ -1,23 +1,10 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 
-interface AppContextType {
-  customers: Customer[];
-  resellers: Reseller[];
-  creditLogs: CreditLog[];
-  createCustomer: (customerData: any) => Promise<boolean>;
-  cancelCustomer: (customerId: string) => Promise<boolean>;
-  deactivateCustomer: (customerId: string) => Promise<boolean>;
-  refreshData: () => Promise<void>;
-  bulkImportCustomers: (csvData: string, skipHeader: boolean) => Promise<{ success: boolean; results: any[] }>;
-  createTrialCustomer: (customerData: any) => Promise<boolean>;
-  addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
-  removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
-}
-
-interface Customer {
+export interface Customer {
   id: string;
   createdAt: string;
   name: string;
@@ -37,23 +24,44 @@ interface Customer {
   connectionSequence?: number;
 }
 
-interface Reseller {
+export interface Reseller {
   id: string;
   createdAt: string;
+  name: string;
   email: string;
   credits: number;
   stripeCustomerId?: string;
+  logoUrl?: string;
+  accentColor?: string;
 }
 
-interface CreditLog {
+export interface CreditLog {
   id: string;
   createdAt: string;
   resellerId: string;
-  action: 'account_creation' | 'credit_purchase' | 'account_renewal';
+  action: 'account_creation' | 'addition' | 'deduction';
   creditsUsed: number;
   customerName?: string;
   customerId?: string;
   notes?: string;
+}
+
+interface AppContextType {
+  customers: Customer[];
+  resellers: Reseller[];
+  creditLogs: CreditLog[];
+  isLoading?: boolean;
+  createCustomer: (customerData: any) => Promise<boolean>;
+  addCustomer?: (customerData: any) => Promise<boolean>;
+  updateCustomer?: (customerId: string, customerData: any) => Promise<boolean>;
+  cancelCustomer: (customerId: string) => Promise<boolean>;
+  deactivateCustomer: (customerId: string) => Promise<boolean>;
+  refreshData: () => Promise<void>;
+  bulkImportCustomers: (csvData: string, skipHeader: boolean) => Promise<{ success: boolean; results: any[] }>;
+  createTrialCustomer: (customerData: any) => Promise<boolean>;
+  addCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  removeCredits: (resellerId: string, credits: number, notes?: string) => Promise<boolean>;
+  getReseller?: (resellerId: string) => Reseller | undefined;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -70,6 +78,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resellers, setResellers] = useState<Reseller[]>([]);
   const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuth();
 
   const fetchData = async () => {
@@ -79,6 +88,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
+      setIsLoading(true);
       console.log('Fetching data...');
 
       // Fetch customers
@@ -90,8 +100,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.error('Error fetching customers:', customersError);
         toast.error('Failed to load customers');
       } else {
-        setCustomers(customersData || []);
-        console.log(`Fetched ${customersData?.length || 0} customers`);
+        // Transform database response to match Customer interface
+        const transformedCustomers: Customer[] = (customersData || []).map(customer => ({
+          id: customer.id,
+          createdAt: customer.created_at,
+          name: customer.name,
+          email: customer.email,
+          macAddress: customer.mac_address,
+          username: customer.username,
+          password: customer.password,
+          expirationDate: customer.expiration_date,
+          status: customer.status || 'active',
+          resellerId: customer.reseller_id,
+          deviceType: customer.device_type,
+          planDuration: customer.plan_duration,
+          isDeactivated: customer.is_deactivated || false,
+          cancelledAt: customer.cancelled_at,
+          highlevelContactId: customer.highlevel_contact_id,
+          customerGroup: customer.customer_group,
+          connectionSequence: customer.connection_sequence
+        }));
+        setCustomers(transformedCustomers);
+        console.log(`Fetched ${transformedCustomers.length} customers`);
       }
 
       // Fetch resellers
@@ -104,22 +134,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.error('Error fetching resellers:', resellersError);
         toast.error('Failed to load resellers');
       } else {
-        setResellers(resellersData || []);
-        console.log(`Fetched ${resellersData?.length || 0} resellers`);
+        // Transform database response to match Reseller interface
+        const transformedResellers: Reseller[] = (resellersData || []).map(reseller => ({
+          id: reseller.id,
+          createdAt: reseller.created_at,
+          name: reseller.name,
+          email: reseller.email,
+          credits: reseller.credits,
+          logoUrl: undefined, // This field doesn't exist in database yet
+          accentColor: undefined // This field doesn't exist in database yet
+        }));
+        setResellers(transformedResellers);
+        console.log(`Fetched ${transformedResellers.length} resellers`);
       }
 
       // Fetch credit logs
       const { data: creditLogsData, error: creditLogsError } = await supabase
         .from('credit_logs')
         .select('*')
-        .order('created_at', { ascending: false });
+        .order('date', { ascending: false });
 
       if (creditLogsError) {
         console.error('Error fetching credit logs:', creditLogsError);
         toast.error('Failed to load credit logs');
       } else {
-        setCreditLogs(creditLogsData || []);
-        console.log(`Fetched ${creditLogsData?.length || 0} credit logs`);
+        // Transform database response to match CreditLog interface
+        const transformedCreditLogs: CreditLog[] = (creditLogsData || []).map(log => ({
+          id: log.id,
+          createdAt: log.date,
+          resellerId: log.reseller_id,
+          action: log.action,
+          creditsUsed: log.credits_used,
+          customerName: log.customer_name,
+          customerId: log.customer_id,
+          notes: log.notes
+        }));
+        setCreditLogs(transformedCreditLogs);
+        console.log(`Fetched ${transformedCreditLogs.length} credit logs`);
       }
 
       console.log('Data fetching complete');
@@ -127,6 +178,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Unexpected error during data fetching:', error);
       toast.error('An unexpected error occurred while loading data');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -186,8 +239,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         await fetchData();
         return true;
       } else {
-        console.warn(`AppContext: No customer found with ID ${customerId} for this reseller`);
-        toast.warn('No customer found with that ID');
+        console.log(`AppContext: No customer found with ID ${customerId} for this reseller`);
+        toast.error('No customer found with that ID');
         return false;
       }
     } catch (error) {
@@ -318,7 +371,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .from('credit_logs')
         .insert({
           reseller_id: resellerId,
-          action: 'credit_purchase',
+          action: 'addition',
           credits_used: credits,
           notes: notes || `Credits added manually`,
         });
@@ -373,8 +426,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .from('credit_logs')
         .insert({
           reseller_id: resellerId,
-          action: 'credit_purchase', // Using existing enum value for credit adjustments
-          credits_used: -credits, // Use negative value to indicate removal
+          action: 'deduction',
+          credits_used: credits,
           notes: notes || `Credits removed manually`,
         });
 
@@ -393,11 +446,51 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const getReseller = (resellerId: string): Reseller | undefined => {
+    return resellers.find(r => r.id === resellerId);
+  };
+
+  const addCustomer = createCustomer; // Alias for backwards compatibility
+
+  const updateCustomer = async (customerId: string, customerData: any): Promise<boolean> => {
+    try {
+      console.log(`Updating customer ${customerId}:`, customerData);
+
+      const { error } = await supabase
+        .from('customers')
+        .update({
+          name: customerData.name,
+          email: customerData.email,
+          mac_address: customerData.macAddress,
+          device_type: customerData.deviceType,
+        })
+        .eq('id', customerId)
+        .eq('reseller_id', user?.id);
+
+      if (error) {
+        console.error('Error updating customer:', error);
+        toast.error('Failed to update customer');
+        return false;
+      }
+
+      toast.success('Customer updated successfully');
+      await fetchData();
+      return true;
+    } catch (error) {
+      console.error('Unexpected error during customer update:', error);
+      toast.error('An unexpected error occurred while updating the customer');
+      return false;
+    }
+  };
+
   const contextValue: AppContextType = {
     customers,
     resellers,
     creditLogs,
+    isLoading,
     createCustomer,
+    addCustomer,
+    updateCustomer,
     cancelCustomer,
     deactivateCustomer,
     refreshData,
@@ -405,6 +498,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     createTrialCustomer,
     addCredits,
     removeCredits,
+    getReseller,
   };
 
   return (
