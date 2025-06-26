@@ -177,7 +177,9 @@ export type Database = {
           email: string
           id: string
           name: string
+          parent_reseller_id: string | null
           provider: string | null
+          reseller_level: number | null
           role: Database["public"]["Enums"]["user_role"]
         }
         Insert: {
@@ -186,7 +188,9 @@ export type Database = {
           email: string
           id: string
           name: string
+          parent_reseller_id?: string | null
           provider?: string | null
+          reseller_level?: number | null
           role?: Database["public"]["Enums"]["user_role"]
         }
         Update: {
@@ -195,10 +199,20 @@ export type Database = {
           email?: string
           id?: string
           name?: string
+          parent_reseller_id?: string | null
           provider?: string | null
+          reseller_level?: number | null
           role?: Database["public"]["Enums"]["user_role"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_parent_reseller_id_fkey"
+            columns: ["parent_reseller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       reseller_api_keys: {
         Row: {
@@ -407,6 +421,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      can_purchase_credits: {
+        Args: { reseller_id: string }
+        Returns: boolean
+      }
       generate_api_key: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -414,6 +432,14 @@ export type Database = {
       generate_sso_token: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      get_reseller_path: {
+        Args: { reseller_id: string }
+        Returns: {
+          id: string
+          name: string
+          level: number
+        }[]
       }
       is_admin: {
         Args: Record<PropertyKey, never>

@@ -2,6 +2,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useResellerLevel } from '@/hooks/useResellerLevel';
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +23,7 @@ import {
 
 export function AppSidebar() {
   const { user } = useAuth();
+  const { canPurchaseCredits } = useResellerLevel();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -58,7 +60,7 @@ export function AppSidebar() {
         },
       ];
     } else {
-      return [
+      const resellerItems = [
         {
           title: 'Dashboard',
           path: '/reseller',
@@ -69,17 +71,22 @@ export function AppSidebar() {
           path: '/reseller/customers',
           icon: <Users className="w-5 h-5" />,
         },
-        {
-          title: 'Credits',
-          path: '/reseller/credits',
-          icon: <CreditCard className="w-5 h-5" />,
-        },
-        {
-          title: 'Settings',
-          path: '/reseller/settings',
-          icon: <Settings className="w-5 h-5" />,
-        },
       ];
+
+      // Only add Credits menu item for level 1 resellers or if credits can be viewed
+      resellerItems.push({
+        title: 'Credits',
+        path: '/reseller/credits',
+        icon: <CreditCard className="w-5 h-5" />,
+      });
+
+      resellerItems.push({
+        title: 'Settings',
+        path: '/reseller/settings',
+        icon: <Settings className="w-5 h-5" />,
+      });
+
+      return resellerItems;
     }
   };
 
