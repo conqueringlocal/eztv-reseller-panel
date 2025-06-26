@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -108,13 +107,14 @@ export function AppSidebar() {
         <div className="px-3 py-2 mb-6">
           <div className="text-center">
             <div className="mb-2 flex justify-center">
-              <div className="h-12 w-12 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">E</span>
+              <div className="h-16 w-full max-w-[140px] flex items-center justify-center">
+                <img 
+                  src="/lovable-uploads/f71dcfeb-b101-4ccc-abc8-d4e8bb8811a4.png" 
+                  alt="EZTV Club"
+                  className="h-full w-full object-contain"
+                />
               </div>
             </div>
-            <h1 className="text-xl font-bold bg-gradient-to-r from-brand-primary to-brand-secondary bg-clip-text text-transparent">
-              EZTV Club
-            </h1>
             <p className="text-xs text-gray-500 mt-1">Reseller Dashboard</p>
             {resellerLevel && (
               <div className="mt-2 inline-flex items-center px-2 py-1 bg-brand-primary/10 rounded-full">
