@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { useUser } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -126,11 +126,26 @@ const convertDbCustomerToCustomer = (dbCustomer: any): Customer => {
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const { session, user } = useUser();
+  const { user } = useAuth();
+  const [session, setSession] = useState<Session | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resellers, setResellers] = useState<Reseller[]>([]);
   const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Update session when user changes
+  useEffect(() => {
+    const getSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setSession(session);
+    };
+    
+    if (user) {
+      getSession();
+    } else {
+      setSession(null);
+    }
+  }, [user]);
 
   const fetchCustomers = async () => {
     try {
