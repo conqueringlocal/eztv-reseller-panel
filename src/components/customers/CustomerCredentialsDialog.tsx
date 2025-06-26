@@ -9,9 +9,10 @@ import {
 } from '@/components/ui/dialog';
 import { CustomerCredentials } from './CustomerCredentials';
 import { Customer } from '@/contexts/AppContext';
+import { ConsolidatedCustomer } from '@/utils/customerGrouping';
 
 interface CustomerCredentialsDialogProps {
-  customer: Customer | null;
+  customer: Customer | ConsolidatedCustomer | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSendCredentials?: (customer: Customer, method: 'email' | 'sms') => void;
@@ -27,7 +28,7 @@ export function CustomerCredentialsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Customer IPTV Credentials</DialogTitle>
           <DialogDescription>

@@ -23,6 +23,7 @@ import {
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
 import { MoreVertical, Eye, RotateCcw, UserX, Settings, RefreshCw, Crown } from 'lucide-react';
 import { formatDate, isExpiringSoon } from '@/lib/utils';
+import { consolidateCustomers, ConsolidatedCustomer, getCustomerDisplayName } from '@/utils/customerGrouping';
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -44,18 +45,21 @@ export function CustomerTable({
   onSyncToCrm
 }: CustomerTableProps) {
   const [search, setSearch] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<ConsolidatedCustomer | null>(null);
   const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
 
-  // Filter customers based on search
-  const filteredCustomers = customers.filter(
+  // Consolidate customers for display
+  const consolidatedCustomers = consolidateCustomers(customers);
+
+  // Filter consolidated customers based on search
+  const filteredCustomers = consolidatedCustomers.filter(
     (customer) =>
       customer.name.toLowerCase().includes(search.toLowerCase()) ||
       customer.email.toLowerCase().includes(search.toLowerCase()) ||
       customer.deviceType.toLowerCase().includes(search.toLowerCase())
   );
 
-  const getStatusBadge = (customer: Customer) => {
+  const getStatusBadge = (customer: ConsolidatedCustomer) => {
     if (customer.isDeactivated) {
       return <Badge variant="secondary">Deactivated</Badge>;
     }
@@ -75,13 +79,14 @@ export function CustomerTable({
     return <Badge variant="default" className="bg-green-600">Active</Badge>;
   };
 
-  const handleViewCredentials = (customer: Customer) => {
+  const handleViewCredentials = (customer: ConsolidatedCustomer) => {
     setSelectedCustomer(customer);
     setIsCredentialsOpen(true);
   };
 
-  const handleRenew = (customer: Customer) => {
-    onRenew?.(customer);
+  const handleRenew = (customer: ConsolidatedCustomer) => {
+    // Use the primary customer for renewal
+    onRenew?.(customer.connectionEntries[0]);
   };
 
   const handleDeactivate = (customerId: string) => {
@@ -90,6 +95,16 @@ export function CustomerTable({
 
   const handleCancel = (customerId: string) => {
     onCancel?.(customerId);
+  };
+
+  const handleManageCrm = (customer: ConsolidatedCustomer) => {
+    // Use the primary customer for CRM management
+    onManageCrm?.(customer.connectionEntries[0]);
+  };
+
+  const handleSyncToCrm = (customer: ConsolidatedCustomer) => {
+    // Use the primary customer for CRM sync
+    onSyncToCrm?.(customer.connectionEntries[0]);
   };
 
   if (customers.length === 0) {
@@ -135,7 +150,7 @@ export function CustomerTable({
                   <TableCell>
                     <div>
                       <div className="flex items-center space-x-2">
-                        <div className="font-medium">{customer.name}</div>
+                        <div className="font-medium">{getCustomerDisplayName(customer)}</div>
                         {customer.isTrial && (
                           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                             <Crown className="h-3 w-3 mr-1" />
@@ -149,8 +164,14 @@ export function CustomerTable({
                   <TableCell>
                     <div>
                       <div className="font-medium">{customer.deviceType}</div>
-                      {customer.macAddress && (
-                        <div className="text-sm text-gray-500">{customer.macAddress}</div>
+                      {customer.totalConnections > 1 ? (
+                        <div className="text-sm text-gray-500">
+                          {customer.totalConnections} connections
+                        </div>
+                      ) : (
+                        customer.macAddress && (
+                          <div className="text-sm text-gray-500">{customer.macAddress}</div>
+                        )
                       )}
                     </div>
                   </TableCell>
@@ -199,7 +220,7 @@ export function CustomerTable({
                             
                             {customer.highlevelContactId && onManageCrm && (
                               <DropdownMenuItem 
-                                onClick={() => onManageCrm(customer)}
+                                onClick={() => handleManageCrm(customer)}
                                 className="cursor-pointer"
                               >
                                 <Settings className="mr-2 h-4 w-4" />
@@ -209,7 +230,7 @@ export function CustomerTable({
                             
                             {!customer.highlevelContactId && onSyncToCrm && (
                               <DropdownMenuItem 
-                                onClick={() => onSyncToCrm(customer)}
+                                onClick={() => handleSyncToCrm(customer)}
                                 className="cursor-pointer"
                               >
                                 <RefreshCw className="mr-2 h-4 w-4" />
