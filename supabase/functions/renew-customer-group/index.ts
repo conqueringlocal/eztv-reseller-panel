@@ -34,7 +34,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Get the authorization header
+    // Get the authorization header - we need to preserve this for forwarding
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
@@ -146,12 +146,25 @@ serve(async (req) => {
 
     let renewalResults: Array<{account: CustomerAccount, success: boolean, error?: string}> = [];
 
+    // Create a new Supabase client with proper auth headers for function invocations
+    const clientWithAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '', // Use anon key for client operations
+      {
+        global: {
+          headers: {
+            Authorization: authHeader, // Forward the original auth header
+          }
+        }
+      }
+    );
+
     // Renew MAG customers
     for (const customer of magCustomers) {
       console.log(`🔄 Renewing MAG customer: ${customer.name} (${customer.mac_address})`);
       
       try {
-        const { data, error } = await supabaseClient.functions.invoke('renew-mag-user', {
+        const { data, error } = await clientWithAuth.functions.invoke('renew-mag-user', {
           body: {
             customerId: customer.id,
             planDuration: planDuration
@@ -192,7 +205,7 @@ serve(async (req) => {
           functionName = 'renew-trex-user';
         }
 
-        const { data, error } = await supabaseClient.functions.invoke(functionName, {
+        const { data, error } = await clientWithAuth.functions.invoke(functionName, {
           body: {
             customerId: customer.id,
             planDuration: planDuration
