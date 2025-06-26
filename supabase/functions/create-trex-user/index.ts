@@ -28,10 +28,17 @@ interface CreateUserRequest {
   };
 }
 
-// Helper function to calculate subscription months from duration
-function calculateSubscriptionMonths(planDuration: number): number {
-  // Map plan duration directly to months
-  return planDuration;
+// Helper function to map plan duration to subscription format
+function mapPlanDurationToSub(planDuration: number): string {
+  const mapping: { [key: number]: string } = {
+    1: '1',    // 1 month
+    3: '3',    // 3 months  
+    6: '6',    // 6 months
+    12: '12',  // 12 months
+    24: '99'   // 24 months -> lifetime
+  };
+  
+  return mapping[planDuration] || '1'; // Default to 1 month if not found
 }
 
 serve(async (req) => {
@@ -158,25 +165,23 @@ serve(async (req) => {
 
         console.log(`🔐 Generated credentials for Trex connection ${i} - Username: ${username}`);
 
-        // Calculate subscription duration in months
-        const subscriptionMonths = calculateSubscriptionMonths(customerData.planDuration);
+        // Map plan duration to subscription format
+        const subscriptionPeriod = mapPlanDurationToSub(customerData.planDuration);
 
         console.log(`📦 Creating Trex M3U user ${i} with package ID: ${customerData.packageId}`);
-        console.log(`📅 Subscription duration: ${subscriptionMonths} months`);
+        console.log(`📅 Subscription period: ${subscriptionPeriod} (${customerData.planDuration} months)`);
         
-        // Construct the URL with the correct parameters for Trex (using same format as 8K)
-        const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
+        // Construct the URL with the correct Trex parameters in the specified order
+        // Format: https://activationpanel.net/api/api.php?action=new&type=m3u&sub=12&pack=132&api_key=KEY
+        const baseUrl = PANEL_URL.replace('/api/api.php', '');
         const apiUrl = new URL(`${baseUrl}/api/api.php`);
         
-        // Use the same parameters as 8K for consistency
+        // Add parameters in the exact order specified by the user
+        apiUrl.searchParams.append('action', 'new');
+        apiUrl.searchParams.append('type', 'm3u');
+        apiUrl.searchParams.append('sub', subscriptionPeriod);
+        apiUrl.searchParams.append('pack', customerData.packageId);
         apiUrl.searchParams.append('api_key', API_KEY);
-        apiUrl.searchParams.append('action', 'user_create');
-        apiUrl.searchParams.append('username', username);
-        apiUrl.searchParams.append('password', password);
-        apiUrl.searchParams.append('package_id', customerData.packageId);
-        apiUrl.searchParams.append('duration', subscriptionMonths.toString());
-        apiUrl.searchParams.append('max_connections', '1'); // Each account gets 1 connection
-        apiUrl.searchParams.append('country', 'us'); // Add the country parameter
         
         console.log(`🔗 Trex Create API URL for connection ${i}: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
 
@@ -198,25 +203,63 @@ serve(async (req) => {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
 
-        // Try to parse as JSON
+        // Try to parse as JSON first
         let apiResult;
         try {
           apiResult = JSON.parse(responseText);
         } catch (parseError) {
-          // If it's not JSON, treat as success if no error indicators
-          if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
+          // If it's not JSON, check if it contains credentials in text format
+          console.log(`📄 Parsing text response for connection ${i}`);
+          
+          // Look for common patterns in text responses that might contain credentials
+          if (responseText.includes('username') || responseText.includes('password') || responseText.includes('m3u')) {
+            // Try to extract credentials from text response
+            const lines = responseText.split('\n');
+            let extractedUsername = username; // fallback to generated username
+            let extractedPassword = password; // fallback to generated password
+            
+            // Look for username/password patterns in the response
+            for (const line of lines) {
+              if (line.toLowerCase().includes('username') && line.includes(':')) {
+                const match = line.split(':')[1]?.trim();
+                if (match) extractedUsername = match;
+              }
+              if (line.toLowerCase().includes('password') && line.includes(':')) {
+                const match = line.split(':')[1]?.trim();
+                if (match) extractedPassword = match;
+              }
+            }
+            
+            apiResult = {
+              success: true,
+              username: extractedUsername,
+              password: extractedPassword,
+              response: responseText
+            };
+          } else if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
             throw new Error(`API Error: ${responseText}`);
+          } else {
+            // Assume success if no error indicators and use generated credentials
+            apiResult = {
+              success: true,
+              username: username,
+              password: password,
+              response: responseText
+            };
           }
-          apiResult = { success: true, response: responseText };
         }
 
-        // Check for API errors
+        // Check for API errors in JSON response
         if (apiResult.error || apiResult.status === 'error') {
           throw new Error(apiResult.error || apiResult.result || 'Failed to create Trex IPTV user');
         }
 
-        // Generate M3U URL
-        const m3uUrl = `${baseUrl}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`;
+        // Use credentials from API response or fallback to generated ones
+        const finalUsername = apiResult.username || username;
+        const finalPassword = apiResult.password || password;
+
+        // Generate M3U URL using the final credentials
+        const m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
 
         // Create customer record in database
         console.log(`💾 Creating Trex customer record for connection ${i}`);
@@ -226,8 +269,8 @@ serve(async (req) => {
             reseller_id: resellerId,
             name: `${customerData.name} (Connection ${i})`,
             email: customerData.email,
-            username: username,
-            password: password,
+            username: finalUsername,
+            password: finalPassword,
             mac_address: customerData.macAddress || null,
             device_type: customerData.deviceType,
             plan_duration: customerData.planDuration,
@@ -252,7 +295,7 @@ serve(async (req) => {
           failedConnections.push({
             connectionNumber: i,
             error: createError.message,
-            credentials: { username, password }
+            credentials: { username: finalUsername, password: finalPassword }
           });
           continue;
         }
@@ -260,14 +303,14 @@ serve(async (req) => {
         createdCustomers.push({
           ...newCustomer,
           credentials: {
-            username: username,
-            password: password,
+            username: finalUsername,
+            password: finalPassword,
             maxConnections: 1,
             m3uUrl: m3uUrl
           }
         });
 
-        console.log(`✅ Successfully created Trex connection ${i}`);
+        console.log(`✅ Successfully created Trex connection ${i} with credentials: ${finalUsername}/${finalPassword}`);
 
       } catch (error) {
         console.error(`❌ Failed to create Trex connection ${i}:`, error);
