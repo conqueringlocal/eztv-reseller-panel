@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -9,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { AddResellerForm } from '@/components/resellers/AddResellerForm';
+import { ChangeProviderDialog } from '@/components/resellers/ChangeProviderDialog';
 import {
   Table,
   TableBody,
@@ -30,8 +30,10 @@ export default function AdminResellers() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedResellerId, setSelectedResellerId] = useState<string | null>(null);
+  const [selectedResellerForProvider, setSelectedResellerForProvider] = useState<any>(null);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [isAddResellerModalOpen, setIsAddResellerModalOpen] = useState(false);
+  const [isChangeProviderModalOpen, setIsChangeProviderModalOpen] = useState(false);
   
   // Filter resellers based on search
   const filteredResellers = resellers.filter(
@@ -64,6 +66,19 @@ export default function AdminResellers() {
   // Handle add reseller success
   const handleAddResellerSuccess = () => {
     setIsAddResellerModalOpen(false);
+    refreshData();
+  };
+
+  // Handle change provider click
+  const handleChangeProvider = (reseller: any) => {
+    setSelectedResellerForProvider(reseller);
+    setIsChangeProviderModalOpen(true);
+  };
+
+  // Handle change provider success
+  const handleChangeProviderSuccess = () => {
+    setIsChangeProviderModalOpen(false);
+    setSelectedResellerForProvider(null);
     refreshData();
   };
 
@@ -171,6 +186,13 @@ export default function AdminResellers() {
                           <Button
                             variant="outline"
                             size="sm"
+                            onClick={() => handleChangeProvider(reseller)}
+                          >
+                            Change Provider
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
                             onClick={() => handleManageCredits(reseller.id)}
                           >
                             Manage Credits
@@ -225,6 +247,16 @@ export default function AdminResellers() {
             />
           </DialogContent>
         </Dialog>
+      )}
+
+      {/* Change Provider Dialog */}
+      {selectedResellerForProvider && (
+        <ChangeProviderDialog
+          open={isChangeProviderModalOpen}
+          onOpenChange={setIsChangeProviderModalOpen}
+          reseller={selectedResellerForProvider}
+          onSuccess={handleChangeProviderSuccess}
+        />
       )}
     </DashboardLayout>
   );
