@@ -65,8 +65,10 @@ export type Database = {
           cancelled_at: string | null
           connection_details: Json | null
           connection_number: number | null
+          connection_sequence: number | null
           created_at: string
           current_connections: number | null
+          customer_group: string
           customer_group_id: string | null
           device_type: string
           email: string
@@ -93,8 +95,10 @@ export type Database = {
           cancelled_at?: string | null
           connection_details?: Json | null
           connection_number?: number | null
+          connection_sequence?: number | null
           created_at?: string
           current_connections?: number | null
+          customer_group: string
           customer_group_id?: string | null
           device_type: string
           email: string
@@ -121,8 +125,10 @@ export type Database = {
           cancelled_at?: string | null
           connection_details?: Json | null
           connection_number?: number | null
+          connection_sequence?: number | null
           created_at?: string
           current_connections?: number | null
+          customer_group?: string
           customer_group_id?: string | null
           device_type?: string
           email?: string

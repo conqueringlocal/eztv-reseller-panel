@@ -64,29 +64,30 @@ export interface Customer {
   resellerId: string;
   name: string;
   email: string;
-  username?: string;
-  password?: string;
   macAddress?: string;
   deviceType: string;
-  packageId?: string;
   planDuration: number;
-  connections?: number;
+  startDate: string;
+  expirationDate: string;
+  createdAt: string;
+  username?: string;
+  password?: string;
+  customerGroupId?: string;
+  customerGroup: string; // Updated: now required from database
+  connectionSequence?: number; // New: connection sequence number
+  m3uUrl?: string;
+  status?: string;
+  connectionNumber?: number;
+  totalConnections?: number;
+  isDeactivated?: boolean;
+  cancelledAt?: string;
+  isTrial?: boolean;
+  trialCreatedAt?: string;
   maxConnections?: number;
   currentConnections?: number;
   connectionDetails?: any[];
-  startDate: string;
-  expirationDate: string;
-  status: string;
-  isDeactivated: boolean;
-  cancelledAt?: string;
-  isTrialAccount?: boolean;
-  isTrial?: boolean; // Add this for backward compatibility
-  highlevelContactId?: string;
   provider?: string;
-  connectionNumber?: number;
-  customerGroupId?: string;
-  m3uUrl?: string;
-  createdAt?: string;
+  highlevelContactId?: string;
 }
 
 export interface NewCustomerData {
