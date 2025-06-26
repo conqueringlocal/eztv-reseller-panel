@@ -66,14 +66,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                     </div>
                   ) : (
                     <div className="ml-3 flex items-center">
-                      <div className="h-8 max-w-[120px]">
-                        <img 
-                          src="/lovable-uploads/f71dcfeb-b101-4ccc-abc8-d4e8bb8811a4.png" 
-                          alt="EZTV Club"
-                          className="h-full max-w-full object-contain"
-                        />
-                      </div>
-                      <div className="ml-2 px-2 py-1 bg-brand-primary/10 rounded-md">
+                      <div className="px-2 py-1 bg-brand-primary/10 rounded-md">
                         <span className="text-xs font-medium text-brand-primary">
                           {user?.role === 'admin' ? 'Admin' : 'Reseller'}
                         </span>
