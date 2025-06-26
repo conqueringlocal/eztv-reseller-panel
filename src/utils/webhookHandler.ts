@@ -1,4 +1,3 @@
-
 import { Customer } from "../contexts/AppContext";
 import { supabase } from "@/integrations/supabase/client";
 import { generateUsername, generatePassword, dateToUnixTimestamp } from "./iptvApi";
@@ -207,9 +206,8 @@ const findCustomerByNameAndEmail = async (
       cancelledAt: customer.cancelled_at,
       customerGroupId: customer.customer_group_id,
       connectionNumber: customer.connection_number,
-      totalConnections: customer.total_connections,
-      packageId: customer.customer_group_id, // Map customer_group_id to packageId
       connections: customer.total_connections || 1, // Map total_connections to connections with fallback
+      packageId: customer.customer_group_id, // Map customer_group_id to packageId
       accountType: 'm3u' as 'm3u' | 'mag', // Default to m3u type
       highlevelContactId: customer.highlevel_contact_id,
       m3uUrl: customer.m3u_url
