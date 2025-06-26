@@ -69,7 +69,7 @@ serve(async (req) => {
     // Get reseller's profile to determine provider and check credits
     const { data: reseller, error: resellerError } = await supabaseClient
       .from('profiles')
-      .select('credits, provider')
+      .select('credits, provider, name')
       .eq('id', resellerId)
       .single();
 
@@ -162,6 +162,7 @@ serve(async (req) => {
           createUrl.searchParams.append("package_id", customerData.packageId);
           createUrl.searchParams.append("duration", customerData.planDuration.toString());
           createUrl.searchParams.append("max_connections", "1"); // Each account gets 1 connection
+          createUrl.searchParams.append("country", "us"); // Add the missing country parameter
 
           console.log(`🔗 8K Create API URL for connection ${i}: ${createUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
 
@@ -170,8 +171,8 @@ serve(async (req) => {
 
           console.log(`8K API Response for connection ${i}:`, iptvResult);
 
-          if (!iptvResponse.ok || iptvResult.error) {
-            throw new Error(iptvResult.error || 'Failed to create IPTV user');
+          if (!iptvResponse.ok || iptvResult.error || iptvResult.status === 'error') {
+            throw new Error(iptvResult.error || iptvResult.result || 'Failed to create IPTV user');
           }
 
         } else if (provider === 'trex') {
