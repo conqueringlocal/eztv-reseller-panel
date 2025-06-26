@@ -175,6 +175,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         const { data: existsData, error: existsError } = await supabase.functions.invoke('check-iptv-user-exists', {
           body: {
             username: customer.username,
+            password: customer.password, // Now passing password as well
             resellerId: user?.id
           }
         });

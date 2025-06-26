@@ -9,6 +9,7 @@ const corsHeaders = {
 
 interface CheckUserRequest {
   username: string;
+  password: string;
   resellerId: string;
 }
 
@@ -45,7 +46,7 @@ serve(async (req) => {
       );
     }
 
-    const { username, resellerId }: CheckUserRequest = await req.json();
+    const { username, password, resellerId }: CheckUserRequest = await req.json();
 
     console.log(`🔍 Checking if user exists: ${username} for reseller: ${resellerId}`);
 
@@ -88,29 +89,30 @@ serve(async (req) => {
       console.log(`📡 Checking 8K user: ${username}`);
       
       const checkUrl = new URL(panelUrl);
-      checkUrl.searchParams.append("api_key", iptvApiKey);
-      checkUrl.searchParams.append("action", "user_info");
+      checkUrl.searchParams.append("action", "device_info");
       checkUrl.searchParams.append("username", username);
+      checkUrl.searchParams.append("password", password);
+      checkUrl.searchParams.append("api_key", iptvApiKey);
 
-      console.log(`🔗 8K User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+      console.log(`🔗 8K User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]').replace(password, '[REDACTED]')}`);
 
       const iptvResponse = await fetch(checkUrl.toString());
       apiResponse = await iptvResponse.json();
 
       console.log('8K API Response:', apiResponse);
 
-      // For 8K provider, check if user_info exists and is valid
+      // For 8K provider, check if the response indicates success
       userExists = iptvResponse.ok && 
                    apiResponse && 
-                   !apiResponse.error && 
-                   apiResponse.user_info &&
-                   typeof apiResponse.user_info === 'object';
+                   apiResponse.status === 'success' &&
+                   apiResponse.result &&
+                   typeof apiResponse.result === 'object';
 
       // Extract expiration date from 8K API response
-      if (userExists && apiResponse.user_info) {
-        // 8K API typically returns exp_date as timestamp
-        if (apiResponse.user_info.exp_date) {
-          const expTimestamp = parseInt(apiResponse.user_info.exp_date);
+      if (userExists && apiResponse.result) {
+        // 8K API typically returns expire_date as timestamp
+        if (apiResponse.result.expire_date) {
+          const expTimestamp = parseInt(apiResponse.result.expire_date);
           if (!isNaN(expTimestamp)) {
             expirationDate = new Date(expTimestamp * 1000).toISOString().split('T')[0];
             console.log(`📅 8K User expiration date: ${expirationDate}`);
@@ -126,8 +128,9 @@ serve(async (req) => {
       const checkUrl = new URL('https://trex-api-endpoint.com/check-user'); // Replace with actual Trex endpoint
       checkUrl.searchParams.append("api_key", iptvApiKey);
       checkUrl.searchParams.append("username", username);
+      checkUrl.searchParams.append("password", password);
 
-      console.log(`🔗 Trex User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+      console.log(`🔗 Trex User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]').replace(password, '[REDACTED]')}`);
 
       try {
         const trexResponse = await fetch(checkUrl.toString());
@@ -157,8 +160,9 @@ serve(async (req) => {
       const checkUrl = new URL('https://mag-api-endpoint.com/check-user'); // Replace with actual MAG endpoint
       checkUrl.searchParams.append("api_key", iptvApiKey);
       checkUrl.searchParams.append("username", username);
+      checkUrl.searchParams.append("password", password);
 
-      console.log(`🔗 MAG User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+      console.log(`🔗 MAG User Check API URL: ${checkUrl.toString().replace(iptvApiKey, '[REDACTED]').replace(password, '[REDACTED]')}`);
 
       try {
         const magResponse = await fetch(checkUrl.toString());
