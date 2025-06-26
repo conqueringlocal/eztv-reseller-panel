@@ -132,27 +132,27 @@ export default function ResellerCustomers() {
     }
   };
   
-  // Get customer counts by status - Fixed logic
+  // Get customer counts by status - Fixed property names to use camelCase
   const today = new Date();
   const sevenDaysFromNow = new Date();
   sevenDaysFromNow.setDate(today.getDate() + 7);
   
   const activeCount = resellerCustomers.filter(c => 
-    c.status === 'active' && !c.isDeactivated && !c.cancelled_at
+    c.status === 'active' && !c.isDeactivated && !c.cancelledAt
   ).length;
   
   const expiringSoonCount = resellerCustomers.filter(c => {
-    if (c.isDeactivated || c.cancelled_at || c.status === 'expired') return false;
-    const expirationDate = new Date(c.expiration_date);
+    if (c.isDeactivated || c.cancelledAt || c.status === 'expired') return false;
+    const expirationDate = new Date(c.expirationDate);
     return expirationDate > today && expirationDate <= sevenDaysFromNow;
   }).length;
   
   const expiredCount = resellerCustomers.filter(c => 
-    c.status === 'expired' && !c.isDeactivated && !c.cancelled_at
+    c.status === 'expired' && !c.isDeactivated && !c.cancelledAt
   ).length;
   
   const deactivatedCount = resellerCustomers.filter(c => c.isDeactivated).length;
-  const cancelledCount = resellerCustomers.filter(c => c.cancelled_at || c.status === 'cancelled').length;
+  const cancelledCount = resellerCustomers.filter(c => c.cancelledAt || c.status === 'cancelled').length;
   
   // Parse token from query string for HighLevel integration
   React.useEffect(() => {
