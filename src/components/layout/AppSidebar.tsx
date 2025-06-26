@@ -18,12 +18,13 @@ import {
   CreditCard, 
   Settings, 
   Database,
-  FileText
+  FileText,
+  UserPlus
 } from 'lucide-react';
 
 export function AppSidebar() {
   const { user } = useAuth();
-  const { canPurchaseCredits } = useResellerLevel();
+  const { canPurchaseCredits, resellerLevel } = useResellerLevel();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -73,12 +74,21 @@ export function AppSidebar() {
         },
       ];
 
-      // Only add Credits menu item for level 1 resellers or if credits can be viewed
+      // Add Credits menu item with different accessibility
       resellerItems.push({
-        title: 'Credits',
+        title: canPurchaseCredits ? 'Credits' : 'Credits (View Only)',
         path: '/reseller/credits',
         icon: <CreditCard className="w-5 h-5" />,
       });
+
+      // Add Sub-Resellers menu for level 1 resellers
+      if (resellerLevel === 1) {
+        resellerItems.push({
+          title: 'Sub-Resellers',
+          path: '/reseller/sub-resellers',
+          icon: <UserPlus className="w-5 h-5" />,
+        });
+      }
 
       resellerItems.push({
         title: 'Settings',
@@ -99,6 +109,9 @@ export function AppSidebar() {
           <div className="text-center">
             <h1 className="text-2xl font-bold text-eztv-700">EZTV Club</h1>
             <p className="text-xs text-gray-500 mt-1">Reseller Dashboard</p>
+            {resellerLevel && (
+              <p className="text-xs text-gray-400 mt-1">Level {resellerLevel} Reseller</p>
+            )}
           </div>
         </div>
         

@@ -3,6 +3,8 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useResellerLevel } from '@/hooks/useResellerLevel';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-react';
 
 interface CreditPurchaseRouteProps {
   children: React.ReactNode;
@@ -10,7 +12,7 @@ interface CreditPurchaseRouteProps {
 
 export const CreditPurchaseRoute: React.FC<CreditPurchaseRouteProps> = ({ children }) => {
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
-  const { canPurchaseCredits, isLoading: levelLoading } = useResellerLevel();
+  const { canPurchaseCredits, isLoading: levelLoading, error } = useResellerLevel();
   
   if (authLoading || levelLoading) {
     return (
@@ -29,9 +31,32 @@ export const CreditPurchaseRoute: React.FC<CreditPurchaseRouteProps> = ({ childr
     return <>{children}</>;
   }
   
+  // Show error if there was an issue checking permissions
+  if (error) {
+    return (
+      <div className="container mx-auto p-6">
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {error}. Please try refreshing the page or contact support.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
+  }
+  
   // For resellers, check if they can purchase credits (level 1)
   if (user?.role === 'reseller' && !canPurchaseCredits) {
-    return <Navigate to="/reseller/credits" replace />;
+    return (
+      <div className="container mx-auto p-6">
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            Only level 1 resellers can purchase credits directly. Please contact your parent reseller to add credits to your account.
+          </AlertDescription>
+        </Alert>
+      </div>
+    );
   }
   
   return <>{children}</>;
