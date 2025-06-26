@@ -137,16 +137,20 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     expirationDate.setMonth(expirationDate.getMonth() + parseInt(data.planDuration));
     const expirationDateString = expirationDate.toISOString().split('T')[0];
     
+    // Generate username for the customer
+    const username = `${data.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
+    
     try {
       const success = await addCustomer({
         resellerId,
         name: data.name,
         email: data.email,
+        username: username, // Fixed: Added missing username
         macAddress: data.macAddress || '',
         deviceType: data.deviceType,
         packageId: data.packageId,
         planDuration: parseInt(data.planDuration),
-        maxConnections: data.connections, // Fixed: use maxConnections instead of connections
+        maxConnections: data.connections,
         currentConnections: 0,
         connectionDetails: [],
         startDate,

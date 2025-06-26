@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 import { Customer } from '@/contexts/AppContext';
 
@@ -221,4 +220,29 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
     console.error('Error processing webhook:', error);
     return { success: false, message: 'Internal server error' };
   }
+};
+
+export const processWebhookData = async (
+  webhookData: WebhookData,
+  resellerId: string
+): Promise<Omit<Customer, 'id' | 'createdAt'>> => {
+  return {
+    name: webhookData.name,
+    email: webhookData.email,
+    username: `${webhookData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`, // Fixed: Added username
+    macAddress: webhookData.macAddress || '',
+    deviceType: webhookData.deviceType || 'Smart TV',
+    packageId: webhookData.packageId || 'default', // Fixed: Added packageId
+    password: webhookData.password || '',
+    expirationDate: webhookData.expirationDate,
+    status: webhookData.status || 'active',
+    resellerId: resellerId,
+    planDuration: webhookData.planDuration || 1,
+    maxConnections: webhookData.maxConnections || 1, // Fixed: Added maxConnections
+    currentConnections: 0, // Fixed: Added currentConnections
+    connectionDetails: [], // Fixed: Added connectionDetails
+    isDeactivated: false,
+    startDate: new Date().toISOString().split('T')[0],
+    provider: '8k', // Fixed: Added provider
+  };
 };

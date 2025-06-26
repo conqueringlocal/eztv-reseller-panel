@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { useUser } from '@/contexts/AuthContext';
@@ -251,6 +250,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           customerData: {
             name: customerData.name,
             email: customerData.email,
+            username: customerData.username, // Fixed: Include username
             macAddress: customerData.macAddress,
             deviceType: customerData.deviceType,
             packageId: customerData.packageId,
@@ -407,36 +407,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const addCredits = async (resellerId: string, credits: number, notes?: string) => {
     try {
-      // Use RPC function instead of supabase.sql
-      const { data, error } = await supabase.rpc('increment_user_credits', {
-        user_id: resellerId,
-        credit_amount: credits
-      });
+      // Use direct update approach since RPC function may not be available
+      const { data: currentData, error: fetchError } = await supabase
+        .from('profiles')
+        .select('credits')
+        .eq('id', resellerId)
+        .single();
 
-      if (error) {
-        console.error('Error adding credits:', error);
-        // Fallback to direct update
-        const { data: updateData, error: updateError } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', resellerId)
-          .single();
+      if (fetchError || !currentData) {
+        console.error('Error fetching current credits:', fetchError);
+        toast.error('Failed to add credits');
+        return false;
+      }
 
-        if (updateError || !updateData) {
-          toast.error('Failed to add credits');
-          return false;
-        }
+      const newCredits = currentData.credits + credits;
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ credits: newCredits })
+        .eq('id', resellerId);
 
-        const newCredits = updateData.credits + credits;
-        const { error: finalError } = await supabase
-          .from('profiles')
-          .update({ credits: newCredits })
-          .eq('id', resellerId);
-
-        if (finalError) {
-          toast.error('Failed to add credits');
-          return false;
-        }
+      if (updateError) {
+        console.error('Error updating credits:', updateError);
+        toast.error('Failed to add credits');
+        return false;
       }
 
       // Log the credit addition
