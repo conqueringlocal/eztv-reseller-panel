@@ -8,14 +8,20 @@ const corsHeaders = {
 };
 
 interface CreateMagUserRequest {
-  userParams: {
-    macAddress: string;
-    maxConnections: number;
-    expiryDate: string;
-    isTrial: boolean;
-    bouquet?: string;
-    customerName: string;
-    resellerName: string;
+  resellerId: string;
+  customerData: {
+    name: string;
+    email: string;
+    macAddress?: string;
+    deviceType: string;
+    packageId: string;
+    planDuration: number;
+    connections: number;
+    maxConnections?: number;
+    startDate: string;
+    expirationDate: string;
+    status: string;
+    isDeactivated: boolean;
   };
 }
 
@@ -52,9 +58,56 @@ serve(async (req) => {
       );
     }
 
-    const { userParams }: CreateMagUserRequest = await req.json();
+    const { resellerId, customerData }: CreateMagUserRequest = await req.json();
 
-    console.log(`🎯 Creating MAG user for customer: ${userParams.customerName}, MAC: ${userParams.macAddress}`);
+    console.log(`🎯 Creating MAG users for reseller: ${resellerId}`);
+    console.log(`📊 Customer data:`, customerData);
+
+    // Get reseller's profile to check credits
+    const { data: reseller, error: resellerError } = await supabaseClient
+      .from('profiles')
+      .select('credits, provider')
+      .eq('id', resellerId)
+      .single();
+
+    if (resellerError || !reseller) {
+      console.error('Reseller not found:', resellerError);
+      return new Response(
+        JSON.stringify({ error: 'Reseller not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const connectionsToCreate = customerData.maxConnections || customerData.connections;
+    console.log(`🔌 Creating ${connectionsToCreate} separate MAG accounts`);
+
+    // Calculate required credits
+    const { data: creditsRequired, error: creditsError } = await supabaseClient.rpc('calculate_credits_required', {
+      connections: connectionsToCreate,
+      duration_months: customerData.planDuration
+    });
+
+    if (creditsError) {
+      console.error('Error calculating credits:', creditsError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to calculate required credits' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log(`💰 Credits required: ${creditsRequired}, Available: ${reseller.credits}`);
+
+    // Check if reseller has enough credits
+    if (reseller.credits < creditsRequired) {
+      console.error(`❌ Insufficient credits: ${reseller.credits} available, ${creditsRequired} required`);
+      return new Response(
+        JSON.stringify({ 
+          error: `Insufficient credits. Required: ${creditsRequired}, Available: ${reseller.credits}`,
+          success: false 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Get IPTV panel credentials from Supabase secrets
     const iptvApiKey = Deno.env.get('IPTV_API_KEY');
@@ -68,60 +121,156 @@ serve(async (req) => {
       );
     }
 
+    // Generate a unique customer group ID
+    const customerGroupId = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
+    console.log(`👥 Using customer group: ${customerGroupId}`);
+
     // Convert expiry date to Unix timestamp
-    const expiryTimestamp = Math.floor(new Date(userParams.expiryDate).getTime() / 1000);
+    const expiryTimestamp = Math.floor(new Date(customerData.expirationDate).getTime() / 1000);
 
-    // Call IPTV panel to create MAG user
-    console.log(`📡 Calling IPTV panel to create MAG user for MAC: ${userParams.macAddress}`);
-    
-    const createUrl = new URL(panelUrl);
-    createUrl.searchParams.append("api_key", iptvApiKey);
-    createUrl.searchParams.append("action", "create");
-    createUrl.searchParams.append("type", "mag");
-    createUrl.searchParams.append("mac", userParams.macAddress);
-    createUrl.searchParams.append("bouquet", userParams.bouquet || "1");
-    createUrl.searchParams.append("mag_expire", expiryTimestamp.toString());
-    createUrl.searchParams.append("is_trial", userParams.isTrial ? "1" : "0");
+    const createdCustomers = [];
+    const failedConnections = [];
 
-    console.log(`🔗 MAG Creation API URL: ${createUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
-    console.log(`📦 MAC Address: ${userParams.macAddress}`);
-    console.log(`📅 Expiry timestamp: ${expiryTimestamp}`);
-    console.log(`🎫 Bouquet: ${userParams.bouquet || "1"}`);
+    // Create separate MAG accounts for each connection
+    for (let i = 1; i <= connectionsToCreate; i++) {
+      try {
+        console.log(`🔄 Creating MAG connection ${i} of ${connectionsToCreate}`);
 
-    const iptvResponse = await fetch(createUrl.toString());
-    const iptvData = await iptvResponse.json();
+        // Generate unique MAC address for this connection
+        const baseMac = customerData.macAddress || '00:1A:79:00:00:00';
+        const macParts = baseMac.split(':');
+        const lastOctet = parseInt(macParts[5], 16) + (i - 1);
+        const uniqueMac = `${macParts.slice(0, 5).join(':')}:${lastOctet.toString(16).padStart(2, '0').toUpperCase()}`;
 
-    console.log('IPTV API Response:', iptvData);
+        console.log(`📦 MAC Address for connection ${i}: ${uniqueMac}`);
 
-    // Check if the response indicates success
-    if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
-      console.error('Failed to create MAG user:', iptvData);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to create MAG account', 
-          details: iptvData,
-          iptvResponse: iptvData 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+        // Call IPTV panel to create MAG user
+        console.log(`📡 Calling IPTV panel to create MAG user ${i} for MAC: ${uniqueMac}`);
+        
+        const createUrl = new URL(panelUrl);
+        createUrl.searchParams.append("api_key", iptvApiKey);
+        createUrl.searchParams.append("action", "create");
+        createUrl.searchParams.append("type", "mag");
+        createUrl.searchParams.append("mac", uniqueMac);
+        createUrl.searchParams.append("bouquet", customerData.packageId);
+        createUrl.searchParams.append("mag_expire", expiryTimestamp.toString());
+        createUrl.searchParams.append("is_trial", "0");
+
+        console.log(`🔗 MAG Creation API URL for connection ${i}: ${createUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
+
+        const iptvResponse = await fetch(createUrl.toString());
+        const iptvData = await iptvResponse.json();
+
+        console.log(`IPTV API Response for connection ${i}:`, iptvData);
+
+        // Check if the response indicates success
+        if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
+          throw new Error(`Failed to create MAG user: ${JSON.stringify(iptvData)}`);
+        }
+
+        // Create customer record in database
+        console.log(`💾 Creating customer record for MAG connection ${i}`);
+        const { data: newCustomer, error: createError } = await supabaseClient
+          .from('customers')
+          .insert({
+            reseller_id: resellerId,
+            name: `${customerData.name} (Connection ${i})`,
+            email: customerData.email,
+            mac_address: uniqueMac,
+            device_type: customerData.deviceType,
+            plan_duration: customerData.planDuration,
+            max_connections: 1, // Each MAG account has 1 connection
+            current_connections: 0,
+            connection_details: [],
+            start_date: customerData.startDate,
+            expiration_date: customerData.expirationDate,
+            status: customerData.status,
+            is_deactivated: customerData.isDeactivated,
+            provider: reseller.provider || '8k',
+            customer_group: customerGroupId, // Group all connections together
+            connection_sequence: i
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error(`Error creating customer record for MAG connection ${i}:`, createError);
+          failedConnections.push({
+            connectionNumber: i,
+            error: createError.message,
+            macAddress: uniqueMac
+          });
+          continue;
+        }
+
+        createdCustomers.push({
+          ...newCustomer,
+          credentials: {
+            macAddress: uniqueMac,
+            bouquet: customerData.packageId,
+            expiryTimestamp: expiryTimestamp
+          }
+        });
+
+        console.log(`✅ Successfully created MAG connection ${i} with MAC: ${uniqueMac}`);
+
+      } catch (error) {
+        console.error(`❌ Failed to create MAG connection ${i}:`, error);
+        failedConnections.push({
+          connectionNumber: i,
+          error: error.message
+        });
+      }
     }
 
-    // Extract relevant information from IPTV response
-    const magUser = {
-      macAddress: userParams.macAddress,
-      bouquet: userParams.bouquet || "1",
-      expiryTimestamp: expiryTimestamp,
-      // MAG devices don't have username/password like M3U
-    };
+    // Only deduct credits if at least one account was created successfully
+    if (createdCustomers.length > 0) {
+      console.log(`💳 Deducting ${creditsRequired} credits from reseller`);
+      const { error: creditError } = await supabaseClient
+        .from('profiles')
+        .update({ credits: reseller.credits - creditsRequired })
+        .eq('id', resellerId);
 
-    console.log(`✅ Successfully created MAG user for ${userParams.customerName} with MAC: ${userParams.macAddress}`);
+      if (creditError) {
+        console.error('Error deducting credits:', creditError);
+      }
+
+      // Log the credit transaction
+      const { error: logError } = await supabaseClient
+        .from('credit_logs')
+        .insert({
+          reseller_id: resellerId,
+          action: 'account_creation',
+          credits_used: creditsRequired,
+          connections_used: connectionsToCreate,
+          customer_id: createdCustomers[0].id, // Use first customer ID as reference
+          customer_name: customerData.name,
+          notes: `Created ${createdCustomers.length} MAG accounts with 1 connection each (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''}) - Group: ${customerGroupId}`
+        });
+
+      if (logError) {
+        console.error('Error logging credit transaction:', logError);
+      }
+    }
+
+    const totalCreated = createdCustomers.length;
+    const totalFailed = failedConnections.length;
+
+    console.log(`✅ MAG multi-connection creation complete: ${totalCreated} created, ${totalFailed} failed`);
 
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        user: magUser,
-        message: `MAG account created successfully for MAC: ${userParams.macAddress}`,
-        iptvResponse: iptvData
+        success: totalCreated > 0,
+        customers: createdCustomers,
+        failedConnections: failedConnections,
+        summary: {
+          totalRequested: connectionsToCreate,
+          totalCreated: totalCreated,
+          totalFailed: totalFailed,
+          customerGroup: customerGroupId
+        },
+        message: `MAG accounts created successfully for ${totalCreated} connections`,
+        creditsUsed: totalCreated > 0 ? creditsRequired : 0
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

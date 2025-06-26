@@ -203,8 +203,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('Creating customer:', customerData);
 
-      const { data, error } = await supabase.functions.invoke('create-customer', {
-        body: { ...customerData, resellerId: user?.id },
+      let functionName = 'create-customer'; // Default function
+      let requestBody = { ...customerData, resellerId: user?.id };
+
+      // Determine which function to call based on account type and provider
+      if (customerData.accountType === 'mag') {
+        functionName = 'create-mag-user';
+        requestBody = {
+          resellerId: user?.id,
+          customerData: customerData
+        };
+      } else if (customerData.accountType === 'm3u') {
+        // Check provider for M3U accounts
+        if (customerData.provider === 'trex') {
+          functionName = 'create-trex-user';
+          requestBody = {
+            userParams: {
+              username: customerData.username || '',
+              password: customerData.password || '',
+              maxConnections: customerData.maxConnections || customerData.connections || 1,
+              expiryDate: customerData.expirationDate,
+              isTrial: customerData.isTrial || false,
+              bouquet: customerData.packageId,
+              customerName: customerData.name,
+              resellerName: user?.user_metadata?.name || 'Unknown'
+            }
+          };
+        } else {
+          // Default to 8k provider
+          functionName = 'create-iptv-user';
+          requestBody = {
+            resellerId: user?.id,
+            customerData: customerData
+          };
+        }
+      }
+
+      console.log(`Calling function: ${functionName}`);
+      console.log('Request body:', requestBody);
+
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: requestBody,
       });
 
       if (error) {
@@ -219,7 +258,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      toast.success('Customer created successfully!');
+      // Handle multi-connection response
+      if (data.customers && Array.isArray(data.customers)) {
+        const totalCreated = data.customers.length;
+        const totalFailed = data.failedConnections?.length || 0;
+        const totalRequested = data.summary?.totalRequested || 0;
+
+        if (totalCreated > 0) {
+          toast.success(`Successfully created ${totalCreated} of ${totalRequested} accounts${totalFailed > 0 ? ` (${totalFailed} failed)` : ''}!`);
+          
+          // Show detailed success message for multi-connection accounts
+          if (totalCreated > 1) {
+            console.log('Multi-connection accounts created:', {
+              customerGroup: data.summary?.customerGroup,
+              accounts: data.customers.map(c => ({
+                name: c.name,
+                username: c.credentials?.username || c.mac_address,
+                connectionNumber: c.connection_sequence
+              }))
+            });
+          }
+        } else {
+          toast.error(`Failed to create any accounts. ${totalFailed} connections failed.`);
+          return false;
+        }
+      } else {
+        // Single account creation (legacy response)
+        toast.success('Customer created successfully!');
+      }
+
       await fetchData();
       return true;
     } catch (error) {
