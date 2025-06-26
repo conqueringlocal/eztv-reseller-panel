@@ -54,12 +54,15 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
   // Handle form submission
   const onSubmit = async (data: FormData) => {
     try {
-      const success = await updateCustomer(customer.id, {
+      // Map camelCase form fields to snake_case database columns
+      const updateData = {
         name: data.name,
         email: data.email,
-        macAddress: customer.macAddress || '',
-        deviceType: data.deviceType,
-      });
+        device_type: data.deviceType, // Map deviceType to device_type
+        mac_address: customer.macAddress || '', // Keep existing mac_address
+      };
+      
+      const success = await updateCustomer(customer.id, updateData);
       
       if (success) {
         toast.success('Customer updated successfully!');
