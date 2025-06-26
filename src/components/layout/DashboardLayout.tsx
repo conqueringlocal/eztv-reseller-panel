@@ -50,7 +50,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       <div className="min-h-screen flex w-full bg-gray-50">
         <AppSidebar />
         <div className="flex-1 flex flex-col overflow-hidden">
-          <header className="shadow-sm z-10" style={headerStyle}>
+          <header className="shadow-sm z-10 bg-white border-b border-brand-primary/10" style={headerStyle}>
             <div className="mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex justify-between h-16 items-center">
                 <div className="flex items-center">
@@ -65,7 +65,16 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                       />
                     </div>
                   ) : (
-                    <span className="ml-3 text-xl font-bold text-eztv-700">EZTV Club</span>
+                    <div className="ml-3 flex items-center">
+                      <div className="text-xl font-bold bg-gradient-to-r from-brand-primary to-brand-secondary bg-clip-text text-transparent">
+                        EZTV Club
+                      </div>
+                      <div className="ml-2 px-2 py-1 bg-brand-primary/10 rounded-md">
+                        <span className="text-xs font-medium text-brand-primary">
+                          {user?.role === 'admin' ? 'Admin' : 'Reseller'}
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </div>
                 
@@ -86,6 +95,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                         onClick={handleLogout} 
                         variant="outline"
                         size="sm"
+                        className="border-brand-primary/20 hover:bg-brand-primary hover:text-white transition-colors"
                       >
                         Logout
                       </Button>

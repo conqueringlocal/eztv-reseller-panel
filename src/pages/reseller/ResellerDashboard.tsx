@@ -41,26 +41,30 @@ export default function ResellerDashboard() {
   return (
     <DashboardLayout>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Reseller Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-2 text-brand-dark">Reseller Dashboard</h1>
         <p className="text-gray-500">Welcome back, {user?.name}</p>
       </div>
       
-      {/* Credit Balance */}
-      <div className="bg-gradient-to-r from-eztv-600 to-eztv-800 rounded-lg p-6 mb-6 text-white shadow-lg">
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center">
-          <div>
-            <h2 className="text-lg font-medium opacity-90">Your Credit Balance</h2>
-            <p className="text-3xl font-bold mt-2">{user?.credits} Credits</p>
-          </div>
-          <div className="mt-4 md:mt-0">
-            <Button 
-              variant="secondary"
-              className="bg-white text-eztv-800 hover:bg-gray-100"
-              onClick={() => navigate('/reseller/customers')}
-            >
-              <Plus className="mr-2 h-4 w-4" />
-              Add Customer
-            </Button>
+      {/* Credit Balance - Enhanced with brand colors */}
+      <div className="bg-gradient-to-r from-brand-primary to-brand-secondary rounded-lg p-6 mb-6 text-white shadow-lg relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none"></div>
+        <div className="relative">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center">
+            <div>
+              <h2 className="text-lg font-medium opacity-90">Your Credit Balance</h2>
+              <p className="text-3xl font-bold mt-2">{user?.credits} Credits</p>
+              <p className="text-sm opacity-75 mt-1">1 credit = 1 month of service</p>
+            </div>
+            <div className="mt-4 md:mt-0">
+              <Button 
+                variant="secondary"
+                className="bg-white/90 text-brand-primary hover:bg-white font-medium shadow-md"
+                onClick={() => navigate('/reseller/customers')}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Customer
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -70,18 +74,18 @@ export default function ResellerDashboard() {
         <StatCard
           title="Total Customers"
           value={resellerCustomers.length}
-          icon={<Users className="h-5 w-5" />}
+          icon={<Users className="h-5 w-5 text-brand-primary" />}
         />
         <StatCard
           title="Expiring Soon"
           value={expiringSoon}
-          icon={<CalendarCheck className="h-5 w-5" />}
+          icon={<CalendarCheck className="h-5 w-5 text-amber-500" />}
           description="Subscriptions expiring in the next 7 days"
         />
         <StatCard
           title="Available Credits"
           value={user?.credits || 0}
-          icon={<CreditCard className="h-5 w-5" />}
+          icon={<CreditCard className="h-5 w-5 text-green-500" />}
           description="1 credit = 1 month of service"
         />
       </div>
@@ -94,7 +98,7 @@ export default function ResellerDashboard() {
           <Button 
             variant="ghost" 
             onClick={() => navigate('/reseller/customers')}
-            className="w-full justify-center"
+            className="w-full justify-center hover:bg-brand-primary/5 hover:text-brand-primary"
           >
             View All Customers
           </Button>
@@ -113,7 +117,7 @@ export default function ResellerDashboard() {
       <Dialog open={isAddCustomerOpen} onOpenChange={setIsAddCustomerOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New Customer</DialogTitle>
+            <DialogTitle className="text-brand-primary">Add New Customer</DialogTitle>
             <DialogDescription>
               Add a new customer and provision their IPTV account. This will consume credits.
             </DialogDescription>

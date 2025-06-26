@@ -103,26 +103,38 @@ export function AppSidebar() {
   const menuItems = getMenuItems();
   
   return (
-    <Sidebar>
-      <SidebarContent className="py-4">
+    <Sidebar className="border-r border-brand-primary/10">
+      <SidebarContent className="py-4 bg-gradient-to-b from-white to-brand-light">
         <div className="px-3 py-2 mb-6">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-eztv-700">EZTV Club</h1>
+            <div className="mb-2 flex justify-center">
+              <div className="h-12 w-12 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">E</span>
+              </div>
+            </div>
+            <h1 className="text-xl font-bold bg-gradient-to-r from-brand-primary to-brand-secondary bg-clip-text text-transparent">
+              EZTV Club
+            </h1>
             <p className="text-xs text-gray-500 mt-1">Reseller Dashboard</p>
             {resellerLevel && (
-              <p className="text-xs text-gray-400 mt-1">Level {resellerLevel} Reseller</p>
+              <div className="mt-2 inline-flex items-center px-2 py-1 bg-brand-primary/10 rounded-full">
+                <span className="text-xs text-brand-primary font-medium">Level {resellerLevel} Reseller</span>
+              </div>
             )}
           </div>
         </div>
         
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-brand-secondary">Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
-                    className={isActive(item.path) ? 'bg-eztv-100 text-eztv-700 font-medium' : ''}
+                    className={isActive(item.path) 
+                      ? 'bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-medium shadow-sm' 
+                      : 'hover:bg-brand-primary/5 hover:text-brand-primary transition-colors'
+                    }
                     onClick={() => navigate(item.path)}
                   >
                     {item.icon}

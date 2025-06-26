@@ -63,18 +63,27 @@ export default {
 					border: 'hsl(var(--sidebar-border))',
 					ring: 'hsl(var(--sidebar-ring))'
 				},
+				// EZTV Brand Colors - Updated to match logo
 				eztv: {
-					50: '#f5f7ff',
-					100: '#edf0ff',
-					200: '#dee3ff',
-					300: '#c6cbff',
-					400: '#a6a7ff',
-					500: '#8a83fc',
-					600: '#7a64f3',
-					700: '#6b4fe3',
-					800: '#5a41be',
-					900: '#4b3a98',
-					950: '#2d214d',
+					50: '#f0f4ff',
+					100: '#e0e9ff',
+					200: '#c7d7ff',
+					300: '#a5baff',
+					400: '#8190ff',
+					500: '#5b6eff',
+					600: '#4654f7',
+					700: '#3b45e3',
+					800: '#313ab8',
+					900: '#2e3692',
+					950: '#1e2258',
+				},
+				// Additional brand grays to match logo
+				brand: {
+					primary: '#4654f7', // Main blue from EZTV
+					secondary: '#2e3692', // Darker blue
+					dark: '#1a1d29', // Dark gray from logo
+					light: '#f8f9fb', // Light background
+					accent: '#5b6eff', // Accent blue
 				}
 			},
 			borderRadius: {
