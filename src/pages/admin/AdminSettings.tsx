@@ -4,7 +4,8 @@ import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import { Eye, EyeOff, Save, Webhook } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Eye, EyeOff, Save, Webhook, Copy, ExternalLink, TestTube } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalHighLevelSettings } from '@/components/admin/GlobalHighLevelSettings';
@@ -233,6 +234,26 @@ export default function AdminSettings() {
     navigator.clipboard.writeText(text);
     toast.success('Copied to clipboard');
   };
+
+  const testWebhook = async (webhookType: 'legacy' | 'enhanced' | 'trial') => {
+    const baseUrl = `${window.location.origin}/api/webhook`;
+    let testUrl = '';
+    
+    switch (webhookType) {
+      case 'legacy':
+        testUrl = `${baseUrl}?api_key=test&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Smart+TV&planDuration=1`;
+        break;
+      case 'enhanced':
+        testUrl = `${baseUrl}?api_key=test&action=create&connections=2&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Firestick&planDuration=3`;
+        break;
+      case 'trial':
+        testUrl = `${baseUrl}?api_key=test&action=trial&connections=1&customerName=Trial+Customer&customerEmail=trial@example.com&deviceType=Smart+TV&planDuration=1&trialDurationHours=24`;
+        break;
+    }
+    
+    window.open(testUrl, '_blank');
+    toast.success(`Opening ${webhookType} webhook test in new tab`);
+  };
   
   return (
     <DashboardLayout>
@@ -459,39 +480,58 @@ export default function AdminSettings() {
           </div>
         </DashboardCard>
 
-        {/* Global HighLevel Settings */}
-        <GlobalHighLevelSettings />
-        
-        {/* Webhook Settings */}
+        {/* Enhanced Webhook Integration */}
         <DashboardCard
-          title="HighLevel Webhook Integration"
-          description="Use these settings to configure your HighLevel webhook workflow"
+          title="Enhanced Webhook Integration"
+          description="Comprehensive webhook system with multi-provider support, trials, and HighLevel integration"
         >
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm font-medium mb-1.5">Webhook URL</p>
-              <div className="flex gap-2">
-                <Input value={webhookUrl} readOnly className="bg-gray-50" />
-                <Button 
-                  variant="outline" 
-                  onClick={() => copyToClipboard(webhookUrl)}
-                >
-                  Copy
-                </Button>
+          <Tabs defaultValue="overview" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="formats">Formats</TabsTrigger>
+              <TabsTrigger value="actions">Actions</TabsTrigger>
+              <TabsTrigger value="testing">Testing</TabsTrigger>
+              <TabsTrigger value="highlevel">HighLevel</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="overview" className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Webhook URL</h3>
+                <div className="flex gap-2">
+                  <Input value={webhookUrl} readOnly className="bg-gray-50" />
+                  <Button variant="outline" onClick={() => copyToClipboard(webhookUrl)}>
+                    <Copy size={16} className="mr-2" />
+                    Copy
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Use this URL in your webhook configurations (HighLevel, third-party systems, etc.)
+                </p>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                Use this URL in your HighLevel webhook settings
-              </p>
-            </div>
+              
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+                <h4 className="font-medium text-blue-900 mb-2">Key Features</h4>
+                <ul className="text-sm text-blue-800 space-y-1">
+                  <li>• Multi-connection account support (1-10 connections)</li>
+                  <li>• Trial account automation with custom durations</li>
+                  <li>• Smart group-aware customer renewals</li>
+                  <li>• Automatic HighLevel contact integration</li>
+                  <li>• Multi-provider support (8K, Trex)</li>
+                  <li>• Backward compatibility with legacy webhooks</li>
+                  <li>• Enhanced error handling and validation</li>
+                </ul>
+              </div>
+            </TabsContent>
             
-            <Separator />
-            
-            <div>
-              <h3 className="text-sm font-medium mb-2">Enhanced Webhook Format (with HighLevel Integration)</h3>
-              <div className="bg-gray-50 p-3 rounded-md">
-                <pre className="text-xs overflow-x-auto">
+            <TabsContent value="formats" className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Enhanced Webhook Format (Recommended)</h3>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <pre className="text-xs overflow-x-auto">
 {`{
   "api_key": "YOUR_API_KEY",
+  "action": "create",
+  "connections": 2,
   "contact_id": "{{contact.id}}",
   "customer": {
     "name": "{{contact.first_name}} {{contact.last_name}}",
@@ -502,30 +542,246 @@ export default function AdminSettings() {
     "package_id": "14826"
   }
 }`}
-                </pre>
+                  </pre>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => copyToClipboard(`{
+  "api_key": "YOUR_API_KEY",
+  "action": "create",
+  "connections": 2,
+  "contact_id": "{{contact.id}}",
+  "customer": {
+    "name": "{{contact.first_name}} {{contact.last_name}}",
+    "email": "{{contact.email}}",
+    "mac": "00:1A:2B:3C:4D:5E",
+    "device_type": "Firestick",
+    "plan_duration_months": 3,
+    "package_id": "14826"
+  }
+}`)}
+                  className="mt-2"
+                >
+                  <Copy size={14} className="mr-1" />
+                  Copy JSON
+                </Button>
               </div>
-              <p className="text-xs text-muted-foreground mt-1.5">
-                Include the contact_id field to automatically send credentials via HighLevel
-              </p>
-            </div>
+              
+              <Separator />
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Legacy Webhook Format (Backward Compatible)</h3>
+                <div className="bg-gray-50 p-3 rounded-md">
+                  <pre className="text-xs overflow-x-auto">
+{`{
+  "api_key": "YOUR_API_KEY",
+  "customerName": "{{contact.first_name}} {{contact.last_name}}",
+  "customerEmail": "{{contact.email}}",
+  "macAddress": "00:1A:2B:3C:4D:5E",
+  "deviceType": "Smart TV",
+  "planDuration": 1,
+  "packageId": "14826",
+  "contactId": "{{contact.id}}"
+}`}
+                  </pre>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => copyToClipboard(`{
+  "api_key": "YOUR_API_KEY",
+  "customerName": "{{contact.first_name}} {{contact.last_name}}",
+  "customerEmail": "{{contact.email}}",
+  "macAddress": "00:1A:2B:3C:4D:5E",
+  "deviceType": "Smart TV",
+  "planDuration": 1,
+  "packageId": "14826",
+  "contactId": "{{contact.id}}"
+}`)}
+                  className="mt-2"
+                >
+                  <Copy size={14} className="mr-1" />
+                  Copy JSON
+                </Button>
+              </div>
+            </TabsContent>
             
-            <div className="flex">
-              <Button 
-                variant="outline" 
-                className="flex items-center"
-                onClick={() => {
-                  window.open('/api/webhook?api_key=test&contact_id=test123&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Test+Device&planDuration=1', '_blank');
-                }}
-              >
-                <Webhook size={16} className="mr-2" />
-                Test Webhook
-              </Button>
-              <p className="text-xs text-muted-foreground ml-3 flex items-center">
-                This will open a test webhook URL in a new tab
-              </p>
-            </div>
-          </div>
+            <TabsContent value="actions" className="space-y-4">
+              <div className="grid gap-4">
+                <div className="p-4 border rounded-md">
+                  <h4 className="font-medium mb-2">Create Account</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Creates new IPTV accounts with specified connections</p>
+                  <div className="bg-gray-50 p-2 rounded text-xs">
+                    <code>"action": "create"</code>
+                  </div>
+                  <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <li>• Supports 1-10 connections per account</li>
+                    <li>• Auto-detects MAG vs M3U based on MAC address</li>
+                    <li>• Deducts credits: connections × plan_duration_months</li>
+                  </ul>
+                </div>
+                
+                <div className="p-4 border rounded-md">
+                  <h4 className="font-medium mb-2">Renew Account</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Renews existing customer accounts by group</p>
+                  <div className="bg-gray-50 p-2 rounded text-xs">
+                    <code>"action": "renew"</code>
+                  </div>
+                  <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <li>• Finds customer by name and email</li>
+                    <li>• Renews all accounts in customer group</li>
+                    <li>• Extends expiration date by specified months</li>
+                  </ul>
+                </div>
+                
+                <div className="p-4 border rounded-md">
+                  <h4 className="font-medium mb-2">Create Trial</h4>
+                  <p className="text-sm text-muted-foreground mb-2">Creates time-limited trial accounts</p>
+                  <div className="bg-gray-50 p-2 rounded text-xs">
+                    <code>"action": "trial"</code>
+                  </div>
+                  <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <li>• Default: 24 hours duration</li>
+                    <li>• Custom duration: "trial_duration_hours": 48</li>
+                    <li>• No credit deduction required</li>
+                    <li>• Respects daily trial limits</li>
+                  </ul>
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="testing" className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Test Webhook Endpoints</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Test different webhook scenarios with sample data
+                </p>
+              </div>
+              
+              <div className="grid gap-3">
+                <div className="flex items-center justify-between p-3 border rounded-md">
+                  <div>
+                    <p className="font-medium">Enhanced Create Account</p>
+                    <p className="text-xs text-muted-foreground">Test creating account with 2 connections</p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => testWebhook('enhanced')}
+                  >
+                    <ExternalLink size={14} className="mr-1" />
+                    Test
+                  </Button>
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-md">
+                  <div>
+                    <p className="font-medium">Trial Account Creation</p>
+                    <p className="text-xs text-muted-foreground">Test 24-hour trial account creation</p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => testWebhook('trial')}
+                  >
+                    <ExternalLink size={14} className="mr-1" />
+                    Test
+                  </Button>
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-md">
+                  <div>
+                    <p className="font-medium">Legacy Format</p>
+                    <p className="text-xs text-muted-foreground">Test backward compatibility</p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => testWebhook('legacy')}
+                  >
+                    <ExternalLink size={14} className="mr-1" />
+                    Test
+                  </Button>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4">
+                <h4 className="font-medium text-yellow-900 mb-2">Testing Notes</h4>
+                <ul className="text-xs text-yellow-800 space-y-1">
+                  <li>• Test webhooks use "api_key=test" and sample data</li>
+                  <li>• They will show validation errors in demo mode</li>
+                  <li>• Use your actual API key for real testing</li>
+                  <li>• Check browser console for detailed responses</li>
+                </ul>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="highlevel" className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">HighLevel Integration Setup</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Step-by-step guide to integrate with HighLevel workflows
+                </p>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="p-4 border rounded-md">
+                  <h4 className="font-medium mb-2">1. Create Webhook in HighLevel</h4>
+                  <ul className="text-sm space-y-1">
+                    <li>• Go to Settings → Integrations → Webhooks</li>
+                    <li>• Click "Create Webhook"</li>
+                    <li>• Use webhook URL: <code className="bg-gray-100 px-1 rounded">{webhookUrl}</code></li>
+                    <li>• Select trigger events (form submission, contact creation, etc.)</li>
+                  </ul>
+                </div>
+                
+                <div className="p-4 border rounded-md">
+                  <h4 className="font-medium mb-2">2. Configure Webhook Payload</h4>
+                  <ul className="text-sm space-y-1">
+                    <li>• Set method to POST</li>
+                    <li>• Content-Type: application/json</li>
+                    <li>• Include your API key in the payload</li>
+                    <li>• Use HighLevel merge tags for dynamic data</li>
+                  </ul>
+                </div>
+                
+                <div className="p-4 border rounded-md">
+                  <h4 className="font-medium mb-2">3. Auto-Send Credentials</h4>
+                  <ul className="text-sm space-y-1">
+                    <li>• Include "contact_id": "{{contact.id}}" in payload</li>
+                    <li>• System will automatically send credentials via HighLevel</li>
+                    <li>• Credentials sent to contact's phone and email</li>
+                    <li>• Configure HighLevel messaging templates as needed</li>
+                  </ul>
+                </div>
+                
+                <div className="p-4 border rounded-md">
+                  <h4 className="font-medium mb-2">4. Error Handling</h4>
+                  <ul className="text-sm space-y-1">
+                    <li>• Webhook returns detailed error messages</li>
+                    <li>• Failed requests can be retried automatically</li>
+                    <li>• Check HighLevel webhook logs for debugging</li>
+                    <li>• Monitor credit usage in dashboard</li>
+                  </ul>
+                </div>
+              </div>
+              
+              <div className="bg-green-50 border border-green-200 rounded-md p-4">
+                <h4 className="font-medium text-green-900 mb-2">Pro Tips</h4>
+                <ul className="text-xs text-green-800 space-y-1">
+                  <li>• Use different workflows for trials vs paid accounts</li>
+                  <li>• Set up follow-up sequences for trial users</li>
+                  <li>• Tag contacts based on account type and provider</li>
+                  <li>• Create custom fields for connection count and expiration</li>
+                </ul>
+              </div>
+            </TabsContent>
+          </Tabs>
         </DashboardCard>
+        
+        {/* Global HighLevel Settings */}
+        <GlobalHighLevelSettings />
         
         {/* System Information */}
         <DashboardCard
