@@ -33,6 +33,18 @@ export interface EnhancedWebhookResult {
   errors?: string[];
 }
 
+interface ResellerDataResult {
+  success: boolean;
+  message: string;
+  data?: {
+    resellerId: string;
+    credits: number;
+    name: string;
+    provider: string;
+  };
+  errors?: string[];
+}
+
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
     console.log('🚀 Processing enhanced webhook payload:', payload);
@@ -122,8 +134,12 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
 
     // Get reseller information
     const resellerData = await getResellerData(payload);
-    if (!resellerData.success) {
-      return resellerData;
+    if (!resellerData.success || !resellerData.data) {
+      return {
+        success: false,
+        message: resellerData.message,
+        errors: resellerData.errors
+      };
     }
 
     const connections = payload.connections || 1;
@@ -192,8 +208,12 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
 
     // Get reseller information
     const resellerData = await getResellerData(payload);
-    if (!resellerData.success) {
-      return resellerData;
+    if (!resellerData.success || !resellerData.data) {
+      return {
+        success: false,
+        message: resellerData.message,
+        errors: resellerData.errors
+      };
     }
 
     const connections = payload.connections || 1;
@@ -274,8 +294,12 @@ async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<En
 
     // Get reseller information
     const resellerData = await getResellerData(payload);
-    if (!resellerData.success) {
-      return resellerData;
+    if (!resellerData.success || !resellerData.data) {
+      return {
+        success: false,
+        message: resellerData.message,
+        errors: resellerData.errors
+      };
     }
 
     // Find existing customer
@@ -334,17 +358,7 @@ async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<En
   }
 }
 
-async function getResellerData(payload: EnhancedWebhookPayload): Promise<{
-  success: boolean;
-  message: string;
-  data?: {
-    resellerId: string;
-    credits: number;
-    name: string;
-    provider: string;
-  };
-  errors?: string[];
-}> {
+async function getResellerData(payload: EnhancedWebhookPayload): Promise<ResellerDataResult> {
   try {
     if (payload.api_key) {
       // Look up by API key
