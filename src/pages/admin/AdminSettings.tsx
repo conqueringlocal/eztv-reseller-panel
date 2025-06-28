@@ -34,8 +34,8 @@ export default function AdminSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Generate webhook URL based on current domain
-  const webhookUrl = `${window.location.origin}/api/webhook`;
+  // Generate webhook URL with correct Supabase edge function format
+  const webhookUrl = `https://hddnqgggjjlildufirof.supabase.co/functions/v1/webhook`;
   
   useEffect(() => {
     const fetchSettings = async () => {
@@ -514,7 +514,7 @@ export default function AdminSettings() {
                 variant="outline" 
                 className="flex items-center"
                 onClick={() => {
-                  window.open('/api/webhook?api_key=test&contact_id=test123&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Test+Device&planDuration=1', '_blank');
+                  window.open(`${webhookUrl}?api_key=test&contact_id=test123&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Test+Device&planDuration=1`, '_blank');
                 }}
               >
                 <Webhook size={16} className="mr-2" />
