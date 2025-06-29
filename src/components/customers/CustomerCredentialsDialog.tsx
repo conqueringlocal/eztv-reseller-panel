@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -19,11 +20,6 @@ interface CustomerCredentialsDialogProps {
   customer: any;
   onClose: () => void;
 }
-
-// Helper function to safely get field values from both snake_case and camelCase formats
-const getFieldValue = (customer: any, snakeCaseField: string, camelCaseField: string): any => {
-  return customer[snakeCaseField] || customer[camelCaseField];
-};
 
 export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredentialsDialogProps) {
   const { user } = useAuth();

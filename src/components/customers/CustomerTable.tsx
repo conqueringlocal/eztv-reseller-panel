@@ -15,8 +15,8 @@ import {
   getCustomerDisplayName, 
   getTotalConnections, 
   getConnectionSummary,
-  processCustomersForDisplay
-} from '@/utils/consolidatedCustomerUtils';
+  getFieldValue
+} from '@/utils/customerConsolidation';
 import { formatDateSafely, getDaysUntilExpirationSafely } from '@/lib/utils';
 import {
   Dialog,
@@ -39,9 +39,15 @@ interface CustomerTableProps {
   onStatusFilterChange?: (filter: string) => void;
 }
 
-// Helper function to safely get field values from both snake_case and camelCase formats
-const getFieldValue = (customer: any, snakeCaseField: string, camelCaseField: string): any => {
-  return customer[snakeCaseField] || customer[camelCaseField];
+// Process customers to handle consolidated format
+const processCustomersForDisplay = (customers: any[]) => {
+  return customers.map(customer => ({
+    ...customer,
+    // Ensure we have proper field mappings
+    totalConnections: getTotalConnections(customer),
+    displayName: getCustomerDisplayName(customer),
+    isConsolidated: isConsolidatedCustomer(customer)
+  }));
 };
 
 export function CustomerTable({ 

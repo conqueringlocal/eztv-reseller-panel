@@ -1,114 +1,69 @@
 
 import { Customer } from '@/contexts/AppContext';
-import { getFieldValue } from './fieldHelpers';
-import { getCustomerDisplayName, isConsolidatedCustomer } from './customerInfo';
-import { getConnectionDetails } from './connectionUtils';
 import { CustomerGroup } from './types';
 
-// Process customers for display (handles both consolidated and legacy formats)
-export function processCustomersForDisplay(customers: Customer[]): any[] {
-  const processedCustomers: any[] = [];
+// Get customers that need consolidation (have same name/email but aren't consolidated)
+export function getCustomersNeedingConsolidation(customers: Customer[]): CustomerGroup[] {
+  const groupedCustomers = new Map<string, Customer[]>();
+  
+  customers.forEach(customer => {
+    // Skip already consolidated customers
+    if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
+      return;
+    }
+    
+    // Skip if customer doesn't have proper grouping info
+    if (!customer.customer_group || !customer.name || !customer.email) {
+      return;
+    }
+    
+    const groupKey = `${customer.customer_group}_${customer.reseller_id}`;
+    
+    if (!groupedCustomers.has(groupKey)) {
+      groupedCustomers.set(groupKey, []);
+    }
+    
+    groupedCustomers.get(groupKey)!.push(customer);
+  });
+  
+  // Return only groups that have more than one customer
+  return Array.from(groupedCustomers.entries())
+    .filter(([_, customers]) => customers.length > 1)
+    .map(([groupKey, customers]) => ({
+      groupKey,
+      customers,
+      name: customers[0].name,
+      email: customers[0].email,
+      resellerId: customers[0].reseller_id
+    }));
+}
+
+// Process customers for display in the table
+export function processCustomersForDisplay(customers: Customer[]): Customer[] {
+  const processedCustomers: Customer[] = [];
   const processedGroups = new Set<string>();
   
   customers.forEach(customer => {
-    const customerGroup = getFieldValue(customer, 'customer_group', 'customerGroup');
-    const resellerId = getFieldValue(customer, 'reseller_id', 'resellerId');
-    const groupKey = `${customerGroup}_${resellerId}`;
+    // If this is a consolidated customer (has connection_list), add it directly
+    if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
+      processedCustomers.push(customer);
+      return;
+    }
     
-    // If this is a consolidated customer or we haven't processed this group yet
-    if (isConsolidatedCustomer(customer) || !processedGroups.has(groupKey)) {
-      processedCustomers.push({
-        ...customer,
-        // Ensure consistent field access
-        name: getCustomerDisplayName(customer),
-        totalConnections: getTotalConnections(customer),
-        connectionDetails: getConnectionDetails(customer)
-      });
+    // For non-consolidated customers, check if they're part of a group
+    if (customer.customer_group) {
+      const groupKey = `${customer.customer_group}_${customer.reseller_id}`;
       
-      if (customerGroup) {
+      // If we haven't processed this group yet, add the first customer
+      if (!processedGroups.has(groupKey)) {
         processedGroups.add(groupKey);
+        processedCustomers.push(customer);
       }
+    } else {
+      // Single customer not part of a group
+      processedCustomers.push(customer);
     }
   });
   
   return processedCustomers;
-}
-
-// Group customers by email and name for consolidation
-export function groupCustomersForConsolidation(customers: Customer[]): Map<string, Customer[]> {
-  const groups = new Map<string, Customer[]>();
-  
-  customers.forEach(customer => {
-    const name = getCustomerDisplayName(customer);
-    const email = customer.email?.toLowerCase().trim() || '';
-    const resellerId = getFieldValue(customer, 'reseller_id', 'resellerId');
-    
-    const groupKey = `${name.toLowerCase().trim()}_${email}_${resellerId}`;
-    
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, []);
-    }
-    
-    groups.get(groupKey)!.push(customer);
-  });
-  
-  return groups;
-}
-
-// Check if customers need consolidation
-export function needsConsolidation(customers: Customer[]): boolean {
-  const groups = groupCustomersForConsolidation(customers);
-  
-  for (const [, groupCustomers] of groups) {
-    if (groupCustomers.length > 1) {
-      // Check if any of these customers are not already consolidated
-      const hasUnconsolidated = groupCustomers.some(customer => !isConsolidatedCustomer(customer));
-      if (hasUnconsolidated) {
-        return true;
-      }
-    }
-  }
-  
-  return false;
-}
-
-// Get customers that need consolidation
-export function getCustomersNeedingConsolidation(customers: Customer[]): CustomerGroup[] {
-  const groups = groupCustomersForConsolidation(customers);
-  const needingConsolidation: CustomerGroup[] = [];
-  
-  for (const [groupKey, groupCustomers] of groups) {
-    if (groupCustomers.length > 1) {
-      const hasUnconsolidated = groupCustomers.some(customer => !isConsolidatedCustomer(customer));
-      if (hasUnconsolidated) {
-        const firstCustomer = groupCustomers[0];
-        needingConsolidation.push({
-          groupKey,
-          customers: groupCustomers,
-          name: getCustomerDisplayName(firstCustomer),
-          email: firstCustomer.email || '',
-          resellerId: getFieldValue(firstCustomer, 'reseller_id', 'resellerId') || ''
-        });
-      }
-    }
-  }
-  
-  return needingConsolidation;
-}
-
-// Import getTotalConnections here to avoid circular dependency
-function getTotalConnections(customer: any): number {
-  const totalConnections = getFieldValue(customer, 'total_connections', 'totalConnections');
-  const connectionList = getFieldValue(customer, 'connection_list', 'connectionList');
-  const maxConnections = getFieldValue(customer, 'max_connections', 'maxConnections');
-  
-  if (totalConnections && totalConnections > 0) {
-    return totalConnections;
-  }
-  
-  if (connectionList && Array.isArray(connectionList)) {
-    return connectionList.length;
-  }
-  
-  return maxConnections || 1;
 }
