@@ -55,3 +55,23 @@ export function formatDateSafely(dateString: string | null | undefined): string 
     return 'Invalid date';
   }
 }
+
+/**
+ * Calculate days until expiration safely
+ */
+export function getDaysUntilExpirationSafely(expirationDate: string | null | undefined): number | null {
+  if (!expirationDate) return null;
+  
+  try {
+    const expDate = new Date(expirationDate);
+    if (isNaN(expDate.getTime())) {
+      return null;
+    }
+    
+    const today = new Date();
+    const diffTime = expDate.getTime() - today.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  } catch (error) {
+    return null;
+  }
+}

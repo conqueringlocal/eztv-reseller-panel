@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,10 +14,9 @@ import {
   getCustomerDisplayName, 
   getTotalConnections, 
   getConnectionSummary,
-  processCustomersForDisplay,
-  formatDateSafely,
-  getDaysUntilExpirationSafely
+  processCustomersForDisplay
 } from '@/utils/consolidatedCustomerUtils';
+import { formatDateSafely, getDaysUntilExpirationSafely } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -188,6 +186,16 @@ export function CustomerTable({
           const totalConnections = getTotalConnections(customer);
           const displayName = getCustomerDisplayName(customer);
           
+          // Debug logging to trace data flow
+          console.log('Rendering customer:', {
+            id: customer.id,
+            name: displayName,
+            start_date: customer.start_date,
+            expiration_date: customer.expiration_date,
+            plan_duration: customer.plan_duration,
+            device_type: customer.device_type
+          });
+          
           return (
             <Card key={customer.id} className="w-full">
               <CardHeader className="pb-3">
@@ -226,7 +234,9 @@ export function CustomerTable({
                   <div>
                     <p className="text-sm font-medium text-gray-500">Plan Duration</p>
                     <p className="text-sm">
-                      {customer.plan_duration ? `${customer.plan_duration} month${customer.plan_duration > 1 ? 's' : ''}` : 'Not specified'}
+                      {customer.plan_duration && customer.plan_duration > 0 
+                        ? `${customer.plan_duration} month${customer.plan_duration > 1 ? 's' : ''}` 
+                        : 'Not specified'}
                     </p>
                   </div>
                   {/* Only show provider field to admin users */}

@@ -191,6 +191,7 @@ export const createVirtualConsolidatedCustomer = (legacyCustomers: any[]): Conso
     status: customer.status
   }));
 
+  // Ensure all required fields are properly preserved from the primary customer
   return {
     id: primaryCustomer.id,
     name: getCustomerDisplayName(primaryCustomer),
@@ -198,9 +199,9 @@ export const createVirtualConsolidatedCustomer = (legacyCustomers: any[]): Conso
     total_connections: sortedCustomers.length,
     connection_list: connectionList,
     status: primaryCustomer.status,
-    expiration_date: primaryCustomer.expiration_date,
-    start_date: primaryCustomer.start_date,
-    plan_duration: primaryCustomer.plan_duration,
+    expiration_date: primaryCustomer.expiration_date, // Preserve original date string
+    start_date: primaryCustomer.start_date, // Preserve original date string
+    plan_duration: primaryCustomer.plan_duration, // Preserve original plan duration
     device_type: primaryCustomer.device_type,
     provider: primaryCustomer.provider,
     customer_group: primaryCustomer.customer_group,
@@ -209,7 +210,7 @@ export const createVirtualConsolidatedCustomer = (legacyCustomers: any[]): Conso
     cancelled_at: primaryCustomer.cancelled_at,
     is_trial: primaryCustomer.is_trial,
     created_at: primaryCustomer.created_at,
-    // Copy other fields from primary customer
+    // Copy other fields from primary customer to ensure nothing is lost
     ...primaryCustomer
   };
 };
@@ -224,9 +225,17 @@ export const processCustomersForDisplay = (customers: any[]): (ConsolidatedCusto
 
   Object.entries(grouped).forEach(([groupKey, groupCustomers]) => {
     if (groupCustomers.length === 1) {
-      // Single customer - add as-is but clean up the name
-      const customer = { ...groupCustomers[0] };
-      customer.name = getCustomerDisplayName(customer);
+      // Single customer - add as-is but clean up the name and preserve all data
+      const customer = { 
+        ...groupCustomers[0],
+        name: getCustomerDisplayName(groupCustomers[0])
+      };
+      console.log('Single customer data:', {
+        name: customer.name,
+        start_date: customer.start_date,
+        expiration_date: customer.expiration_date,
+        plan_duration: customer.plan_duration
+      });
       processedCustomers.push(customer);
     } else {
       // Multiple customers - check if any is already consolidated
@@ -234,10 +243,22 @@ export const processCustomersForDisplay = (customers: any[]): (ConsolidatedCusto
       
       if (consolidatedCustomer) {
         // Use the consolidated customer
+        console.log('Using consolidated customer:', {
+          name: consolidatedCustomer.name,
+          start_date: consolidatedCustomer.start_date,
+          expiration_date: consolidatedCustomer.expiration_date,
+          plan_duration: consolidatedCustomer.plan_duration
+        });
         processedCustomers.push(consolidatedCustomer);
       } else {
         // Create virtual consolidated customer from legacy records
         const virtualConsolidated = createVirtualConsolidatedCustomer(groupCustomers);
+        console.log('Created virtual consolidated customer:', {
+          name: virtualConsolidated.name,
+          start_date: virtualConsolidated.start_date,
+          expiration_date: virtualConsolidated.expiration_date,
+          plan_duration: virtualConsolidated.plan_duration
+        });
         processedCustomers.push(virtualConsolidated);
       }
     }
@@ -272,41 +293,4 @@ export const formatCredentialsForDisplay = (customer: any): string => {
   });
   
   return formatted;
-};
-
-/**
- * Safe date formatting function that handles invalid dates
- */
-export const formatDateSafely = (dateString: string | null | undefined): string => {
-  if (!dateString) return 'Not set';
-  
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) {
-      return 'Invalid date';
-    }
-    return date.toLocaleDateString();
-  } catch (error) {
-    return 'Invalid date';
-  }
-};
-
-/**
- * Calculate days until expiration safely
- */
-export const getDaysUntilExpirationSafely = (expirationDate: string | null | undefined): number | null => {
-  if (!expirationDate) return null;
-  
-  try {
-    const expDate = new Date(expirationDate);
-    if (isNaN(expDate.getTime())) {
-      return null;
-    }
-    
-    const today = new Date();
-    const diffTime = expDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  } catch (error) {
-    return null;
-  }
 };
