@@ -92,7 +92,7 @@ async function getResellerHighLevelCredentials(resellerId: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('reseller_highlevel_settings')
-      .select('api_key, location_id')
+      .select('location_api_key, location_id')
       .eq('reseller_id', resellerId)
       .eq('is_active', true)
       .single();
@@ -103,7 +103,7 @@ async function getResellerHighLevelCredentials(resellerId: string): Promise<{
     }
 
     console.log('✅ Found HighLevel credentials for reseller:', resellerId);
-    return { apiKey: data.api_key, locationId: data.location_id };
+    return { apiKey: data.location_api_key, locationId: data.location_id };
   } catch (error) {
     console.error('❌ Error fetching HighLevel credentials:', error);
     return { apiKey: null, locationId: null };
@@ -292,56 +292,64 @@ async function processCustomerRenewal(
   }
 }
 
-// Update HighLevel contact with IPTV custom fields and tags
-async function updateHighLevelContact(
+// Enhanced HighLevel contact sync with multi-credential support
+async function syncContactWithMultiCredentials(
   contactId: string,
   customerData: any,
-  resellerId: string
+  resellerId: string,
+  customers: any[]
 ): Promise<void> {
   try {
-    console.log('🔄 Updating HighLevel contact with IPTV data:', contactId);
+    console.log('🔄 Syncing contact with multi-credential support:', contactId);
 
-    // Prepare custom fields
-    const customFields = [
-      { key: 'iptv_username', value: customerData.username || '' },
-      { key: 'iptv_password', value: customerData.password || '' },
-      { key: 'iptv_plan_duration', value: customerData.planDuration?.toString() || '' },
-      { key: 'iptv_device_type', value: customerData.deviceType || '' },
-      { key: 'iptv_mac_address', value: customerData.macAddress || '' },
-      { key: 'iptv_expiration_date', value: customerData.expirationDate || '' },
-      { key: 'iptv_status', value: 'active' }
-    ];
-
-    // Prepare tags
-    const tags = ['IPTV Customer'];
-    if (customerData.planDuration) {
-      tags.push(`${customerData.planDuration} Month Plan`);
-    }
-    if (customerData.deviceType) {
-      tags.push(customerData.deviceType);
-    }
-    tags.push('Status: Active');
-
-    const { data, error } = await supabase.functions.invoke('update-highlevel-contact', {
-      body: {
-        contactId,
-        resellerId,
-        customFields,
-        tagsToAdd: tags,
-        notes: [{
-          body: `IPTV account created successfully. Username: ${customerData.username}, Password: ${customerData.password}. Plan duration: ${customerData.planDuration} months.`,
-          type: 'general'
-        }]
+    // Prepare credentials for syncing (up to 3 sets)
+    const credentialsToSync: any = {};
+    
+    // Map first 3 customer accounts to custom fields
+    customers.slice(0, 3).forEach((customer, index) => {
+      const fieldNumber = index + 1;
+      
+      if (customer.username) {
+        credentialsToSync[`iptv_username_${fieldNumber}`] = customer.username;
+      }
+      
+      if (customer.password) {
+        credentialsToSync[`iptv_password_${fieldNumber}`] = customer.password;
+      }
+      
+      if (customer.m3u_url) {
+        credentialsToSync[`iptv_m3u_url_${fieldNumber}`] = customer.m3u_url;
       }
     });
 
-    if (error || !data?.success) {
-      console.error('❌ Failed to update HighLevel contact:', error || data);
-    } else {
-      console.log('✅ HighLevel contact updated with IPTV data successfully');
+    // Add device type and other data
+    if (customerData.deviceType) {
+      credentialsToSync['device_type_optional'] = customerData.deviceType;
     }
+
+    console.log('🔐 Credentials to sync:', Object.keys(credentialsToSync));
+
+    // First create/update the contact with basic info
+    const { data: createContactResult, error: createContactError } = await supabase.functions.invoke('create-highlevel-contact', {
+      body: {
+        customerName: customerData.name,
+        customerEmail: customerData.email,
+        resellerId: resellerId,
+        iptvCredentials: credentialsToSync,
+        deviceType: customerData.deviceType,
+        planDuration: customerData.planDuration
+      }
+    });
+
+    if (createContactError || !createContactResult?.success) {
+      console.error('❌ Failed to create/update HighLevel contact:', createContactError || createContactResult);
+      return;
+    }
+
+    console.log('✅ Successfully synced contact with multi-credentials');
+    
   } catch (error) {
-    console.error('💥 Error updating HighLevel contact:', error);
+    console.error('💥 Error syncing contact with multi-credentials:', error);
   }
 }
 
@@ -496,7 +504,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       return renewalResult;
     }
 
-    // Handle create action (existing logic with trial support)
+    // Handle create action (existing logic with trial support and enhanced HighLevel integration)
     console.log('➕ Processing customer creation request');
     
     const macAddress = payload.customer?.mac || payload.macAddress;
@@ -529,14 +537,15 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
     }
 
     // Check if reseller exists and has enough credits (skip for trial accounts)
+    let reseller: any;
     if (!isTrialAccount) {
-      const { data: reseller, error: resellerError } = await supabase
+      const { data: resellerData, error: resellerError } = await supabase
         .from('profiles')
         .select('credits, name')
         .eq('id', resellerId)
         .single();
 
-      if (resellerError || !reseller) {
+      if (resellerError || !resellerData) {
         console.error('❌ Reseller not found:', resellerError?.message);
         return {
           success: false,
@@ -544,6 +553,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         };
       }
 
+      reseller = resellerData;
       console.log(`💰 Reseller credits: ${reseller.credits}, required: ${planDuration}`);
 
       if (reseller.credits < planDuration) {
@@ -557,19 +567,21 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.log('🆓 Trial account - skipping credit check');
       
       // Get reseller info for trial account
-      const { data: reseller, error: resellerError } = await supabase
+      const { data: resellerData, error: resellerError } = await supabase
         .from('profiles')
         .select('name')
         .eq('id', resellerId)
         .single();
 
-      if (resellerError || !reseller) {
+      if (resellerError || !resellerData) {
         console.error('❌ Reseller not found:', resellerError?.message);
         return {
           success: false,
           message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
         };
       }
+
+      reseller = resellerData;
     }
 
     // Generate IPTV credentials (used as fallback if API doesn't return credentials)
@@ -703,21 +715,32 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.log('🆓 Trial account - skipping credit deduction and logging');
     }
 
-    // Update HighLevel contact with IPTV data and send credentials if contact ID is provided
+    // Enhanced HighLevel integration with multi-credential support
     if (contactId) {
-      console.log('🎯 HighLevel contact ID provided, updating contact and sending credentials');
+      console.log('🎯 HighLevel contact ID provided, syncing with multi-credential support');
       
-      // Update contact with custom fields and tags
-      await updateHighLevelContact(contactId, {
+      // Create mock customers array for sync function (single customer for now)
+      const customersForSync = [{
         username: finalUsername,
         password: finalPassword,
-        planDuration,
-        deviceType,
-        macAddress,
-        expirationDate
-      }, resellerId);
+        m3u_url: data.user?.m3u_url,
+        plan_duration: planDuration
+      }];
       
-      // Send credentials
+      // Sync contact with multi-credential support
+      await syncContactWithMultiCredentials(
+        contactId,
+        {
+          name: customerName,
+          email: customerEmail,
+          deviceType: deviceType,
+          planDuration: planDuration
+        },
+        resellerId,
+        customersForSync
+      );
+      
+      // Also send credentials message
       await sendHighLevelCredentials(
         contactId,
         customerName,

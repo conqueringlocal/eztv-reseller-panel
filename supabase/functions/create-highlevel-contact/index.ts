@@ -11,9 +11,7 @@ interface CreateContactRequest {
   customerEmail: string;
   resellerId: string;
   iptvCredentials?: {
-    username?: string;
-    password?: string;
-    m3uUrl?: string;
+    [key: string]: string; // Support dynamic credential fields
   };
   deviceType?: string;
   planDuration?: number;
@@ -41,6 +39,7 @@ serve(async (req) => {
       customerEmail, 
       resellerId, 
       hasCredentials: !!iptvCredentials,
+      credentialFields: iptvCredentials ? Object.keys(iptvCredentials) : [],
       deviceType,
       planDuration
     });
@@ -96,28 +95,20 @@ serve(async (req) => {
       locationId: locationId
     });
 
-    // Prepare custom field values for IPTV credentials and device type
+    // Prepare custom field values for all IPTV credentials
     const customField: any[] = [];
     
-    if (iptvCredentials?.username) {
-      customField.push({
-        id: 'iptv_username',
-        field_value: iptvCredentials.username
+    // Add all credential fields dynamically
+    if (iptvCredentials) {
+      Object.entries(iptvCredentials).forEach(([fieldId, value]) => {
+        if (value) {
+          customField.push({
+            id: fieldId,
+            field_value: value
+          });
+        }
       });
-    }
-    
-    if (iptvCredentials?.password) {
-      customField.push({
-        id: 'iptv_password', 
-        field_value: iptvCredentials.password
-      });
-    }
-    
-    if (iptvCredentials?.m3uUrl) {
-      customField.push({
-        id: 'iptv_m3u_url',
-        field_value: iptvCredentials.m3uUrl
-      });
+      console.log('🔐 Added credential fields:', customField.map(f => f.id));
     }
 
     // Add device type to custom fields
@@ -139,6 +130,11 @@ serve(async (req) => {
       console.log('🏷️ Added plan duration tag:', planTag);
     }
 
+    // Add device type tag
+    if (deviceType) {
+      tags.push(`device-${deviceType.toLowerCase().replace(/\s+/g, '-')}`);
+    }
+
     console.log('🏷️ Tags to be added:', tags);
 
     // Create contact in HighLevel using the v1 API endpoint with Location API Key
@@ -154,7 +150,10 @@ serve(async (req) => {
       tags: tags
     };
 
-    console.log('📤 Contact payload:', contactPayload);
+    console.log('📤 Contact payload:', {
+      ...contactPayload,
+      customField: contactPayload.customField?.map(f => ({ id: f.id, hasValue: !!f.field_value }))
+    });
 
     const apiUrl = `https://rest.gohighlevel.com/v1/contacts/`;
     console.log('🌐 API URL:', apiUrl);
@@ -260,12 +259,14 @@ serve(async (req) => {
     console.log('🎉 Contact creation successful - Contact ID:', contactId);
     console.log('📱 Device type added:', !!deviceType);
     console.log('🏷️ Tags added:', tags);
+    console.log('🔐 Credential fields synced:', customField.length);
 
     return new Response(JSON.stringify({ 
       success: true, 
       contactId: contactId,
       message: 'Contact created successfully in HighLevel',
       credentialsAdded: customField.length > 0,
+      credentialFieldsSynced: customField.length,
       deviceTypeAdded: !!deviceType,
       tagsAdded: tags,
       debugInfo: {

@@ -156,12 +156,13 @@ async function createTrialAccount(
 
     // Send credentials via HighLevel if contact ID provided
     if (payload.contact_id && data.customers?.length > 0) {
-      await sendCredentialsToHighLevel(
+      await syncCredentialsToHighLevel(
         payload.contact_id,
         customerName,
+        customerEmail,
         data.customers,
         resellerId,
-        'trial'
+        deviceType
       );
     }
 
@@ -266,12 +267,13 @@ async function createMultiConnectionAccount(
 
     // Send credentials via HighLevel if contact ID provided
     if (payload.contact_id && data.customers?.length > 0) {
-      await sendCredentialsToHighLevel(
+      await syncCredentialsToHighLevel(
         payload.contact_id,
         customerName,
+        customerEmail,
         data.customers,
         resellerId,
-        'standard'
+        deviceType
       );
     }
 
@@ -384,21 +386,94 @@ async function renewCustomerGroup(
   }
 }
 
-// Send credentials to HighLevel
-async function sendCredentialsToHighLevel(
+// New function to sync all credentials to HighLevel custom fields
+async function syncCredentialsToHighLevel(
+  contactId: string,
+  customerName: string,
+  customerEmail: string,
+  customers: any[],
+  resellerId: string,
+  deviceType?: string
+): Promise<void> {
+  try {
+    console.log(`📨 Syncing ${customers.length} credential set(s) to HighLevel contact: ${contactId}`);
+    
+    // First, create/update the contact with customer info and device type
+    const { data: createContactResult, error: createContactError } = await supabase.functions.invoke('create-highlevel-contact', {
+      body: {
+        customerName,
+        customerEmail,
+        resellerId,
+        deviceType,
+        planDuration: customers[0]?.plan_duration || 1
+      }
+    });
+
+    if (createContactError || !createContactResult?.success) {
+      console.error('❌ Failed to create/update HighLevel contact:', createContactError || createContactResult);
+      return;
+    }
+
+    // Prepare credentials for syncing (up to 3 sets)
+    const credentialsToSync: any = {};
+    
+    // Map first 3 customer accounts to custom fields
+    customers.slice(0, 3).forEach((customer, index) => {
+      const fieldNumber = index + 1;
+      
+      if (customer.username) {
+        credentialsToSync[`iptv_username_${fieldNumber}`] = customer.username;
+      }
+      
+      if (customer.password) {
+        credentialsToSync[`iptv_password_${fieldNumber}`] = customer.password;
+      }
+      
+      if (customer.m3u_url) {
+        credentialsToSync[`iptv_m3u_url_${fieldNumber}`] = customer.m3u_url;
+      }
+    });
+
+    console.log('🔐 Credentials to sync:', Object.keys(credentialsToSync));
+
+    // Update the HighLevel contact with all credentials
+    const { data: updateResult, error: updateError } = await supabase.functions.invoke('update-highlevel-contact-credentials', {
+      body: {
+        contactId,
+        resellerId,
+        iptvCredentials: credentialsToSync
+      }
+    });
+
+    if (updateError || !updateResult?.success) {
+      console.error('❌ Failed to update HighLevel contact credentials:', updateError || updateResult);
+      return;
+    }
+
+    console.log('✅ Successfully synced all credentials to HighLevel');
+
+    // Send credentials via SMS/message as well
+    await sendCredentialsMessage(contactId, customerName, customers, resellerId);
+    
+  } catch (error) {
+    console.error('💥 Error syncing credentials to HighLevel:', error);
+  }
+}
+
+// Send credentials message to HighLevel
+async function sendCredentialsMessage(
   contactId: string,
   customerName: string,
   customers: any[],
-  resellerId: string,
-  accountType: 'standard' | 'trial'
+  resellerId: string
 ): Promise<void> {
   try {
-    console.log(`📨 Sending ${accountType} credentials to HighLevel contact: ${contactId}`);
+    console.log(`📱 Sending credentials message to HighLevel contact: ${contactId}`);
     
     // Get reseller's HighLevel credentials
     const { data: hlSettings, error: hlError } = await supabase
       .from('reseller_highlevel_settings')
-      .select('api_key, location_id')
+      .select('location_api_key, location_id')
       .eq('reseller_id', resellerId)
       .eq('is_active', true)
       .single();
@@ -409,7 +484,7 @@ async function sendCredentialsToHighLevel(
     }
 
     // Format credentials message
-    let credentialsMessage = `🎬 Your ${accountType === 'trial' ? 'TRIAL ' : ''}IPTV Account${customers.length > 1 ? 's' : ''} Details:\n\n`;
+    let credentialsMessage = `🎬 Your IPTV Account${customers.length > 1 ? 's' : ''} Details:\n\n`;
     
     customers.forEach((customer, index) => {
       if (customers.length > 1) {
@@ -425,9 +500,7 @@ async function sendCredentialsToHighLevel(
       }
     });
     
-    if (accountType === 'trial') {
-      credentialsMessage += `\n⏰ Trial expires in 24 hours`;
-    }
+    credentialsMessage += `\nThank you for your business!`;
     
     const { data, error } = await supabase.functions.invoke('send-highlevel-message', {
       body: {
@@ -436,7 +509,7 @@ async function sendCredentialsToHighLevel(
         message: credentialsMessage,
         resellerId: resellerId,
         messageType: 'SMS',
-        apiKey: hlSettings.api_key,
+        apiKey: hlSettings.location_api_key,
         locationId: hlSettings.location_id
       }
     });
@@ -444,10 +517,10 @@ async function sendCredentialsToHighLevel(
     if (error || !data?.success) {
       console.error('❌ Failed to send HighLevel message:', error || data);
     } else {
-      console.log('✅ HighLevel credentials sent successfully');
+      console.log('✅ HighLevel credentials message sent successfully');
     }
   } catch (error) {
-    console.error('💥 Error sending HighLevel credentials:', error);
+    console.error('💥 Error sending HighLevel credentials message:', error);
   }
 }
 
@@ -464,7 +537,7 @@ async function sendRenewalConfirmationToHighLevel(
     
     const { data: hlSettings, error: hlError } = await supabase
       .from('reseller_highlevel_settings')
-      .select('api_key, location_id')
+      .select('location_api_key, location_id')
       .eq('reseller_id', resellerId)
       .eq('is_active', true)
       .single();
@@ -483,7 +556,7 @@ async function sendRenewalConfirmationToHighLevel(
         message: message,
         resellerId: resellerId,
         messageType: 'SMS',
-        apiKey: hlSettings.api_key,
+        apiKey: hlSettings.location_api_key,
         locationId: hlSettings.location_id
       }
     });

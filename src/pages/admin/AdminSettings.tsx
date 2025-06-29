@@ -465,7 +465,7 @@ export default function AdminSettings() {
         {/* Webhook Settings */}
         <DashboardCard
           title="HighLevel Webhook Integration"
-          description="Use these settings to configure your HighLevel webhook workflow"
+          description="Use these settings to configure your HighLevel webhook workflow with multi-credential support"
         >
           <div className="space-y-4">
             <div>
@@ -487,12 +487,14 @@ export default function AdminSettings() {
             <Separator />
             
             <div>
-              <h3 className="text-sm font-medium mb-2">Enhanced Webhook Format (with HighLevel Integration)</h3>
+              <h3 className="text-sm font-medium mb-2">Enhanced Multi-Connection Webhook Format</h3>
               <div className="bg-gray-50 p-3 rounded-md">
                 <pre className="text-xs overflow-x-auto">
 {`{
   "api_key": "YOUR_API_KEY",
   "contact_id": "{{contact.id}}",
+  "action": "create",
+  "connections": 3,
   "customer": {
     "name": "{{contact.first_name}} {{contact.last_name}}",
     "email": "{{contact.email}}",
@@ -505,7 +507,63 @@ export default function AdminSettings() {
                 </pre>
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                Include the contact_id field to automatically send credentials via HighLevel
+                This will create 3 IPTV accounts and automatically sync all credentials to HighLevel custom fields (iptv_username_1, iptv_password_1, etc.)
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium mb-2">Trial Account Webhook Format</h3>
+              <div className="bg-gray-50 p-3 rounded-md">
+                <pre className="text-xs overflow-x-auto">
+{`{
+  "api_key": "YOUR_API_KEY",
+  "contact_id": "{{contact.id}}",
+  "action": "trial",
+  "connections": 1,
+  "trial_duration_hours": 24,
+  "customer": {
+    "name": "{{contact.first_name}} {{contact.last_name}}",
+    "email": "{{contact.email}}",
+    "device_type": "Smart TV",
+    "plan_duration_months": 1
+  }
+}`}
+                </pre>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Creates a 24-hour trial account with credentials automatically synced to HighLevel
+              </p>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium mb-2">Renewal Webhook Format</h3>
+              <div className="bg-gray-50 p-3 rounded-md">
+                <pre className="text-xs overflow-x-auto">
+{`{
+  "api_key": "YOUR_API_KEY",
+  "contact_id": "{{contact.id}}",
+  "action": "renew",
+  "customer": {
+    "name": "{{contact.first_name}} {{contact.last_name}}",
+    "email": "{{contact.email}}",
+    "plan_duration_months": 3
+  }
+}`}
+                </pre>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Renews existing customer accounts and sends confirmation via HighLevel
+              </p>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-blue-800">
+              <p className="text-sm font-medium">Multi-Credential HighLevel Integration</p>
+              <p className="text-xs mt-1">
+                The system now automatically syncs up to 3 sets of IPTV credentials to your HighLevel custom fields:
+                <br />• iptv_username_1, iptv_password_1, iptv_m3u_url_1
+                <br />• iptv_username_2, iptv_password_2, iptv_m3u_url_2  
+                <br />• iptv_username_3, iptv_password_3, iptv_m3u_url_3
+                <br />Make sure these custom fields exist in your HighLevel account.
               </p>
             </div>
             
@@ -514,14 +572,14 @@ export default function AdminSettings() {
                 variant="outline" 
                 className="flex items-center"
                 onClick={() => {
-                  window.open(`${webhookUrl}?api_key=test&contact_id=test123&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Test+Device&planDuration=1`, '_blank');
+                  window.open(`${webhookUrl}?api_key=test&contact_id=test123&action=create&connections=2&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Test+Device&planDuration=1`, '_blank');
                 }}
               >
                 <Webhook size={16} className="mr-2" />
-                Test Webhook
+                Test Multi-Connection Webhook
               </Button>
               <p className="text-xs text-muted-foreground ml-3 flex items-center">
-                This will open a test webhook URL in a new tab
+                This will test creating 2 IPTV accounts with credential syncing
               </p>
             </div>
           </div>

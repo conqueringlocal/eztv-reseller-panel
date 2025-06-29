@@ -10,9 +10,7 @@ interface UpdateCredentialsRequest {
   contactId: string;
   resellerId: string;
   iptvCredentials: {
-    username: string;
-    password: string;
-    m3uUrl?: string;
+    [key: string]: string; // Support dynamic credential fields
   };
 }
 
@@ -30,7 +28,12 @@ serve(async (req) => {
       iptvCredentials
     }: UpdateCredentialsRequest = await req.json();
 
-    console.log('📋 Update request:', { contactId, resellerId, hasCredentials: !!iptvCredentials });
+    console.log('📋 Update request:', { 
+      contactId, 
+      resellerId, 
+      hasCredentials: !!iptvCredentials,
+      credentialFields: iptvCredentials ? Object.keys(iptvCredentials) : []
+    });
 
     if (!contactId || !resellerId || !iptvCredentials) {
       return new Response(JSON.stringify({ 
@@ -88,29 +91,20 @@ serve(async (req) => {
 
     console.log('🔐 Using Location API credentials for update');
 
-    // Prepare custom field values for IPTV credentials
+    // Prepare custom field values for all IPTV credentials
     const customField: any[] = [];
     
-    if (iptvCredentials.username) {
-      customField.push({
-        id: 'iptv_username',
-        field_value: iptvCredentials.username
-      });
-    }
-    
-    if (iptvCredentials.password) {
-      customField.push({
-        id: 'iptv_password', 
-        field_value: iptvCredentials.password
-      });
-    }
-    
-    if (iptvCredentials.m3uUrl) {
-      customField.push({
-        id: 'iptv_m3u_url',
-        field_value: iptvCredentials.m3uUrl
-      });
-    }
+    // Add all credential fields dynamically
+    Object.entries(iptvCredentials).forEach(([fieldId, value]) => {
+      if (value) {
+        customField.push({
+          id: fieldId,
+          field_value: value
+        });
+      }
+    });
+
+    console.log('🔐 Prepared credential fields for update:', customField.map(f => ({ id: f.id, hasValue: !!f.field_value })));
 
     // Update contact in HighLevel
     console.log('🔄 Updating contact credentials in HighLevel...');
@@ -119,7 +113,10 @@ serve(async (req) => {
       customField: customField
     };
 
-    console.log('📤 Update payload:', updatePayload);
+    console.log('📤 Update payload:', {
+      customFieldCount: customField.length,
+      fields: customField.map(f => f.id)
+    });
 
     const apiUrl = `https://rest.gohighlevel.com/v1/contacts/${contactId}`;
     console.log('🌐 API URL:', apiUrl);
@@ -180,12 +177,14 @@ serve(async (req) => {
     }
 
     console.log('🎉 Contact credentials update successful');
+    console.log('🔐 Synced credential fields:', customField.map(f => f.id));
 
     return new Response(JSON.stringify({ 
       success: true, 
       contactId: contactId,
       message: 'Contact credentials updated successfully in HighLevel',
-      credentialsUpdated: customField.length
+      credentialsUpdated: customField.length,
+      credentialFields: customField.map(f => f.id)
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
