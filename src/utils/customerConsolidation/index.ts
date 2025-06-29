@@ -2,6 +2,14 @@
 import { Customer } from '@/contexts/AppContext';
 import { ConsolidatedCustomer, CustomerGroup } from './types';
 
+// Re-export types and functions from separate modules
+export { CustomerCredentials, ConsolidatedCustomer, CustomerGroup } from './types';
+export { getCustomersNeedingConsolidation, processCustomersForDisplay } from './groupingUtils';
+export { getFieldValue } from './fieldHelpers';
+export { getConnectionDetails } from './connectionUtils';  
+export { isConsolidatedCustomer, getCustomerDisplayName, getTotalConnections, getConnectionSummary } from './customerInfo';
+export { getCustomerCredentials, formatCredentialsForDisplay } from './credentialsUtils';
+
 /**
  * Check if a customer is in the new consolidated format
  */
@@ -143,10 +151,10 @@ export const convertToConsolidatedCustomer = (customerGroup: CustomerGroup): Con
   const primaryCustomer = customerGroup.customers[0];
   
   const connectionDetails = customerGroup.customers.map((customer, index) => ({
-    connection_number: index + 1,
+    connectionNumber: index + 1,
     username: customer.username,
     password: customer.password,
-    m3u_url: customer.m3uUrl,
+    m3uUrl: customer.m3uUrl,
     macAddress: customer.macAddress
   }));
   
