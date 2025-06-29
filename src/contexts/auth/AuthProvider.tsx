@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { AuthContextType, User } from './types';
 import { useUserProfile } from './hooks/useUserProfile';
@@ -23,10 +23,20 @@ export const useUser = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
   const { user, setUser, fetchUserProfile } = useUserProfile();
   const { signup, login, logout: logoutOperation } = useAuthOperations();
 
-  // Simplified auth initialization
+  // Stable callback for fetching user profile
+  const stableFetchUserProfile = useCallback(async (userId: string) => {
+    try {
+      await fetchUserProfile(userId);
+    } catch (error) {
+      console.error('❌ Error fetching user profile:', error);
+    }
+  }, [fetchUserProfile]);
+
+  // Initialize auth system
   useEffect(() => {
     let mounted = true;
     let authSubscription: any = null;
@@ -35,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         console.log('🔐 Initializing auth system...');
         
-        // Set up auth state listener
+        // Set up auth state listener first
         authSubscription = supabase.auth.onAuthStateChange(async (event, session) => {
           console.log('🔄 Auth state changed:', event, session?.user?.id || 'no user');
           
@@ -43,17 +53,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           if (session?.user) {
             console.log('✅ User session found, fetching profile');
-            // Defer profile fetching to prevent conflicts
+            // Use setTimeout to prevent potential deadlocks
             setTimeout(() => {
               if (mounted) {
-                fetchUserProfile(session.user.id).catch(error => {
-                  console.error('❌ Error fetching user profile:', error);
-                });
+                stableFetchUserProfile(session.user.id);
               }
-            }, 100);
+            }, 0);
           } else {
-            console.log('👋 No user session');
+            console.log('👋 No user session, clearing user state');
             setUser(null);
+          }
+          
+          // Set loading to false after handling auth state change
+          if (mounted && !isInitialized) {
+            setIsLoading(false);
+            setIsInitialized(true);
           }
         });
 
@@ -68,13 +82,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.log('ℹ️ No existing session found');
         }
         
-        if (mounted) {
+        // Set loading to false if no session exists
+        if (mounted && !session) {
           setIsLoading(false);
+          setIsInitialized(true);
         }
       } catch (error) {
         console.error('❌ Error initializing auth:', error);
         if (mounted) {
           setIsLoading(false);
+          setIsInitialized(true);
         }
       }
     };
@@ -87,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authSubscription.data.subscription.unsubscribe();
       }
     };
-  }, [fetchUserProfile, setUser]);
+  }, [stableFetchUserProfile, isInitialized]);
 
   const logout = async () => {
     try {

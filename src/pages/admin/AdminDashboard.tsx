@@ -3,15 +3,24 @@ import React from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { useApp } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, DollarSign, Activity, TrendingUp, AlertCircle } from 'lucide-react';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 
 export default function AdminDashboard() {
-  const { customers, resellers, creditLogs, isLoading } = useApp();
+  const { customers, resellers, creditLogs, isLoading: appLoading } = useApp();
+  const { isLoading: authLoading } = useAuth();
 
-  // Show loading state
-  if (isLoading) {
+  console.log('📊 AdminDashboard: Loading states -', {
+    appLoading,
+    authLoading,
+    customersCount: customers.length,
+    resellersCount: resellers.length
+  });
+
+  // Show loading state while auth or app data is loading
+  if (authLoading || appLoading) {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center min-h-64">

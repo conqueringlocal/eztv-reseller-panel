@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -126,14 +126,15 @@ const convertDbCustomerToCustomer = (dbCustomer: any): Customer => {
 };
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [session, setSession] = useState<Session | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [resellers, setResellers] = useState<Reseller[]>([]);
   const [creditLogs, setCreditLogs] = useState<CreditLog[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [dataInitialized, setDataInitialized] = useState(false);
 
-  // Update session when user changes
+  // Update session when auth changes
   useEffect(() => {
     const getSession = async () => {
       try {
@@ -159,15 +160,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
-      if (!user) {
-        console.warn('⚠️ User not available, skipping fetchCustomers');
+      if (!user || authLoading) {
+        console.log('⚠️ User not available or auth loading, skipping fetchCustomers');
         return;
       }
       
       console.log('📊 Fetching customers for user:', user.id, 'role:', user.role);
-      setIsLoading(true);
       
       let query = supabase
         .from('customers')
@@ -187,16 +187,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error('❌ Error fetching customers:', error);
         
-        // Handle specific auth-related errors
+        // Handle specific auth-related errors - don't clear data on auth errors
         if (error.message.includes('JWT') || error.message.includes('token') || error.code === 'PGRST301') {
-          console.error('🚨 Authentication error while fetching customers');
-          toast.error('Authentication error. Please login again.');
-          // Don't set customers to empty array, keep existing data
-          return;
+          console.error('🚨 Authentication error while fetching customers - keeping existing data');
+          toast.error('Authentication error. Please refresh the page.');
+          return; // Don't update customers state on auth errors
         }
         
         toast.error('Failed to load customer data');
-        setCustomers([]); // Only clear on non-auth errors
+        setCustomers([]);
       } else {
         const customerCount = data.length;
         console.log(`✅ Successfully fetched ${customerCount} customers`);
@@ -206,15 +205,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('💥 Unexpected error fetching customers:', error);
       toast.error('An unexpected error occurred while loading customers');
-      // Don't clear customers on unexpected errors
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [user, authLoading]);
 
-  const fetchResellers = async () => {
+  const fetchResellers = useCallback(async () => {
     try {
-      if (!user || user.role !== 'admin') {
+      if (!user || authLoading || user.role !== 'admin') {
         console.log('⚠️ User not admin or not available, skipping fetchResellers');
         return;
       }
@@ -230,10 +226,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error('❌ Error fetching resellers:', error);
         
-        // Handle auth errors
+        // Handle auth errors - don't clear data
         if (error.message.includes('JWT') || error.message.includes('token') || error.code === 'PGRST301') {
-          console.error('🚨 Authentication error while fetching resellers');
-          toast.error('Authentication error. Please login again.');
+          console.error('🚨 Authentication error while fetching resellers - keeping existing data');
+          toast.error('Authentication error. Please refresh the page.');
           return;
         }
         
@@ -247,12 +243,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       console.error('💥 Error fetching resellers:', error);
       toast.error('An unexpected error occurred while loading resellers');
     }
-  };
+  }, [user, authLoading]);
 
-  const fetchCreditLogs = async () => {
+  const fetchCreditLogs = useCallback(async () => {
     try {
-      if (!user) {
-        console.warn('⚠️ User not available, skipping fetchCreditLogs');
+      if (!user || authLoading) {
+        console.log('⚠️ User not available or auth loading, skipping fetchCreditLogs');
         return;
       }
       
@@ -273,10 +269,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         console.error('❌ Error fetching credit logs:', error);
         
-        // Handle auth errors
+        // Handle auth errors - don't clear data
         if (error.message.includes('JWT') || error.message.includes('token') || error.code === 'PGRST301') {
-          console.error('🚨 Authentication error while fetching credit logs');
-          toast.error('Authentication error. Please login again.');
+          console.error('🚨 Authentication error while fetching credit logs - keeping existing data');
+          toast.error('Authentication error. Please refresh the page.');
           return;
         }
         
@@ -290,25 +286,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       console.error('💥 Error fetching credit logs:', error);
       toast.error('An unexpected error occurred while loading credit logs');
     }
-  };
+  }, [user, authLoading]);
 
+  // Only initialize data once when user becomes available
   useEffect(() => {
-    if (user) {
-      console.log('🔄 User changed, refreshing data for:', user.id);
+    if (user && !authLoading && !dataInitialized) {
+      console.log('🔄 Initializing data for user:', user.id);
+      setIsLoading(true);
+      setDataInitialized(true);
+      
       Promise.all([
         fetchCustomers(),
         fetchResellers(),
         fetchCreditLogs()
-      ]).catch(error => {
-        console.error('💥 Error refreshing data:', error);
+      ]).finally(() => {
+        setIsLoading(false);
       });
-    } else {
-      console.log('👤 No user, clearing data');
+    } else if (!user && !authLoading) {
+      console.log('👤 No user, clearing data and reset initialization');
       setCustomers([]);
       setResellers([]);
       setCreditLogs([]);
+      setDataInitialized(false);
     }
-  }, [user]);
+  }, [user, authLoading, dataInitialized, fetchCustomers, fetchResellers, fetchCreditLogs]);
 
   const addCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt'>) => {
     console.log(`🚀 AppContext: Adding customer with provider-specific routing`);
@@ -594,13 +595,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshData = async () => {
-    if (!user) {
-      console.warn('⚠️ Cannot refresh data: no user available');
+    if (!user || authLoading) {
+      console.warn('⚠️ Cannot refresh data: no user available or auth loading');
       return;
     }
     
     console.log('🔄 Refreshing all data');
+    setIsLoading(true);
     await Promise.all([fetchCustomers(), fetchResellers(), fetchCreditLogs()]);
+    setIsLoading(false);
   };
 
   const value: AppContextType = {
