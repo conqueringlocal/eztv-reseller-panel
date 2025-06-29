@@ -33,7 +33,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import { Copy, Plus, Trash2, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Copy, Plus, Trash2, Eye, EyeOff, RefreshCw, Key } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface SsoToken {
