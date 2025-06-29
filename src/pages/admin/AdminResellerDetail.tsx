@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -10,7 +11,8 @@ import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CustomerTable } from '@/components/customers/CustomerTable';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
 import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
-import { ArrowLeft, Users, DollarSign, Activity, Calendar, Settings } from 'lucide-react';
+import { SingleResellerSsoManager } from '@/components/sso/SingleResellerSsoManager';
+import { ArrowLeft, Users, DollarSign, Activity, Calendar, Settings, Key } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminResellerDetail() {
@@ -149,6 +151,23 @@ export default function AdminResellerDetail() {
 
       <div className="mb-6">
         <AdminApiKeyManager resellerId={id!} resellerName={reseller.name} />
+      </div>
+
+      <div className="mb-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              SSO Login Tokens
+            </CardTitle>
+            <CardDescription>
+              Manage secure single sign-on tokens for HighLevel integration
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SingleResellerSsoManager resellerId={id!} resellerName={reseller.name} />
+          </CardContent>
+        </Card>
       </div>
 
       <div className="mb-6">
