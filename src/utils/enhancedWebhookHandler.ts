@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export interface EnhancedWebhookPayload {
@@ -22,6 +21,10 @@ export interface EnhancedWebhookPayload {
 export interface EnhancedWebhookResult {
   success: boolean;
   message: string;
+  // Direct credential fields at root level
+  username?: string;
+  password?: string;
+  m3u_url?: string;
   // Flattened response structure for HighLevel compatibility
   name?: string;
   email?: string;
@@ -43,6 +46,14 @@ export interface EnhancedWebhookResult {
   username_3?: string;
   password_3?: string;
   m3u_url_3?: string;
+  // Clean credentials array for multiple connections
+  credentials?: Array<{
+    username: string;
+    password: string;
+    m3u_url?: string;
+  }>;
+  // Raw data dump for debugging
+  raw_api_response?: any;
   errors?: string[];
 }
 
@@ -58,74 +69,141 @@ interface ResellerDataResult {
   errors?: string[];
 }
 
-// Enhanced helper function to flatten customer credentials with better debugging
-function flattenCustomerCredentials(customers: any[]): any {
-  console.log('🔐 Client flattenCustomerCredentials - Input customers:', JSON.stringify(customers, null, 2));
+// Fixed credential extraction function
+function extractAndFlattenCredentials(data: any): {
+  flattenedFields: any;
+  credentialsArray: Array<{ username: string; password: string; m3u_url?: string }>;
+  primaryCredentials: { username?: string; password?: string; m3u_url?: string };
+} {
+  console.log('🔍 RAW API RESPONSE DUMP:', JSON.stringify(data, null, 2));
   
-  const flattened: any = {};
+  const flattenedFields: any = {};
+  const credentialsArray: Array<{ username: string; password: string; m3u_url?: string }> = [];
+  let primaryCredentials: { username?: string; password?: string; m3u_url?: string } = {};
   
-  if (!customers || customers.length === 0) {
-    console.log('⚠️ No customers provided to flatten on client side');
-    return flattened;
+  if (!data) {
+    console.log('❌ No data provided for credential extraction');
+    return { flattenedFields, credentialsArray, primaryCredentials };
   }
   
-  // Handle consolidated customer with connection_list (new format)
+  let customers: any[] = [];
+  
+  // Extract customers from different response formats
+  if (data.customers && Array.isArray(data.customers)) {
+    customers = data.customers;
+    console.log('✅ Found customers array with', customers.length, 'customers');
+  } else if (data.customer) {
+    customers = [data.customer];
+    console.log('✅ Found single customer object');
+  } else if (data.username || data.password || data.m3u_url) {
+    customers = [data];
+    console.log('✅ Data appears to be a customer object');
+  }
+  
+  console.log('📊 Processing customers for credential extraction:', customers.length);
+  
+  // Process each customer to extract credentials
+  customers.forEach((customer, index) => {
+    console.log(`🔐 Processing customer ${index + 1}:`, {
+      id: customer.id,
+      name: customer.name,
+      hasCredentials: !!customer.credentials,
+      hasDirectUsername: !!customer.username,
+      hasConnectionList: !!customer.connection_list
+    });
+    
+    let username: string | undefined;
+    let password: string | undefined;
+    let m3u_url: string | undefined;
+    
+    // Try to extract credentials from different locations
+    if (customer.credentials) {
+      // Credentials are in a nested credentials object
+      console.log(`📋 Found credentials object for customer ${index + 1}:`, customer.credentials);
+      username = customer.credentials.username;
+      password = customer.credentials.password;
+      m3u_url = customer.credentials.m3uUrl || customer.credentials.m3u_url;
+    } else if (customer.username) {
+      // Credentials are directly on the customer object
+      console.log(`📋 Found direct credentials for customer ${index + 1}`);
+      username = customer.username;
+      password = customer.password;
+      m3u_url = customer.m3u_url;
+    }
+    
+    if (username && password) {
+      const credentialSet = {
+        username,
+        password,
+        m3u_url: m3u_url || undefined
+      };
+      
+      // Add to credentials array
+      credentialsArray.push(credentialSet);
+      
+      // Set primary credentials (first valid set)
+      if (index === 0) {
+        primaryCredentials = credentialSet;
+      }
+      
+      // Add to flattened fields (up to 3 connections)
+      if (index < 3) {
+        const fieldNumber = index + 1;
+        flattenedFields[`username_${fieldNumber}`] = username;
+        flattenedFields[`password_${fieldNumber}`] = password;
+        if (m3u_url) {
+          flattenedFields[`m3u_url_${fieldNumber}`] = m3u_url;
+        }
+      }
+      
+      console.log(`✅ Extracted credentials for customer ${index + 1}:`, { username, password, hasM3u: !!m3u_url });
+    } else {
+      console.log(`❌ No valid credentials found for customer ${index + 1}`);
+    }
+  });
+  
+  // Handle consolidated customer with connection_list
   if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
-    console.log('🔄 Client processing consolidated customer with connection_list');
-    const customer = customers[0];
-    const connectionList = customer.connection_list;
+    console.log('🔄 Processing consolidated customer with connection_list');
+    const connectionList = customers[0].connection_list;
     
-    console.log('📊 Connection list details:', {
-      length: connectionList.length,
-      firstConnection: connectionList[0],
-      totalConnections: customer.total_connections
-    });
-    
-    connectionList.slice(0, 3).forEach((connection: any, index: number) => {
-      const fieldNumber = index + 1;
-      console.log(`🔐 Processing connection ${fieldNumber}:`, connection);
-      
-      if (connection.username) {
-        flattened[`username_${fieldNumber}`] = connection.username;
-      }
-      if (connection.password) {
-        flattened[`password_${fieldNumber}`] = connection.password;
-      }
-      if (connection.m3u_url) {
-        flattened[`m3u_url_${fieldNumber}`] = connection.m3u_url;
-      }
-    });
-    
-    flattened.total_connections = customer.total_connections || connectionList.length;
-  } else {
-    // Handle individual customer records (legacy format)
-    console.log('🔄 Client processing individual customer records');
-    
-    customers.slice(0, 3).forEach((customer, index) => {
-      const fieldNumber = index + 1;
-      console.log(`🔐 Processing customer ${fieldNumber}:`, {
-        id: customer.id,
-        username: customer.username,
-        password: customer.password,
-        m3u_url: customer.m3u_url
-      });
-      
-      if (customer.username) {
-        flattened[`username_${fieldNumber}`] = customer.username;
-      }
-      if (customer.password) {
-        flattened[`password_${fieldNumber}`] = customer.password;
-      }
-      if (customer.m3u_url) {
-        flattened[`m3u_url_${fieldNumber}`] = customer.m3u_url;
+    connectionList.forEach((connection: any, index: number) => {
+      if (connection.username && connection.password) {
+        const credentialSet = {
+          username: connection.username,
+          password: connection.password,
+          m3u_url: connection.m3u_url || undefined
+        };
+        
+        credentialsArray.push(credentialSet);
+        
+        if (index === 0) {
+          primaryCredentials = credentialSet;
+        }
+        
+        if (index < 3) {
+          const fieldNumber = index + 1;
+          flattenedFields[`username_${fieldNumber}`] = connection.username;
+          flattenedFields[`password_${fieldNumber}`] = connection.password;
+          if (connection.m3u_url) {
+            flattenedFields[`m3u_url_${fieldNumber}`] = connection.m3u_url;
+          }
+        }
+        
+        console.log(`✅ Extracted connection ${index + 1}:`, credentialSet);
       }
     });
-    
-    flattened.total_connections = customers.length;
   }
   
-  console.log('✅ Client flattened credentials result:', flattened);
-  return flattened;
+  flattenedFields.total_connections = credentialsArray.length;
+  
+  console.log('🎯 Final extraction results:', {
+    primaryCredentials,
+    credentialsCount: credentialsArray.length,
+    flattenedFieldsCount: Object.keys(flattenedFields).length
+  });
+  
+  return { flattenedFields, credentialsArray, primaryCredentials };
 }
 
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
@@ -262,21 +340,37 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
       return {
         success: false,
         message: 'Failed to create trial account',
+        raw_api_response: data,
         errors: [error?.message || 'Unknown error']
       };
     }
 
     console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
 
-    // Extract and flatten credentials with improved logic
-    const extractedCustomers = extractCustomerCredentials(data);
-    console.log('📋 Extracted customers for trial:', extractedCustomers);
+    // Extract and validate credentials
+    const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
     
-    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
+    // Validate credentials exist before continuing
+    if (!primaryCredentials.username || !primaryCredentials.password) {
+      console.error('❌ CRITICAL: No valid credentials found in API response');
+      return {
+        success: false,
+        message: 'Failed to extract valid credentials from trial account creation',
+        raw_api_response: data,
+        errors: ['missing_credentials']
+      };
+    }
+
+    console.log('✅ Trial credentials validated successfully');
 
     return {
       success: true,
       message: `Trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
+      // Primary credentials at root level
+      username: primaryCredentials.username,
+      password: primaryCredentials.password,
+      m3u_url: primaryCredentials.m3u_url,
+      // Standard fields
       name: payload.customer.name,
       email: payload.customer.email,
       device_type: payload.customer.device_type || 'Smart TV',
@@ -284,10 +378,15 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
       end_date: expirationDate.toISOString().split('T')[0],
       account_type: 'trial',
       trial_expires_at: expirationDate.toISOString(),
-      ...flattenedCredentials
+      // Flattened credentials for HighLevel
+      ...flattenedFields,
+      // Clean credentials array
+      credentials: credentialsArray,
+      // Raw response for debugging
+      raw_api_response: data
     };
   } catch (error) {
-    console.error('💥 Error handling trial creation:', error);
+    console.error('💥 Error creating trial account:', error);
     return {
       success: false,
       message: 'Internal error creating trial account',
@@ -358,21 +457,37 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
       return {
         success: false,
         message: 'Failed to create account',
+        raw_api_response: data,
         errors: [error?.message || 'Unknown error']
       };
     }
 
     console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
 
-    // Extract and flatten credentials with improved logic
-    const extractedCustomers = extractCustomerCredentials(data);
-    console.log('📋 Extracted customers for account creation:', extractedCustomers);
+    // Extract and validate credentials
+    const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
     
-    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
+    // Validate credentials exist before continuing
+    if (!primaryCredentials.username || !primaryCredentials.password) {
+      console.error('❌ CRITICAL: No valid credentials found in API response');
+      return {
+        success: false,
+        message: 'Failed to extract valid credentials from account creation',
+        raw_api_response: data,
+        errors: ['missing_credentials']
+      };
+    }
+
+    console.log('✅ Account credentials validated successfully');
 
     return {
       success: true,
       message: `Account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
+      // Primary credentials at root level
+      username: primaryCredentials.username,
+      password: primaryCredentials.password,
+      m3u_url: primaryCredentials.m3u_url,
+      // Standard fields
       name: payload.customer.name,
       email: payload.customer.email,
       device_type: payload.customer.device_type || 'Smart TV',
@@ -380,47 +495,22 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
       end_date: expirationDate.toISOString().split('T')[0],
       account_type: accountType,
       credits_used: creditsRequired,
-      ...flattenedCredentials
+      // Flattened credentials for HighLevel
+      ...flattenedFields,
+      // Clean credentials array
+      credentials: credentialsArray,
+      // Raw response for debugging
+      raw_api_response: data
     };
   } catch (error) {
     console.error('💥 Error handling account creation:', error);
     return {
       success: false,
       message: 'Internal error creating account',
+      raw_api_response: null,
       errors: [error instanceof Error ? error.message : 'Unknown error']
     };
   }
-}
-
-// New function to extract customer credentials from different response formats
-function extractCustomerCredentials(data: any): any[] {
-  console.log('🔍 Extracting customer credentials from data:', JSON.stringify(data, null, 2));
-  
-  if (!data) {
-    console.log('⚠️ No data provided for credential extraction');
-    return [];
-  }
-  
-  // Check if data.customers exists and has content
-  if (data.customers && Array.isArray(data.customers) && data.customers.length > 0) {
-    console.log('✅ Found customers array with', data.customers.length, 'customers');
-    return data.customers;
-  }
-  
-  // Check if there's a single customer object
-  if (data.customer) {
-    console.log('✅ Found single customer object');
-    return [data.customer];
-  }
-  
-  // Check if the data itself looks like a customer
-  if (data.username || data.password || data.m3u_url) {
-    console.log('✅ Data appears to be a customer object');
-    return [data];
-  }
-  
-  console.log('⚠️ No valid customer data found in response');
-  return [];
 }
 
 async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> {

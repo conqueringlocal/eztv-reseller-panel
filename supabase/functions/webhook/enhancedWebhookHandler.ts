@@ -41,6 +41,10 @@ export interface EnhancedWebhookPayload {
 interface WebhookResult {
   success: boolean;
   message: string;
+  // Direct credential fields at root level
+  username?: string;
+  password?: string;
+  m3u_url?: string;
   // Customer information
   name?: string;
   email?: string;
@@ -62,7 +66,152 @@ interface WebhookResult {
   username_3?: string;
   password_3?: string;
   m3u_url_3?: string;
+  // Clean credentials array for multiple connections
+  credentials?: Array<{
+    username: string;
+    password: string;
+    m3u_url?: string;
+  }>;
+  // Raw data dump for debugging
+  raw_api_response?: any;
   errors?: string[];
+}
+
+// Fixed credential extraction function
+function extractAndFlattenCredentials(data: any): {
+  flattenedFields: any;
+  credentialsArray: Array<{ username: string; password: string; m3u_url?: string }>;
+  primaryCredentials: { username?: string; password?: string; m3u_url?: string };
+} {
+  console.log('🔍 RAW API RESPONSE DUMP:', JSON.stringify(data, null, 2));
+  
+  const flattenedFields: any = {};
+  const credentialsArray: Array<{ username: string; password: string; m3u_url?: string }> = [];
+  let primaryCredentials: { username?: string; password?: string; m3u_url?: string } = {};
+  
+  if (!data) {
+    console.log('❌ No data provided for credential extraction');
+    return { flattenedFields, credentialsArray, primaryCredentials };
+  }
+  
+  let customers: any[] = [];
+  
+  // Extract customers from different response formats
+  if (data.customers && Array.isArray(data.customers)) {
+    customers = data.customers;
+    console.log('✅ Found customers array with', customers.length, 'customers');
+  } else if (data.customer) {
+    customers = [data.customer];
+    console.log('✅ Found single customer object');
+  } else if (data.username || data.password || data.m3u_url) {
+    customers = [data];
+    console.log('✅ Data appears to be a customer object');
+  }
+  
+  console.log('📊 Processing customers for credential extraction:', customers.length);
+  
+  // Process each customer to extract credentials
+  customers.forEach((customer, index) => {
+    console.log(`🔐 Processing customer ${index + 1}:`, {
+      id: customer.id,
+      name: customer.name,
+      hasCredentials: !!customer.credentials,
+      hasDirectUsername: !!customer.username,
+      hasConnectionList: !!customer.connection_list
+    });
+    
+    let username: string | undefined;
+    let password: string | undefined;
+    let m3u_url: string | undefined;
+    
+    // Try to extract credentials from different locations
+    if (customer.credentials) {
+      // Credentials are in a nested credentials object
+      console.log(`📋 Found credentials object for customer ${index + 1}:`, customer.credentials);
+      username = customer.credentials.username;
+      password = customer.credentials.password;
+      m3u_url = customer.credentials.m3uUrl || customer.credentials.m3u_url;
+    } else if (customer.username) {
+      // Credentials are directly on the customer object
+      console.log(`📋 Found direct credentials for customer ${index + 1}`);
+      username = customer.username;
+      password = customer.password;
+      m3u_url = customer.m3u_url;
+    }
+    
+    if (username && password) {
+      const credentialSet = {
+        username,
+        password,
+        m3u_url: m3u_url || undefined
+      };
+      
+      // Add to credentials array
+      credentialsArray.push(credentialSet);
+      
+      // Set primary credentials (first valid set)
+      if (index === 0) {
+        primaryCredentials = credentialSet;
+      }
+      
+      // Add to flattened fields (up to 3 connections)
+      if (index < 3) {
+        const fieldNumber = index + 1;
+        flattenedFields[`username_${fieldNumber}`] = username;
+        flattenedFields[`password_${fieldNumber}`] = password;
+        if (m3u_url) {
+          flattenedFields[`m3u_url_${fieldNumber}`] = m3u_url;
+        }
+      }
+      
+      console.log(`✅ Extracted credentials for customer ${index + 1}:`, { username, password, hasM3u: !!m3u_url });
+    } else {
+      console.log(`❌ No valid credentials found for customer ${index + 1}`);
+    }
+  });
+  
+  // Handle consolidated customer with connection_list
+  if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
+    console.log('🔄 Processing consolidated customer with connection_list');
+    const connectionList = customers[0].connection_list;
+    
+    connectionList.forEach((connection: any, index: number) => {
+      if (connection.username && connection.password) {
+        const credentialSet = {
+          username: connection.username,
+          password: connection.password,
+          m3u_url: connection.m3u_url || undefined
+        };
+        
+        credentialsArray.push(credentialSet);
+        
+        if (index === 0) {
+          primaryCredentials = credentialSet;
+        }
+        
+        if (index < 3) {
+          const fieldNumber = index + 1;
+          flattenedFields[`username_${fieldNumber}`] = connection.username;
+          flattenedFields[`password_${fieldNumber}`] = connection.password;
+          if (connection.m3u_url) {
+            flattenedFields[`m3u_url_${fieldNumber}`] = connection.m3u_url;
+          }
+        }
+        
+        console.log(`✅ Extracted connection ${index + 1}:`, credentialSet);
+      }
+    });
+  }
+  
+  flattenedFields.total_connections = credentialsArray.length;
+  
+  console.log('🎯 Final extraction results:', {
+    primaryCredentials,
+    credentialsCount: credentialsArray.length,
+    flattenedFieldsCount: Object.keys(flattenedFields).length
+  });
+  
+  return { flattenedFields, credentialsArray, primaryCredentials };
 }
 
 // Enhanced helper function to flatten customer credentials with comprehensive debugging
@@ -273,35 +422,49 @@ async function createTrialAccount(
       return {
         success: false,
         message: 'Failed to create trial IPTV account',
+        raw_api_response: data,
         errors: [error?.message || 'Unknown error']
       };
     }
 
     console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
 
-    // Extract and flatten credentials with improved logic
-    const extractedCustomers = extractCustomerCredentials(data);
-    console.log('📋 Extracted customers for trial:', extractedCustomers);
+    // Extract and validate credentials
+    const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
+    
+    // Validate credentials exist before continuing
+    if (!primaryCredentials.username || !primaryCredentials.password) {
+      console.error('❌ CRITICAL: No valid credentials found in API response');
+      return {
+        success: false,
+        message: 'Failed to extract valid credentials from trial account creation',
+        raw_api_response: data,
+        errors: ['missing_credentials']
+      };
+    }
+
+    console.log('✅ Trial credentials validated successfully');
     
     // Send credentials via HighLevel if contact ID provided
-    if (payload.contact_id && extractedCustomers.length > 0) {
+    if (payload.contact_id && credentialsArray.length > 0) {
       await syncCredentialsToHighLevel(
         payload.contact_id,
         customerName,
         customerEmail,
-        extractedCustomers,
+        credentialsArray,
         resellerId,
         deviceType
       );
     }
 
-    // Flatten credentials for HighLevel compatibility
-    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
-    console.log('🎯 Final flattened credentials for trial:', flattenedCredentials);
-
     return {
       success: true,
       message: `Consolidated trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
+      // Primary credentials at root level
+      username: primaryCredentials.username,
+      password: primaryCredentials.password,
+      m3u_url: primaryCredentials.m3u_url,
+      // Standard fields
       name: customerName,
       email: customerEmail,
       device_type: deviceType,
@@ -309,7 +472,12 @@ async function createTrialAccount(
       end_date: expirationDate.toISOString().split('T')[0],
       account_type: 'trial',
       trial_expires_at: expirationDate.toISOString(),
-      ...flattenedCredentials
+      // Flattened credentials for HighLevel
+      ...flattenedFields,
+      // Clean credentials array
+      credentials: credentialsArray,
+      // Raw response for debugging
+      raw_api_response: data
     };
   } catch (error) {
     console.error('💥 Error creating trial account:', error);
@@ -398,35 +566,49 @@ async function createMultiConnectionAccount(
       return {
         success: false,
         message: 'Failed to create IPTV account',
+        raw_api_response: data,
         errors: [error?.message || 'Unknown error']
       };
     }
 
     console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
 
-    // Extract and flatten credentials with improved logic
-    const extractedCustomers = extractCustomerCredentials(data);
-    console.log('📋 Extracted customers for account creation:', extractedCustomers);
+    // Extract and validate credentials
+    const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
+    
+    // Validate credentials exist before continuing
+    if (!primaryCredentials.username || !primaryCredentials.password) {
+      console.error('❌ CRITICAL: No valid credentials found in API response');
+      return {
+        success: false,
+        message: 'Failed to extract valid credentials from account creation',
+        raw_api_response: data,
+        errors: ['missing_credentials']
+      };
+    }
+
+    console.log('✅ Account credentials validated successfully');
 
     // Send credentials via HighLevel if contact ID provided
-    if (payload.contact_id && extractedCustomers.length > 0) {
+    if (payload.contact_id && credentialsArray.length > 0) {
       await syncCredentialsToHighLevel(
         payload.contact_id,
         customerName,
         customerEmail,
-        extractedCustomers,
+        credentialsArray,
         resellerId,
         deviceType
       );
     }
 
-    // Flatten credentials for HighLevel compatibility
-    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
-    console.log('🎯 Final flattened credentials:', flattenedCredentials);
-
     return {
       success: true,
       message: `Consolidated account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
+      // Primary credentials at root level
+      username: primaryCredentials.username,
+      password: primaryCredentials.password,
+      m3u_url: primaryCredentials.m3u_url,
+      // Standard fields
       name: customerName,
       email: customerEmail,
       device_type: deviceType,
@@ -434,7 +616,12 @@ async function createMultiConnectionAccount(
       end_date: expirationDate.toISOString().split('T')[0],
       account_type: accountType,
       credits_used: creditsRequired,
-      ...flattenedCredentials
+      // Flattened credentials for HighLevel
+      ...flattenedFields,
+      // Clean credentials array
+      credentials: credentialsArray,
+      // Raw response for debugging
+      raw_api_response: data
     };
   } catch (error) {
     console.error('💥 Error creating multi-connection account:', error);
@@ -768,7 +955,7 @@ async function sendRenewalConfirmationToHighLevel(
   }
 }
 
-// Main enhanced webhook processor with improved credential extraction
+// Main enhanced webhook processor
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<WebhookResult> => {
   try {
     console.log('🚀 Processing enhanced webhook payload with consolidation:', JSON.stringify(payload, null, 2));
