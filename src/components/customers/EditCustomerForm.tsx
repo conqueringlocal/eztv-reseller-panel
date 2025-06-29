@@ -135,9 +135,6 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
         />
         
         <div className="flex justify-end space-x-2">
-          <Button type="button" variant="outline" onClick={onSuccess}>
-            Cancel
-          </Button>
           <Button type="submit">Save Changes</Button>
         </div>
       </form>

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -286,12 +285,8 @@ export default function ResellerCustomers() {
         <CardContent>
           <CustomerTable 
             customers={resellerCustomers}
-            onAddClick={() => setIsAddCustomerOpen(true)}
-            onCancel={handleCancelCustomer}
+            onRefresh={refreshData}
             onRenew={handleRenewCustomer}
-            onDeactivate={handleDeactivateCustomer}
-            onManageCrm={handleManageCrmContact}
-            onSyncToCrm={handleSyncToCrm}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
           />

@@ -16,13 +16,39 @@ import {
   getConnectionSummary,
   processCustomersForDisplay
 } from '@/utils/consolidatedCustomerUtils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface CustomerTableProps {
   customers: any[];
-  onRefresh: () => void;
+  onRefresh?: () => void;
+  onAddClick?: () => void;
+  onCancel?: (customerId: string) => Promise<void>;
+  onRenew?: (customer: any) => void;
+  onDeactivate?: (customerId: string) => Promise<void>;
+  onManageCrm?: (customer: any) => void;
+  onSyncToCrm?: (customer: any) => Promise<void>;
+  statusFilter?: string;
+  onStatusFilterChange?: (filter: string) => void;
 }
 
-export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
+export function CustomerTable({ 
+  customers, 
+  onRefresh = () => {},
+  onAddClick,
+  onCancel,
+  onRenew,
+  onDeactivate,
+  onManageCrm,
+  onSyncToCrm,
+  statusFilter,
+  onStatusFilterChange
+}: CustomerTableProps) {
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
   const [viewingCredentials, setViewingCredentials] = useState<any>(null);
@@ -30,6 +56,32 @@ export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
 
   // Process customers to handle both consolidated and legacy formats
   const processedCustomers = processCustomersForDisplay(customers);
+
+  // Filter customers based on statusFilter if provided
+  const filteredCustomers = statusFilter && statusFilter !== 'all' 
+    ? processedCustomers.filter(customer => {
+        const today = new Date();
+        const sevenDaysFromNow = new Date();
+        sevenDaysFromNow.setDate(today.getDate() + 7);
+        const expirationDate = new Date(customer.expiration_date);
+        
+        switch (statusFilter) {
+          case 'active':
+            return customer.status === 'active' && !customer.is_deactivated && !customer.cancelled_at;
+          case 'expiring':
+            return !customer.is_deactivated && !customer.cancelled_at && customer.status !== 'expired' && 
+                   expirationDate > today && expirationDate <= sevenDaysFromNow;
+          case 'expired':
+            return customer.status === 'expired' && !customer.is_deactivated && !customer.cancelled_at;
+          case 'cancelled':
+            return customer.cancelled_at || customer.status === 'cancelled';
+          case 'deactivated':
+            return customer.is_deactivated;
+          default:
+            return true;
+        }
+      })
+    : processedCustomers;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -101,6 +153,16 @@ export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
     }
   };
 
+  const handleEditSuccess = () => {
+    setEditingCustomer(null);
+    onRefresh();
+  };
+
+  const handleRenewSuccess = () => {
+    setRenewingCustomer(null);
+    onRefresh();
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
   };
@@ -113,7 +175,7 @@ export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
     return diffDays;
   };
 
-  if (processedCustomers.length === 0) {
+  if (filteredCustomers.length === 0) {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
@@ -126,7 +188,7 @@ export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
   return (
     <>
       <div className="grid gap-4">
-        {processedCustomers.map((customer) => {
+        {filteredCustomers.map((customer) => {
           const daysUntilExpiration = getDaysUntilExpiration(customer.expiration_date);
           const totalConnections = getTotalConnections(customer);
           const displayName = getCustomerDisplayName(customer);
@@ -223,7 +285,7 @@ export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setRenewingCustomer(customer)}
+                    onClick={() => onRenew ? onRenew(customer) : setRenewingCustomer(customer)}
                     className="flex items-center gap-1"
                   >
                     <RotateCcw size={14} />
@@ -248,25 +310,37 @@ export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
       </div>
 
       {editingCustomer && (
-        <EditCustomerForm
-          customer={editingCustomer}
-          onClose={() => setEditingCustomer(null)}
-          onSuccess={() => {
-            setEditingCustomer(null);
-            onRefresh();
-          }}
-        />
+        <Dialog open={true} onOpenChange={() => setEditingCustomer(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Customer</DialogTitle>
+              <DialogDescription>
+                Update customer information
+              </DialogDescription>
+            </DialogHeader>
+            <EditCustomerForm
+              customer={editingCustomer}
+              onSuccess={handleEditSuccess}
+            />
+          </DialogContent>
+        </Dialog>
       )}
 
-      {renewingCustomer && (
-        <RenewCustomerForm
-          customer={renewingCustomer}
-          onClose={() => setRenewingCustomer(null)}
-          onSuccess={() => {
-            setRenewingCustomer(null);
-            onRefresh();
-          }}
-        />
+      {renewingCustomer && !onRenew && (
+        <Dialog open={true} onOpenChange={() => setRenewingCustomer(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Renew Customer</DialogTitle>
+              <DialogDescription>
+                Extend customer subscription
+              </DialogDescription>
+            </DialogHeader>
+            <RenewCustomerForm
+              customer={renewingCustomer}
+              onSuccess={handleRenewSuccess}
+            />
+          </DialogContent>
+        </Dialog>
       )}
 
       {viewingCredentials && (

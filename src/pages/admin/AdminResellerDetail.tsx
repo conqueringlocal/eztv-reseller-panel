@@ -18,7 +18,7 @@ import { toast } from 'sonner';
 export default function AdminResellerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { resellers, customers, creditLogs, addCredits, removeCredits } = useApp();
+  const { resellers, customers, creditLogs, addCredits, removeCredits, refreshData } = useApp();
   const [showCreditForm, setShowCreditForm] = useState(false);
 
   const reseller = resellers.find(r => r.id === id);
@@ -220,7 +220,7 @@ export default function AdminResellerDetail() {
             <CardDescription>List of customers associated with this reseller</CardDescription>
           </CardHeader>
           <CardContent>
-            <CustomerTable customers={resellerCustomers} />
+            <CustomerTable customers={resellerCustomers} onRefresh={refreshData} />
           </CardContent>
         </Card>
       </div>

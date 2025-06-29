@@ -21,7 +21,7 @@ import { AddCustomerForm } from '@/components/customers/AddCustomerForm';
 
 export default function ResellerDashboard() {
   const { user } = useAuth();
-  const { customers } = useApp();
+  const { customers, refreshData } = useApp();
   const navigate = useNavigate();
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   
@@ -106,10 +106,7 @@ export default function ResellerDashboard() {
       >
         <CustomerTable 
           customers={resellerCustomers.slice(0, 5)}
-          onAddClick={() => setIsAddCustomerOpen(true)}
-          onCancel={() => {}} // Dashboard view doesn't need cancel functionality
-          onRenew={() => {}} // Dashboard view doesn't need renew functionality  
-          onDeactivate={() => {}} // Dashboard view doesn't need deactivate functionality
+          onRefresh={refreshData}
         />
       </DashboardCard>
       
