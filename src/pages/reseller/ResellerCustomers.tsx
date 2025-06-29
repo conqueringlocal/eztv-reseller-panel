@@ -7,6 +7,7 @@ import { CustomerTable } from '@/components/customers/CustomerTable';
 import { CustomerStatsHeader } from '@/components/customers/CustomerStatsHeader';
 import { CustomerActions } from '@/components/customers/CustomerActions';
 import { CustomerDialogsManager } from '@/components/customers/CustomerDialogsManager';
+import { ConsolidationManager } from '@/components/customers/ConsolidationManager';
 import { useCustomerOperations } from '@/hooks/useCustomerOperations';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users } from 'lucide-react';
@@ -75,6 +76,13 @@ export default function ResellerCustomers() {
           onAddCustomerClick={() => setIsAddCustomerOpen(true)}
         />
       </div>
+
+      {/* Add ConsolidationManager component */}
+      <ConsolidationManager
+        customers={resellerCustomers}
+        resellerId={user?.id || ''}
+        onConsolidationComplete={refreshData}
+      />
       
       <CustomerStatsHeader
         customers={resellerCustomers}
