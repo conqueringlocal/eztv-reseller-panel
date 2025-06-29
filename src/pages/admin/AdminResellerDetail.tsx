@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -10,6 +9,7 @@ import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CustomerTable } from '@/components/customers/CustomerTable';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
+import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
 import { ArrowLeft, Users, DollarSign, Activity, Calendar, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -145,6 +145,10 @@ export default function AdminResellerDetail() {
 
       <div className="mb-6">
         <HighLevelSettings resellerId={id!} isAdminView={true} />
+      </div>
+
+      <div className="mb-6">
+        <AdminApiKeyManager resellerId={id!} resellerName={reseller.name} />
       </div>
 
       <div className="mb-6">
