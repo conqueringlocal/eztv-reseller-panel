@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { useApp } from '@/contexts/AppContext';
@@ -7,24 +7,83 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Check } from 'lucide-react';
+import { CreditCard, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 const creditPackages = [
-  { id: 'price_1RUeGZDUqLxD4hMqrbZxgfR0', name: '5 Credits', price: '$15', description: 'Basic package for small needs' },
-  { id: 'price_1RUeGrDUqLxD4hMqBk7JdjJH', name: '10 Credits', price: '$30', description: 'Standard package, most popular' },
-  { id: 'price_1RUeHFDUqLxD4hMqwhdgyVa8', name: '20 Credits', price: '$60', description: 'Premium package with better value' },
-  { id: 'price_1RUeHXDUqLxD4hMqkX5XE0PR', name: '50 Credits', price: '$150', description: 'Bulk package for best value' }
+  { id: 'price_1RUeGZDUqLxD4hMqrbZxgfR0', name: '5 Credits', price: '$15', description: 'Basic package for small needs', credits: 5 },
+  { id: 'price_1RUeGrDUqLxD4hMqBk7JdjJH', name: '10 Credits', price: '$30', description: 'Standard package, most popular', credits: 10 },
+  { id: 'price_1RUeHFDUqLxD4hMqwhdgyVa8', name: '20 Credits', price: '$60', description: 'Premium package with better value', credits: 20 },
+  { id: 'price_1RUeHXDUqLxD4hMqkX5XE0PR', name: '50 Credits', price: '$150', description: 'Bulk package for best value', credits: 50 }
 ];
 
 export default function ResellerCredits() {
   const { user } = useAuth();
   const { creditLogs, refreshData } = useApp();
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   // Filter credit logs for current reseller
   const userCreditLogs = creditLogs.filter(log => log.reseller_id === user?.id);
+
+  // Handle success/cancel URL parameters
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const sessionId = searchParams.get('session_id');
+    const creditsAdded = searchParams.get('credits');
+    const canceled = searchParams.get('canceled');
+
+    if (success === 'true' && sessionId && creditsAdded) {
+      handlePaymentSuccess(sessionId, parseInt(creditsAdded));
+    } else if (canceled === 'true') {
+      toast.error('Payment was canceled. No charges were made.');
+      // Clear URL parameters
+      navigate('/reseller/credits', { replace: true });
+    }
+  }, [searchParams, navigate]);
+
+  const handlePaymentSuccess = async (sessionId: string, creditsAdded: number) => {
+    try {
+      // Verify the payment with our backend
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session?.access_token) {
+        console.error('Session error during verification:', sessionError);
+        toast.error('Authentication error. Please refresh and try again.');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('verify-checkout', {
+        body: { sessionId },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        }
+      });
+
+      if (error) {
+        console.error('Verification error:', error);
+        toast.error('Payment verification failed. Please contact support if credits were not added.');
+        return;
+      }
+
+      if (data?.success) {
+        toast.success(`Successfully added ${creditsAdded} credits to your account!`);
+        // Refresh the app data to update credit balance
+        await refreshData();
+      } else {
+        toast.error('Payment verification failed. Please contact support.');
+      }
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      toast.error('Error verifying payment. Please contact support if needed.');
+    } finally {
+      // Clear URL parameters
+      navigate('/reseller/credits', { replace: true });
+    }
+  };
 
   const handlePurchase = async (priceId: string) => {
     if (!user) {
@@ -68,8 +127,16 @@ export default function ResellerCredits() {
       console.log('Function response:', data);
       
       if (data?.url) {
-        console.log('Redirecting to Stripe checkout:', data.url);
-        window.location.href = data.url;
+        console.log('Opening Stripe checkout in new tab:', data.url);
+        // Open Stripe checkout in a new tab instead of redirecting current window
+        const newWindow = window.open(data.url, '_blank');
+        
+        if (!newWindow) {
+          toast.error('Pop-up blocked. Please allow pop-ups and try again.');
+          return;
+        }
+        
+        toast.success('Stripe checkout opened in new tab. Complete your payment there.');
       } else {
         throw new Error('No checkout URL returned from server');
       }
@@ -83,6 +150,8 @@ export default function ResellerCredits() {
         toast.error('Invalid product selected. Please try again.');
       } else if (error.message?.includes('Stripe not configured')) {
         toast.error('Payment system is not configured. Please contact support.');
+      } else if (error.message?.includes('Pop-up blocked')) {
+        toast.error('Pop-up was blocked. Please allow pop-ups for this site and try again.');
       } else {
         toast.error('Failed to start checkout: ' + (error.message || 'Unknown error'));
       }
@@ -144,23 +213,33 @@ export default function ResellerCredits() {
             </div>
             
             <div className="mt-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-              <h4 className="font-medium">About Credits</h4>
-              <p className="text-sm text-gray-600 mt-1">
-                Credits are used to provision new customer accounts. 1 credit equals 1 month of service for one customer.
-                After purchasing, credits will be immediately added to your account balance.
-              </p>
+              <h4 className="font-medium mb-3">Important Information</h4>
               
-              <div className="mt-4 flex items-start space-x-2">
-                <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                <span className="text-sm text-gray-600">
-                  All payments are processed securely through Stripe
-                </span>
-              </div>
-              <div className="mt-2 flex items-start space-x-2">
-                <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                <span className="text-sm text-gray-600">
-                  Credits never expire and can be used at any time
-                </span>
+              <div className="space-y-2">
+                <div className="flex items-start space-x-2">
+                  <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-600">
+                    Credits are used to provision new customer accounts (1 credit = 1 month of service)
+                  </span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-600">
+                    All payments are processed securely through Stripe
+                  </span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-600">
+                    Credits never expire and can be used at any time
+                  </span>
+                </div>
+                <div className="flex items-start space-x-2">
+                  <AlertCircle size={20} className="text-blue-500 shrink-0 mt-0.5" />
+                  <span className="text-sm text-gray-600">
+                    Checkout will open in a new tab. Complete payment there and return here to see updated balance
+                  </span>
+                </div>
               </div>
             </div>
           </CardContent>
