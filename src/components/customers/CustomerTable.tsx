@@ -203,16 +203,6 @@ export function CustomerTable({
           const totalConnections = getTotalConnections(customer);
           const displayName = getCustomerDisplayName(customer);
           
-          // Debug logging to trace data flow
-          console.log('Rendering customer:', {
-            id: customer.id,
-            name: displayName,
-            start_date: startDate,
-            expiration_date: expirationDate,
-            plan_duration: planDuration,
-            device_type: deviceType
-          });
-          
           return (
             <Card key={customer.id} className="w-full">
               <CardHeader className="pb-3">

@@ -69,7 +69,7 @@ interface ResellerDataResult {
   errors?: string[];
 }
 
-// Fixed credential extraction function
+// Enhanced credential extraction function with consolidation support
 function extractAndFlattenCredentials(data: any): {
   flattenedFields: any;
   credentialsArray: Array<{ username: string; password: string; m3u_url?: string }>;
@@ -171,6 +171,42 @@ function extractAndFlattenCredentials(data: any): {
   });
   
   return { flattenedFields, credentialsArray, primaryCredentials };
+}
+
+// Enhanced consolidation function for post-creation cleanup
+async function consolidateCustomerIfNeeded(
+  resellerId: string, 
+  customerName: string, 
+  customerEmail: string
+): Promise<{ success: boolean; consolidatedId?: string }> {
+  try {
+    console.log('🔄 Checking for consolidation opportunities...');
+    
+    // Call the database function to consolidate duplicates
+    const { data, error } = await supabase.rpc('consolidate_duplicate_customers', {
+      reseller_id_param: resellerId,
+      customer_name_param: customerName,
+      customer_email_param: customerEmail
+    });
+    
+    if (error) {
+      console.error('❌ Consolidation error:', error);
+      return { success: false };
+    }
+    
+    if (data && data.length > 0) {
+      console.log('✅ Customer records consolidated:', data[0]);
+      return { 
+        success: true, 
+        consolidatedId: data[0].consolidated_customer_id 
+      };
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('💥 Error during consolidation:', error);
+    return { success: false };
+  }
 }
 
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
@@ -282,6 +318,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
       body: {
         resellerId: resellerData.data.resellerId,
+        serviceCall: true, // Enable service call mode to bypass JWT authentication
         customerData: {
           name: payload.customer.name,
           email: payload.customer.email,
@@ -314,6 +351,13 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
 
     console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
 
+    // Attempt consolidation after creation
+    await consolidateCustomerIfNeeded(
+      resellerData.data.resellerId,
+      payload.customer.name,
+      payload.customer.email
+    );
+
     // Extract and validate credentials
     const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
     
@@ -332,7 +376,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
 
     return {
       success: true,
-      message: `Trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
+      message: `Consolidated trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
       // Primary credentials at root level
       username: primaryCredentials.username,
       password: primaryCredentials.password,
@@ -401,6 +445,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
       body: {
         resellerId: resellerData.data.resellerId,
+        serviceCall: true, // Enable service call mode to bypass JWT authentication
         customerData: {
           name: payload.customer.name,
           email: payload.customer.email,
@@ -431,6 +476,13 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
 
     console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
 
+    // Attempt consolidation after creation
+    await consolidateCustomerIfNeeded(
+      resellerData.data.resellerId,
+      payload.customer.name,
+      payload.customer.email
+    );
+
     // Extract and validate credentials
     const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
     
@@ -449,7 +501,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
 
     return {
       success: true,
-      message: `Account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
+      message: `Consolidated account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
       // Primary credentials at root level
       username: primaryCredentials.username,
       password: primaryCredentials.password,

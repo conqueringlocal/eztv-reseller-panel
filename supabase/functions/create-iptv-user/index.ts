@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -10,6 +9,7 @@ const corsHeaders = {
 interface CreateUserRequest {
   resellerId: string;
   serviceCall?: boolean; // New parameter to indicate internal service calls
+  consolidate?: boolean; // New parameter to enable post-creation consolidation
   customerData: {
     name: string;
     email: string;
@@ -43,11 +43,11 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    const { resellerId, customerData, serviceCall = false }: CreateUserRequest = await req.json();
+    const { resellerId, customerData, serviceCall = false, consolidate = true }: CreateUserRequest = await req.json();
 
     console.log(`🚀 Creating consolidated M3U users for reseller: ${resellerId}`);
     console.log(`📊 Customer data:`, customerData);
-    console.log(`🔧 Service call mode: ${serviceCall}`);
+    console.log(`🔧 Service call mode: ${serviceCall}, Consolidation: ${consolidate}`);
 
     // Only verify JWT authentication if this is NOT a service call
     if (!serviceCall) {
@@ -124,20 +124,9 @@ serve(async (req) => {
       );
     }
 
-    // Get API credentials from environment
-    const iptvApiKey = Deno.env.get('IPTV_API_KEY');
-    const panelUrl = Deno.env.get('IPTV_PANEL_URL') || 'https://my8k.me/api/api.php';
-
-    if (!iptvApiKey) {
-      console.error('IPTV API key not configured in secrets');
-      return new Response(
-        JSON.stringify({ error: 'IPTV API key not configured. Please contact administrator.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     // Generate a unique customer group ID for consolidation
-    const customerGroupId = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
+    const baseCustomerName = customerData.name.toLowerCase().replace(/\s+/g, '');
+    const customerGroupId = `${baseCustomerName}_${Date.now()}`;
     console.log(`👥 Using customer group for consolidation: ${customerGroupId}`);
 
     const createdCustomers = [];
@@ -149,14 +138,6 @@ serve(async (req) => {
       try {
         console.log(`🔄 Creating connection ${i} of ${connectionsToCreate} for consolidation`);
 
-        // Generate unique username and password for this connection
-        const timestamp = Date.now();
-        const randomNum = Math.floor(Math.random() * 1000);
-        const username = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${i}_${timestamp}_${randomNum}`.substring(0, 32);
-        const password = `pass_${i}_${timestamp}_${randomNum}`;
-
-        console.log(`🔐 Generated credentials for connection ${i} - Username: ${username}`);
-
         // Create IPTV user based on provider
         let iptvResponse;
         let iptvResult;
@@ -165,6 +146,21 @@ serve(async (req) => {
         if (provider === '8k') {
           console.log(`📡 Creating 8K M3U user ${i} with 1 connection`);
           
+          const iptvApiKey = Deno.env.get('IPTV_API_KEY');
+          const panelUrl = Deno.env.get('IPTV_PANEL_URL') || 'https://my8k.me/api/api.php';
+
+          if (!iptvApiKey) {
+            throw new Error('IPTV API key not configured');
+          }
+
+          // Generate unique username and password for this connection
+          const timestamp = Date.now();
+          const randomNum = Math.floor(Math.random() * 1000);
+          const username = `${baseCustomerName}_${i}_${timestamp}_${randomNum}`.substring(0, 32);
+          const password = `pass_${i}_${timestamp}_${randomNum}`;
+
+          console.log(`🔐 Generated credentials for connection ${i} - Username: ${username}`);
+
           const createUrl = new URL(panelUrl);
           createUrl.searchParams.append("api_key", iptvApiKey);
           createUrl.searchParams.append("action", "user_create");
@@ -172,8 +168,8 @@ serve(async (req) => {
           createUrl.searchParams.append("password", password);
           createUrl.searchParams.append("package_id", customerData.packageId);
           createUrl.searchParams.append("duration", customerData.planDuration.toString());
-          createUrl.searchParams.append("max_connections", "1"); // Each account gets 1 connection
-          createUrl.searchParams.append("country", "us"); // Add the country parameter
+          createUrl.searchParams.append("max_connections", "1");
+          createUrl.searchParams.append("country", "us");
 
           console.log(`🔗 8K Create API URL for connection ${i}: ${createUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
 
@@ -186,20 +182,20 @@ serve(async (req) => {
             throw new Error(iptvResult.error || iptvResult.result || 'Failed to create IPTV user');
           }
 
-          // Create customer record in database for 8K (will be consolidated later)
+          // Create customer record in database
           console.log(`💾 Creating customer record for connection ${i}`);
           const { data: newCustomer, error: createError } = await supabaseClient
             .from('customers')
             .insert({
               reseller_id: resellerId,
-              name: `${customerData.name} (Connection ${i})`,
+              name: customerData.name,
               email: customerData.email,
               username: username,
               password: password,
               mac_address: customerData.macAddress || null,
               device_type: customerData.deviceType,
               plan_duration: customerData.planDuration,
-              max_connections: 1, // Each account has 1 connection
+              max_connections: 1,
               current_connections: 0,
               connection_details: [],
               start_date: customerData.startDate,
@@ -208,12 +204,12 @@ serve(async (req) => {
               is_deactivated: customerData.isDeactivated,
               is_trial: customerData.isTrial || false,
               provider: provider,
-              customer_group: customerGroupId, // Group all connections together for consolidation
+              customer_group: customerGroupId,
               customer_group_id: iptvResult.user_info?.group_id?.toString() || null,
               m3u_url: iptvResult.user_info?.m3u_url || null,
               connection_sequence: i,
-              total_connections: connectionsToCreate, // Set total connections for later consolidation
-              connection_list: [] // Will be populated during consolidation
+              total_connections: 1,
+              connection_list: []
             })
             .select()
             .single();
@@ -246,9 +242,9 @@ serve(async (req) => {
           const { data: trexResult, error: trexError } = await supabaseClient.functions.invoke('create-trex-user', {
             body: {
               resellerId: resellerId,
-              serviceCall: true, // Enable service call mode to bypass JWT authentication
+              serviceCall: true,
               customerData: {
-                name: `${customerData.name} (Connection ${i})`,
+                name: customerData.name,
                 email: customerData.email,
                 macAddress: customerData.macAddress,
                 deviceType: customerData.deviceType,
@@ -269,7 +265,7 @@ serve(async (req) => {
             throw new Error(trexResult?.error || trexError?.message || 'Failed to create Trex IPTV user');
           }
 
-          // Extract the first customer from the Trex result (since we're creating 1 connection at a time)
+          // Extract the first customer from the Trex result
           const trexCustomer = trexResult.customers?.[0];
           if (!trexCustomer) {
             throw new Error('No customer data returned from Trex API');
@@ -330,7 +326,6 @@ serve(async (req) => {
 
       if (creditError) {
         console.error('Error deducting credits:', creditError);
-        // Customer was created but credits weren't deducted - log this for manual review
       }
 
       // Log the credit transaction
@@ -341,13 +336,33 @@ serve(async (req) => {
           action: 'account_creation',
           credits_used: creditsRequired,
           connections_used: connectionsToCreate,
-          customer_id: createdCustomers[0].id, // Use first customer ID as reference
+          customer_id: createdCustomers[0].id,
           customer_name: customerData.name,
           notes: `Created ${createdCustomers.length} M3U accounts with 1 connection each (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''}) - Group: ${customerGroupId} - Ready for consolidation`
         });
 
       if (logError) {
         console.error('Error logging credit transaction:', logError);
+      }
+
+      // Perform consolidation if enabled and multiple connections were created
+      if (consolidate && createdCustomers.length > 1) {
+        console.log('🔄 Attempting post-creation consolidation...');
+        
+        try {
+          const { data: consolidationResult, error: consolidationError } = await supabaseClient.rpc('consolidate_customer_connections', {
+            customer_group_name: customerGroupId,
+            reseller_id_param: resellerId
+          });
+
+          if (consolidationError) {
+            console.error('❌ Consolidation failed:', consolidationError);
+          } else if (consolidationResult && consolidationResult.length > 0) {
+            console.log('✅ Successfully consolidated customer connections:', consolidationResult[0]);
+          }
+        } catch (consolidationErr) {
+          console.error('💥 Consolidation error:', consolidationErr);
+        }
       }
     }
 
@@ -366,11 +381,12 @@ serve(async (req) => {
           totalCreated: totalCreated,
           totalFailed: totalFailed,
           customerGroup: customerGroupId,
-          readyForConsolidation: true
+          readyForConsolidation: true,
+          consolidated: consolidate && totalCreated > 1
         },
         provider: provider,
         creditsUsed: totalCreated > 0 ? creditsRequired : 0,
-        connectionList: connectionList // Include connection list for consolidation
+        connectionList: connectionList
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
