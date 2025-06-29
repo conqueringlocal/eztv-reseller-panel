@@ -1,21 +1,31 @@
 
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { 
-  getCustomersNeedingConsolidation,
-  getCustomerDisplayName 
-} from '@/utils/customerConsolidation';
+import { getCustomersNeedingConsolidation } from '@/utils/customerConsolidation';
 import { Customer } from '@/contexts/AppContext';
-import { Users, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ConsolidationHeader } from './consolidation/ConsolidationHeader';
+import { ConsolidationGroupItem } from './consolidation/ConsolidationGroupItem';
+import { ConsolidationResults } from './consolidation/ConsolidationResults';
+import { ConsolidationActions } from './consolidation/ConsolidationActions';
+import { ConsolidationSuccess } from './consolidation/ConsolidationSuccess';
 
 interface ConsolidationManagerProps {
   customers: Customer[];
   resellerId: string;
   onConsolidationComplete?: () => void;
+}
+
+interface ConsolidationResult {
+  groupKey: string;
+  name: string;
+  email: string;
+  success: boolean;
+  consolidatedId?: string;
+  totalConnections?: number;
+  error?: string;
+  message: string;
 }
 
 export function ConsolidationManager({ 
@@ -24,7 +34,7 @@ export function ConsolidationManager({
   onConsolidationComplete 
 }: ConsolidationManagerProps) {
   const [isConsolidating, setIsConsolidating] = useState(false);
-  const [consolidationResults, setConsolidationResults] = useState<any[]>([]);
+  const [consolidationResults, setConsolidationResults] = useState<ConsolidationResult[]>([]);
   
   const customersNeedingConsolidation = getCustomersNeedingConsolidation(customers);
   
@@ -107,32 +117,12 @@ export function ConsolidationManager({
   };
   
   if (customersNeedingConsolidation.length === 0) {
-    return (
-      <Card className="mb-4">
-        <CardContent className="flex items-center gap-3 py-4">
-          <CheckCircle className="h-5 w-5 text-green-500" />
-          <div>
-            <p className="font-medium text-green-700">All customers are properly consolidated</p>
-            <p className="text-sm text-gray-600">No duplicate records found</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <ConsolidationSuccess />;
   }
   
   return (
     <Card className="mb-6">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-yellow-500" />
-            <CardTitle className="text-lg">Customer Consolidation Required</CardTitle>
-          </div>
-          <Badge variant="destructive">
-            {customersNeedingConsolidation.length} groups need consolidation
-          </Badge>
-        </div>
-      </CardHeader>
+      <ConsolidationHeader groupCount={customersNeedingConsolidation.length} />
       
       <CardContent className="space-y-4">
         <div className="text-sm text-gray-600 mb-4">
@@ -142,65 +132,27 @@ export function ConsolidationManager({
         {/* Individual Groups */}
         <div className="space-y-3">
           {customersNeedingConsolidation.map((group) => (
-            <div key={group.groupKey} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <Users className="h-4 w-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">{group.name}</p>
-                  <p className="text-sm text-gray-600">{group.email}</p>
-                  <p className="text-xs text-gray-500">
-                    {group.customers.length} duplicate records found
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                {consolidationResults.find(r => r.groupKey === group.groupKey) ? (
-                  <Badge variant={consolidationResults.find(r => r.groupKey === group.groupKey)?.success ? "default" : "destructive"}>
-                    {consolidationResults.find(r => r.groupKey === group.groupKey)?.success ? "Consolidated" : "Failed"}
-                  </Badge>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => handleConsolidateGroup(group.groupKey, group.customers, group.name, group.email)}
-                    disabled={isConsolidating}
-                  >
-                    {isConsolidating ? 'Processing...' : 'Consolidate'}
-                  </Button>
-                )}
-              </div>
-            </div>
+            <ConsolidationGroupItem
+              key={group.groupKey}
+              groupKey={group.groupKey}
+              name={group.name}
+              email={group.email}
+              customerCount={group.customers.length}
+              customers={group.customers}
+              isConsolidating={isConsolidating}
+              result={consolidationResults.find(r => r.groupKey === group.groupKey)}
+              onConsolidate={handleConsolidateGroup}
+            />
           ))}
         </div>
         
-        {/* Consolidation Results */}
-        {consolidationResults.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <h4 className="font-medium text-sm">Consolidation Results:</h4>
-            {consolidationResults.map((result, index) => (
-              <div 
-                key={index} 
-                className={`p-2 rounded text-sm ${
-                  result.success ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
-                }`}
-              >
-                {result.message}
-              </div>
-            ))}
-          </div>
-        )}
+        <ConsolidationResults results={consolidationResults} />
         
-        {/* Consolidate All Button */}
-        <div className="pt-4 border-t">
-          <Button
-            onClick={handleConsolidateAll}
-            disabled={isConsolidating}
-            className="w-full"
-          >
-            {isConsolidating ? 'Consolidating All Groups...' : `Consolidate All ${customersNeedingConsolidation.length} Groups`}
-          </Button>
-        </div>
+        <ConsolidationActions 
+          groupCount={customersNeedingConsolidation.length}
+          isConsolidating={isConsolidating}
+          onConsolidateAll={handleConsolidateAll}
+        />
       </CardContent>
     </Card>
   );
