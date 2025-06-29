@@ -3,74 +3,12 @@ import { Customer } from '@/contexts/AppContext';
 import { ConsolidatedCustomer, CustomerGroup } from './types';
 
 // Re-export types and functions from separate modules
-export { CustomerCredentials, ConsolidatedCustomer, CustomerGroup } from './types';
+export type { CustomerCredentials, ConsolidatedCustomer, CustomerGroup } from './types';
 export { getCustomersNeedingConsolidation, processCustomersForDisplay } from './groupingUtils';
 export { getFieldValue } from './fieldHelpers';
 export { getConnectionDetails } from './connectionUtils';  
 export { isConsolidatedCustomer, getCustomerDisplayName, getTotalConnections, getConnectionSummary } from './customerInfo';
 export { getCustomerCredentials, formatCredentialsForDisplay } from './credentialsUtils';
-
-/**
- * Check if a customer is in the new consolidated format
- */
-export const isConsolidatedCustomer = (customer: any): boolean => {
-  return Boolean(
-    customer && 
-    (customer.total_connections > 1 || 
-     customer.connection_details?.length > 0 || 
-     customer.connection_list?.length > 0)
-  );
-};
-
-/**
- * Get the display name for a customer (consolidated or legacy)
- */
-export const getCustomerDisplayName = (customer: any): string => {
-  if (!customer) return 'Unknown Customer';
-  
-  // For consolidated customers, use the clean name
-  if (isConsolidatedCustomer(customer)) {
-    return customer.name || 'Unknown Customer';
-  }
-  
-  // For legacy customers, clean up connection suffixes
-  const name = customer.name || 'Unknown Customer';
-  return name.replace(/\s*\(Connection\s+\d+\)$/i, '').trim();
-};
-
-/**
- * Get the total number of connections for a customer
- */
-export const getTotalConnections = (customer: any): number => {
-  if (!customer) return 0;
-  
-  // For consolidated customers
-  if (isConsolidatedCustomer(customer)) {
-    return customer.total_connections || 
-           customer.connection_details?.length || 
-           customer.connection_list?.length || 
-           customer.max_connections || 1;
-  }
-  
-  // For legacy customers
-  return customer.max_connections || 1;
-};
-
-/**
- * Get connection summary text for display
- */
-export const getConnectionSummary = (customer: any): string => {
-  const total = getTotalConnections(customer);
-  return total === 1 ? '1 Connection' : `${total} Connections`;
-};
-
-/**
- * Get field value with fallback for different naming conventions
- */
-export const getFieldValue = (customer: any, dbField: string, jsField: string): any => {
-  if (!customer) return null;
-  return customer[dbField] ?? customer[jsField] ?? null;
-};
 
 /**
  * Get all connection credentials for a customer
@@ -85,11 +23,15 @@ export const getConnectionCredentials = (customer: any): Array<{
   if (!customer) return [];
   
   // For consolidated customers
-  if (isConsolidatedCustomer(customer)) {
-    const connectionDetails = customer.connection_details || customer.connection_list || [];
-    if (Array.isArray(connectionDetails) && connectionDetails.length > 0) {
-      return connectionDetails;
-    }
+  const connectionList = customer.connection_list || customer.connectionList || [];
+  if (Array.isArray(connectionList) && connectionList.length > 0) {
+    return connectionList.map((conn: any, index: number) => ({
+      connection_number: conn.connection_number || index + 1,
+      username: conn.username || '',
+      password: conn.password || '',
+      m3u_url: conn.m3u_url,
+      status: conn.status || customer.status || 'active'
+    }));
   }
   
   // For legacy customers, return single connection
@@ -122,7 +64,8 @@ export const groupCustomersByEmailAndReseller = (customers: Customer[]): Custome
   
   customers.forEach(customer => {
     // Skip already consolidated customers
-    if (isConsolidatedCustomer(customer)) {
+    const connectionList = customer.connection_list || customer.connectionList || [];
+    if (Array.isArray(connectionList) && connectionList.length > 0) {
       return;
     }
     
@@ -138,7 +81,7 @@ export const groupCustomersByEmailAndReseller = (customers: Customer[]): Custome
     .map(([groupKey, customerList]) => ({
       groupKey,
       customers: customerList,
-      name: getCustomerDisplayName(customerList[0]),
+      name: customerList[0].name?.replace(/\s*\(Connection\s+\d+\)\s*/gi, '').trim() || 'Unknown Customer',
       email: customerList[0].email,
       resellerId: customerList[0].resellerId
     }));
@@ -160,7 +103,7 @@ export const convertToConsolidatedCustomer = (customerGroup: CustomerGroup): Con
   
   return {
     id: primaryCustomer.id,
-    name: getCustomerDisplayName(primaryCustomer),
+    name: primaryCustomer.name?.replace(/\s*\(Connection\s+\d+\)\s*/gi, '').trim() || 'Unknown Customer',
     email: primaryCustomer.email,
     deviceType: primaryCustomer.deviceType,
     planDuration: primaryCustomer.planDuration,
@@ -178,59 +121,6 @@ export const convertToConsolidatedCustomer = (customerGroup: CustomerGroup): Con
     connectionEntries: customerGroup.customers,
     connectionDetails: connectionDetails
   };
-};
-
-/**
- * Process customers list to handle both consolidated and legacy formats
- */
-export const processCustomersForDisplay = (customers: Customer[]): any[] => {
-  const processedCustomers: any[] = [];
-  const processedGroups = new Set<string>();
-  
-  customers.forEach(customer => {
-    // If it's already consolidated, add it directly
-    if (isConsolidatedCustomer(customer)) {
-      processedCustomers.push(customer);
-      return;
-    }
-    
-    // For legacy customers, check if we should group them
-    const customerGroup = customer.customerGroup;
-    if (customerGroup && !processedGroups.has(customerGroup)) {
-      // Find all customers in the same group
-      const groupCustomers = customers.filter(c => c.customerGroup === customerGroup);
-      
-      if (groupCustomers.length > 1) {
-        // Create a consolidated representation
-        const consolidatedCustomer = {
-          ...customer,
-          name: getCustomerDisplayName(customer),
-          total_connections: groupCustomers.length,
-          connection_details: groupCustomers.map((c, index) => ({
-            connection_number: index + 1,
-            username: c.username,
-            password: c.password,
-            m3u_url: c.m3uUrl,
-            status: c.status
-          })),
-          isConsolidated: true
-        };
-        
-        processedCustomers.push(consolidatedCustomer);
-        processedGroups.add(customerGroup);
-      } else {
-        // Single customer in group
-        processedCustomers.push(customer);
-        processedGroups.add(customerGroup);
-      }
-    } else if (!customerGroup) {
-      // Customer without group
-      processedCustomers.push(customer);
-    }
-    // Skip customers that are part of an already processed group
-  });
-  
-  return processedCustomers;
 };
 
 /**
