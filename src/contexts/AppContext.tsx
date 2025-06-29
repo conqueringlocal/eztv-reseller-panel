@@ -155,19 +155,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       
       setIsLoading(true);
-      // Fetch customers for the specific reseller
-      console.log(`Fetching customers for reseller ID: ${user.id}`);
-      const { data, error } = await supabase
+      let query = supabase
         .from('customers')
         .select('*')
-        .eq('reseller_id', user.id)
         .order('created_at', { ascending: false });
+
+      // Only filter by reseller_id if user is not an admin
+      if (user.role !== 'admin') {
+        console.log(`Fetching customers for reseller ID: ${user.id}`);
+        query = query.eq('reseller_id', user.id);
+      } else {
+        console.log('Fetching all customers for admin user');
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('Error fetching customers:', error);
         toast.error('Failed to load customer data');
       } else {
-        console.log(`Successfully fetched ${data.length} customers`);
+        const customerCount = data.length;
+        console.log(`Successfully fetched ${customerCount} customers`);
         const convertedCustomers = data.map(convertDbCustomerToCustomer);
         setCustomers(convertedCustomers);
       }

@@ -4,10 +4,22 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { useApp } from '@/contexts/AppContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, DollarSign, Activity, TrendingUp } from 'lucide-react';
+import { Users, DollarSign, Activity, TrendingUp, AlertCircle } from 'lucide-react';
+import { EmptyState } from '@/components/dashboard/EmptyState';
 
 export default function AdminDashboard() {
-  const { customers, resellers, creditLogs } = useApp();
+  const { customers, resellers, creditLogs, isLoading } = useApp();
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center min-h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-eztv-600"></div>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   // Calculate stats
   const totalCustomers = customers.length;
@@ -31,7 +43,7 @@ export default function AdminDashboard() {
       action: log.action,
       credits: log.credits_used,
       reseller: resellers.find(r => r.id === log.reseller_id)?.name || 'Unknown',
-      customer: log.customer_name || 'N/A', // Fixed: use customer_name instead of customerName
+      customer: log.customer_name || 'N/A',
       date: new Date(log.date).toLocaleDateString()
     }));
 
@@ -93,7 +105,11 @@ export default function AdminDashboard() {
                 </div>
               ))
             ) : (
-              <p className="text-gray-500 text-center py-4">No recent activity</p>
+              <EmptyState
+                title="No Recent Activity"
+                description="No credit transactions have been recorded recently"
+                icon={<AlertCircle className="h-12 w-12" />}
+              />
             )}
           </div>
         </CardContent>
