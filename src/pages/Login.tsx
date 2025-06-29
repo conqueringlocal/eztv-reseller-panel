@@ -121,43 +121,47 @@ export default function Login() {
   };
   
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-light via-white to-brand-primary/5 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50/30 p-4">
       <div className="w-full max-w-md">
-        {/* Brand Header */}
+        {/* Enhanced Brand Header */}
         <div className="text-center mb-8">
-          <div className="mb-4 flex justify-center">
-            <div className="h-16 w-16 bg-gradient-to-br from-brand-primary to-brand-secondary rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-2xl">E</span>
+          <div className="mb-6 flex justify-center">
+            <div className="relative">
+              <img 
+                src="/lovable-uploads/f71dcfeb-b101-4ccc-abc8-d4e8bb8811a4.png" 
+                alt="EZTV Club Logo" 
+                className="h-20 w-auto object-contain drop-shadow-lg"
+              />
             </div>
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-brand-primary to-brand-secondary bg-clip-text text-transparent">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-eztv-600 to-eztv-800 bg-clip-text text-transparent mb-2">
             EZTV Club
           </h1>
-          <p className="text-gray-600 mt-2 font-medium">Reseller Dashboard</p>
-          <div className="mt-1 h-1 w-20 bg-gradient-to-r from-brand-primary to-brand-secondary mx-auto rounded-full"></div>
+          <p className="text-gray-600 font-medium text-lg">Reseller Dashboard</p>
+          <div className="mt-3 h-1 w-24 bg-gradient-to-r from-eztv-500 to-eztv-700 mx-auto rounded-full"></div>
         </div>
         
-        <Card className="w-full shadow-xl border-0 bg-white/80 backdrop-blur-sm">
-          <CardHeader className="text-center pb-6">
-            <CardTitle className="text-2xl text-brand-primary">Welcome Back</CardTitle>
+        <Card className="w-full shadow-2xl border-0 bg-white/90 backdrop-blur-sm">
+          <CardHeader className="text-center pb-6 pt-8">
+            <CardTitle className="text-2xl text-eztv-700 mb-2">Welcome Back</CardTitle>
             <CardDescription className="text-center text-gray-600">
-              Enter your email and password to access your dashboard
+              Sign in to access your reseller dashboard
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-8 pb-8">
             <Form {...loginForm}>
-              <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
+              <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-5">
                 <FormField
                   control={loginForm.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-brand-dark">Email</FormLabel>
+                      <FormLabel className="text-eztv-800 font-semibold">Email Address</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="name@example.com" 
+                          placeholder="Enter your email address" 
                           type="email" 
-                          className="border-brand-primary/20 focus:border-brand-primary focus:ring-brand-primary/20"
+                          className="h-12 border-eztv-200 focus:border-eztv-500 focus:ring-eztv-500/20 transition-all duration-200"
                           {...field} 
                         />
                       </FormControl>
@@ -171,12 +175,12 @@ export default function Login() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-brand-dark">Password</FormLabel>
+                      <FormLabel className="text-eztv-800 font-semibold">Password</FormLabel>
                       <FormControl>
                         <Input 
-                          placeholder="••••••••" 
+                          placeholder="Enter your password" 
                           type="password" 
-                          className="border-brand-primary/20 focus:border-brand-primary focus:ring-brand-primary/20"
+                          className="h-12 border-eztv-200 focus:border-eztv-500 focus:ring-eztv-500/20 transition-all duration-200"
                           {...field} 
                         />
                       </FormControl>
@@ -187,22 +191,22 @@ export default function Login() {
                 
                 <Button 
                   type="submit" 
-                  className="w-full bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-secondary hover:to-brand-primary transition-all duration-300 text-white font-medium py-2.5 shadow-lg hover:shadow-xl" 
+                  className="w-full h-12 bg-gradient-to-r from-eztv-600 to-eztv-700 hover:from-eztv-700 hover:to-eztv-800 text-white font-semibold shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200" 
                   disabled={isLoading}
                 >
-                  {isLoading ? 'Signing In...' : 'Sign In'}
+                  {isLoading ? 'Signing In...' : 'Sign In to Dashboard'}
                 </Button>
 
-                <div className="text-center pt-2">
+                <div className="text-center pt-4">
                   <Dialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
                     <DialogTrigger asChild>
-                      <Button variant="link" className="text-sm text-brand-primary hover:text-brand-secondary transition-colors">
+                      <Button variant="link" className="text-sm text-eztv-600 hover:text-eztv-700 transition-colors font-medium">
                         Forgot your password?
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="sm:max-w-md">
                       <DialogHeader>
-                        <DialogTitle className="text-brand-primary">Reset Password</DialogTitle>
+                        <DialogTitle className="text-eztv-700">Reset Password</DialogTitle>
                         <DialogDescription>
                           Enter your email address and we'll send you a link to reset your password.
                         </DialogDescription>
@@ -214,12 +218,12 @@ export default function Login() {
                             name="email"
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Email</FormLabel>
+                                <FormLabel className="text-eztv-800 font-semibold">Email Address</FormLabel>
                                 <FormControl>
                                   <Input 
-                                    placeholder="name@example.com" 
+                                    placeholder="Enter your email address" 
                                     type="email" 
-                                    className="border-brand-primary/20 focus:border-brand-primary focus:ring-brand-primary/20"
+                                    className="border-eztv-200 focus:border-eztv-500 focus:ring-eztv-500/20"
                                     {...field} 
                                   />
                                 </FormControl>
@@ -227,19 +231,19 @@ export default function Login() {
                               </FormItem>
                             )}
                           />
-                          <div className="flex justify-end space-x-2">
+                          <div className="flex justify-end space-x-2 pt-2">
                             <Button 
                               type="button" 
                               variant="outline" 
                               onClick={() => setResetDialogOpen(false)}
-                              className="border-brand-primary/20 text-brand-primary hover:bg-brand-primary/5"
+                              className="border-eztv-200 text-eztv-700 hover:bg-eztv-50"
                             >
                               Cancel
                             </Button>
                             <Button 
                               type="submit" 
                               disabled={isResetLoading}
-                              className="bg-gradient-to-r from-brand-primary to-brand-secondary hover:from-brand-secondary hover:to-brand-primary"
+                              className="bg-gradient-to-r from-eztv-600 to-eztv-700 hover:from-eztv-700 hover:to-eztv-800"
                             >
                               {isResetLoading ? 'Sending...' : 'Send Reset Link'}
                             </Button>
@@ -253,6 +257,11 @@ export default function Login() {
             </Form>
           </CardContent>
         </Card>
+        
+        {/* Subtle footer branding */}
+        <div className="text-center mt-6 text-sm text-gray-500">
+          Powered by EZTV Club Platform
+        </div>
       </div>
     </div>
   );

@@ -10,15 +10,15 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-brand-primary text-white hover:bg-brand-secondary shadow-md hover:shadow-lg transition-all duration-200",
+        default: "bg-eztv-600 text-white hover:bg-eztv-700 shadow-md hover:shadow-lg transition-all duration-200",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
-          "border border-brand-primary/20 bg-background hover:bg-brand-primary/5 hover:text-brand-primary",
+          "border border-eztv-200 bg-background hover:bg-eztv-50 hover:text-eztv-700",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-brand-primary/5 hover:text-brand-primary",
-        link: "text-brand-primary underline-offset-4 hover:underline hover:text-brand-secondary",
+        ghost: "hover:bg-eztv-50 hover:text-eztv-700",
+        link: "text-eztv-600 underline-offset-4 hover:underline hover:text-eztv-700",
       },
       size: {
         default: "h-10 px-4 py-2",
