@@ -64,6 +64,7 @@ export type Database = {
         Row: {
           cancelled_at: string | null
           connection_details: Json | null
+          connection_list: Json | null
           connection_number: number | null
           connection_sequence: number | null
           created_at: string
@@ -94,6 +95,7 @@ export type Database = {
         Insert: {
           cancelled_at?: string | null
           connection_details?: Json | null
+          connection_list?: Json | null
           connection_number?: number | null
           connection_sequence?: number | null
           created_at?: string
@@ -124,6 +126,7 @@ export type Database = {
         Update: {
           cancelled_at?: string | null
           connection_details?: Json | null
+          connection_list?: Json | null
           connection_number?: number | null
           connection_sequence?: number | null
           created_at?: string
@@ -454,6 +457,14 @@ export type Database = {
       can_purchase_credits: {
         Args: { reseller_id: string }
         Returns: boolean
+      }
+      consolidate_customer_connections: {
+        Args: { customer_group_name: string; reseller_id_param: string }
+        Returns: {
+          consolidated_customer_id: string
+          total_connections: number
+          connection_details: Json
+        }[]
       }
       generate_api_key: {
         Args: Record<PropertyKey, never>

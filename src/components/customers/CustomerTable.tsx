@@ -1,479 +1,280 @@
 
-import React, { useState, useMemo } from 'react';
-import { Customer } from '@/contexts/AppContext';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Edit, Trash2, RotateCcw, Eye, Users } from 'lucide-react';
 import { EditCustomerForm } from './EditCustomerForm';
-import { MoreVertical, Eye, RotateCcw, UserX, Settings, RefreshCw, Crown, ChevronUp, ChevronDown, Edit } from 'lucide-react';
-import { formatDate, isExpiringSoon } from '@/lib/utils';
-import { consolidateCustomers, ConsolidatedCustomer, getCustomerDisplayName } from '@/utils/customerGrouping';
-
-type SortField = 'name' | 'status' | 'device' | 'plan' | 'expiration';
-type SortDirection = 'asc' | 'desc';
-type StatusFilter = 'all' | 'active' | 'expiring' | 'expired' | 'cancelled' | 'deactivated';
+import { RenewCustomerForm } from './RenewCustomerForm';
+import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { 
+  isConsolidatedCustomer, 
+  getCustomerDisplayName, 
+  getTotalConnections, 
+  getConnectionSummary,
+  processCustomersForDisplay
+} from '@/utils/consolidatedCustomerUtils';
 
 interface CustomerTableProps {
-  customers: Customer[];
-  onAddClick?: () => void;
-  onCancel?: (customerId: string) => void;
-  onRenew?: (customer: Customer) => void;
-  onDeactivate?: (customerId: string) => void;
-  onManageCrm?: (customer: Customer) => void;
-  onSyncToCrm?: (customer: Customer) => void;
-  statusFilter?: StatusFilter;
-  onStatusFilterChange?: (filter: StatusFilter) => void;
+  customers: any[];
+  onRefresh: () => void;
 }
 
-export function CustomerTable({ 
-  customers, 
-  onAddClick, 
-  onCancel, 
-  onRenew, 
-  onDeactivate,
-  onManageCrm,
-  onSyncToCrm,
-  statusFilter = 'all',
-  onStatusFilterChange
-}: CustomerTableProps) {
-  const [search, setSearch] = useState('');
-  const [selectedCustomer, setSelectedCustomer] = useState<ConsolidatedCustomer | null>(null);
-  const [isCredentialsOpen, setIsCredentialsOpen] = useState(false);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [customerToEdit, setCustomerToEdit] = useState<ConsolidatedCustomer | null>(null);
-  const [sortField, setSortField] = useState<SortField>('name');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+export function CustomerTable({ customers, onRefresh }: CustomerTableProps) {
+  const [editingCustomer, setEditingCustomer] = useState<any>(null);
+  const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
+  const [viewingCredentials, setViewingCredentials] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
-  // Consolidate customers for display
-  const consolidatedCustomers = consolidateCustomers(customers);
+  // Process customers to handle both consolidated and legacy formats
+  const processedCustomers = processCustomersForDisplay(customers);
 
-  // Define getStatusValue function BEFORE using it in useMemo
-  const getStatusValue = (customer: ConsolidatedCustomer) => {
-    if (customer.isDeactivated) return 4;
-    if (customer.status === 'cancelled') return 3;
-    if (customer.status === 'expired') return 2;
-    if (isExpiringSoon(customer.expirationDate)) return 1;
-    return 0; // active
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'bg-green-100 text-green-800';
+      case 'expired':
+        return 'bg-red-100 text-red-800';
+      case 'expiring_soon':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'cancelled':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
 
-  // Filter and sort customers
-  const filteredAndSortedCustomers = useMemo(() => {
-    let filtered = consolidatedCustomers;
-
-    // Apply search filter
-    if (search) {
-      filtered = filtered.filter(
-        (customer) =>
-          customer.name.toLowerCase().includes(search.toLowerCase()) ||
-          customer.email.toLowerCase().includes(search.toLowerCase()) ||
-          customer.deviceType.toLowerCase().includes(search.toLowerCase())
-      );
+  const handleDelete = async (customer: any) => {
+    if (!window.confirm(`Are you sure you want to delete ${getCustomerDisplayName(customer)}? This action cannot be undone.`)) {
+      return;
     }
 
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      const today = new Date();
-      const sevenDaysFromNow = new Date();
-      sevenDaysFromNow.setDate(today.getDate() + 7);
-
-      filtered = filtered.filter(customer => {
-        switch (statusFilter) {
-          case 'active':
-            return customer.status === 'active' && !customer.isDeactivated && !customer.cancelledAt;
-          case 'expiring':
-            if (customer.isDeactivated || customer.cancelledAt || customer.status === 'expired') return false;
-            const expirationDate = new Date(customer.expirationDate);
-            return expirationDate > today && expirationDate <= sevenDaysFromNow;
-          case 'expired':
-            return customer.status === 'expired' && !customer.isDeactivated && !customer.cancelledAt;
-          case 'cancelled':
-            return customer.cancelledAt || customer.status === 'cancelled';
-          case 'deactivated':
-            return customer.isDeactivated;
-          default:
-            return true;
+    setIsDeleting(customer.id);
+    
+    try {
+      let deleteResult;
+      
+      if (isConsolidatedCustomer(customer)) {
+        // For consolidated customers, delete the single record
+        // The connection_list contains all the connection details
+        const { error } = await supabase
+          .from('customers')
+          .delete()
+          .eq('id', customer.id);
+          
+        deleteResult = { error };
+      } else {
+        // For legacy customers, check if part of a group
+        if (customer.customer_group) {
+          // Delete all customers in the same group
+          const { error } = await supabase
+            .from('customers')
+            .delete()
+            .eq('customer_group', customer.customer_group)
+            .eq('reseller_id', customer.reseller_id);
+            
+          deleteResult = { error };
+        } else {
+          // Delete single customer
+          const { error } = await supabase
+            .from('customers')
+            .delete()
+            .eq('id', customer.id);
+            
+          deleteResult = { error };
         }
-      });
-    }
-
-    // Apply sorting
-    return filtered.sort((a, b) => {
-      let aValue: any;
-      let bValue: any;
-
-      switch (sortField) {
-        case 'name':
-          aValue = getCustomerDisplayName(a).toLowerCase();
-          bValue = getCustomerDisplayName(b).toLowerCase();
-          break;
-        case 'status':
-          aValue = getStatusValue(a);
-          bValue = getStatusValue(b);
-          break;
-        case 'device':
-          aValue = a.deviceType.toLowerCase();
-          bValue = b.deviceType.toLowerCase();
-          break;
-        case 'plan':
-          aValue = a.planDuration;
-          bValue = b.planDuration;
-          break;
-        case 'expiration':
-          aValue = new Date(a.expirationDate).getTime();
-          bValue = new Date(b.expirationDate).getTime();
-          break;
-        default:
-          return 0;
       }
 
-      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }, [consolidatedCustomers, search, statusFilter, sortField, sortDirection, getStatusValue]);
+      if (deleteResult.error) {
+        throw deleteResult.error;
+      }
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
+      toast.success(`Customer ${getCustomerDisplayName(customer)} has been deleted successfully`);
+      onRefresh();
+    } catch (error: any) {
+      console.error('Error deleting customer:', error);
+      toast.error('Failed to delete customer: ' + error.message);
+    } finally {
+      setIsDeleting(null);
     }
   };
 
-  const getSortIcon = (field: SortField) => {
-    if (sortField !== field) return null;
-    return sortDirection === 'asc' ? 
-      <ChevronUp className="h-4 w-4 ml-1" /> : 
-      <ChevronDown className="h-4 w-4 ml-1" />;
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString();
   };
 
-  const getStatusBadge = (customer: ConsolidatedCustomer) => {
-    if (customer.isDeactivated) {
-      return <Badge variant="secondary">Deactivated</Badge>;
-    }
-    
-    if (customer.status === 'cancelled') {
-      return <Badge variant="destructive">Cancelled</Badge>;
-    }
-    
-    if (customer.status === 'expired') {
-      return <Badge variant="destructive">Expired</Badge>;
-    }
-    
-    if (isExpiringSoon(customer.expirationDate)) {
-      return <Badge variant="outline" className="border-yellow-500 text-yellow-700">Expiring Soon</Badge>;
-    }
-    
-    return <Badge variant="default" className="bg-green-600">Active</Badge>;
+  const getDaysUntilExpiration = (expirationDate: string) => {
+    const expDate = new Date(expirationDate);
+    const today = new Date();
+    const diffTime = expDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
   };
 
-  const handleViewCredentials = (customer: ConsolidatedCustomer) => {
-    setSelectedCustomer(customer);
-    setIsCredentialsOpen(true);
-  };
-
-  const handleEditCustomer = (customer: ConsolidatedCustomer) => {
-    setCustomerToEdit(customer);
-    setIsEditOpen(true);
-  };
-
-  const handleRenew = (customer: ConsolidatedCustomer) => {
-    // Use the primary customer for renewal
-    onRenew?.(customer.connectionEntries[0]);
-  };
-
-  const handleDeactivate = (customerId: string) => {
-    onDeactivate?.(customerId);
-  };
-
-  const handleCancel = (customerId: string) => {
-    onCancel?.(customerId);
-  };
-
-  const handleManageCrm = (customer: ConsolidatedCustomer) => {
-    // Use the primary customer for CRM management
-    onManageCrm?.(customer.connectionEntries[0]);
-  };
-
-  const handleSyncToCrm = (customer: ConsolidatedCustomer) => {
-    // Use the primary customer for CRM sync
-    onSyncToCrm?.(customer.connectionEntries[0]);
-  };
-
-  if (customers.length === 0) {
+  if (processedCustomers.length === 0) {
     return (
-      <div className="text-center py-8">
-        <p className="text-gray-500 mb-4">No customers found. Start by adding your first customer.</p>
-        {onAddClick && <Button onClick={onAddClick}>Add Customer</Button>}
-      </div>
+      <Card>
+        <CardContent className="flex items-center justify-center py-8">
+          <p className="text-gray-500">No customers found</p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <Input
-        placeholder="Search customers..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
-      
-      <div className="border rounded-md overflow-hidden">
-        <Table>
-          <TableHeader className="bg-gray-50">
-            <TableRow>
-              <TableHead>
-                <Button 
-                  variant="ghost" 
-                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
-                  onClick={() => handleSort('name')}
-                >
-                  Customer
-                  {getSortIcon('name')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button 
-                  variant="ghost" 
-                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
-                  onClick={() => handleSort('device')}
-                >
-                  Device
-                  {getSortIcon('device')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button 
-                  variant="ghost" 
-                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
-                  onClick={() => handleSort('plan')}
-                >
-                  Plan
-                  {getSortIcon('plan')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button 
-                  variant="ghost" 
-                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
-                  onClick={() => handleSort('status')}
-                >
-                  Status
-                  {getSortIcon('status')}
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button 
-                  variant="ghost" 
-                  className="h-auto p-0 font-medium hover:bg-transparent flex items-center"
-                  onClick={() => handleSort('expiration')}
-                >
-                  Expiration
-                  {getSortIcon('expiration')}
-                </Button>
-              </TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredAndSortedCustomers.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={6} className="text-center py-6 text-gray-500">
-                  No customers found matching your search or filter.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredAndSortedCustomers.map((customer) => (
-                <TableRow key={customer.id} className="hover:bg-gray-50">
-                  <TableCell>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <div className="font-medium">{customer.name}</div>
-                        {customer.isTrial && (
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                            <Crown className="h-3 w-3 mr-1" />
-                            Trial
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-sm text-gray-500">{customer.email}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{customer.deviceType}</div>
-                      {customer.totalConnections > 1 ? (
-                        <div className="text-sm text-gray-500">
-                          {customer.totalConnections} connections
-                        </div>
-                      ) : (
-                        customer.macAddress && (
-                          <div className="text-sm text-gray-500">{customer.macAddress}</div>
-                        )
+    <>
+      <div className="grid gap-4">
+        {processedCustomers.map((customer) => {
+          const daysUntilExpiration = getDaysUntilExpiration(customer.expiration_date);
+          const totalConnections = getTotalConnections(customer);
+          const displayName = getCustomerDisplayName(customer);
+          
+          return (
+            <Card key={customer.id} className="w-full">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <CardTitle className="text-lg">{displayName}</CardTitle>
+                    {totalConnections > 1 && (
+                      <Badge variant="secondary" className="flex items-center gap-1">
+                        <Users size={12} />
+                        {getConnectionSummary(customer)}
+                      </Badge>
+                    )}
+                    {isConsolidatedCustomer(customer) && (
+                      <Badge variant="outline" className="text-xs">
+                        Consolidated
+                      </Badge>
+                    )}
+                  </div>
+                  <Badge className={getStatusColor(customer.status)}>
+                    {customer.status}
+                  </Badge>
+                </div>
+                <p className="text-sm text-gray-600">{customer.email}</p>
+              </CardHeader>
+              
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Device Type</p>
+                    <p className="text-sm">{customer.device_type}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Connections</p>
+                    <p className="text-sm">{totalConnections}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Plan Duration</p>
+                    <p className="text-sm">{customer.plan_duration} month{customer.plan_duration > 1 ? 's' : ''}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Provider</p>
+                    <p className="text-sm">{customer.provider || '8K'}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Start Date</p>
+                    <p className="text-sm">{formatDate(customer.start_date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Expiration Date</p>
+                    <div className="flex items-center space-x-2">
+                      <p className="text-sm">{formatDate(customer.expiration_date)}</p>
+                      {daysUntilExpiration <= 7 && daysUntilExpiration > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          {daysUntilExpiration} days left
+                        </Badge>
+                      )}
+                      {daysUntilExpiration <= 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          Expired
+                        </Badge>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{customer.planDuration} month{customer.planDuration !== 1 ? 's' : ''}</div>
-                      <div className="text-sm text-gray-500">Started {formatDate(customer.startDate)}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {getStatusBadge(customer)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm">
-                      {formatDate(customer.expirationDate)}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem 
-                          onClick={() => handleViewCredentials(customer)}
-                          className="cursor-pointer"
-                        >
-                          <Eye className="mr-2 h-4 w-4" />
-                          View Credentials
-                        </DropdownMenuItem>
-                        
-                        <DropdownMenuItem 
-                          onClick={() => handleEditCustomer(customer)}
-                          className="cursor-pointer"
-                        >
-                          <Edit className="mr-2 h-4 w-4" />
-                          Edit Customer
-                        </DropdownMenuItem>
-                        
-                        {!customer.isDeactivated && customer.status !== 'cancelled' && (
-                          <>
-                            {onRenew && (
-                              <DropdownMenuItem 
-                                onClick={() => handleRenew(customer)}
-                                className="cursor-pointer"
-                              >
-                                <RotateCcw className="mr-2 h-4 w-4" />
-                                Renew
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {customer.highlevelContactId && onManageCrm && (
-                              <DropdownMenuItem 
-                                onClick={() => handleManageCrm(customer)}
-                                className="cursor-pointer"
-                              >
-                                <Settings className="mr-2 h-4 w-4" />
-                                Manage CRM
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {!customer.highlevelContactId && onSyncToCrm && (
-                              <DropdownMenuItem 
-                                onClick={() => handleSyncToCrm(customer)}
-                                className="cursor-pointer"
-                              >
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                Sync to CRM
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {(onDeactivate || onCancel) && <DropdownMenuSeparator />}
-                            
-                            {onDeactivate && (
-                              <DropdownMenuItem 
-                                onClick={() => handleDeactivate(customer.id)}
-                                className="cursor-pointer text-orange-600"
-                              >
-                                <UserX className="mr-2 h-4 w-4" />
-                                Deactivate
-                              </DropdownMenuItem>
-                            )}
-                            
-                            {onCancel && (
-                              <DropdownMenuItem 
-                                onClick={() => handleCancel(customer.id)}
-                                className="cursor-pointer text-red-600"
-                              >
-                                <UserX className="mr-2 h-4 w-4" />
-                                Cancel
-                              </DropdownMenuItem>
-                            )}
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setViewingCredentials(customer)}
+                    className="flex items-center gap-1"
+                  >
+                    <Eye size={14} />
+                    View Credentials
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingCustomer(customer)}
+                    className="flex items-center gap-1"
+                  >
+                    <Edit size={14} />
+                    Edit
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRenewingCustomer(customer)}
+                    className="flex items-center gap-1"
+                  >
+                    <RotateCcw size={14} />
+                    Renew
+                  </Button>
+                  
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleDelete(customer)}
+                    disabled={isDeleting === customer.id}
+                    className="flex items-center gap-1"
+                  >
+                    <Trash2 size={14} />
+                    {isDeleting === customer.id ? 'Deleting...' : 'Delete'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
-      {selectedCustomer && (
-        <CustomerCredentialsDialog
-          customer={selectedCustomer}
-          open={isCredentialsOpen}
-          onOpenChange={(open) => {
-            setIsCredentialsOpen(open);
-            if (!open) {
-              setSelectedCustomer(null);
-            }
+      {editingCustomer && (
+        <EditCustomerForm
+          customer={editingCustomer}
+          onClose={() => setEditingCustomer(null)}
+          onSuccess={() => {
+            setEditingCustomer(null);
+            onRefresh();
           }}
         />
       )}
 
-      {customerToEdit && (
-        <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Customer</DialogTitle>
-              <DialogDescription>
-                Update customer information. Changes will be applied to all connections for this customer.
-              </DialogDescription>
-            </DialogHeader>
-            <EditCustomerForm 
-              customer={customerToEdit.connectionEntries[0]} 
-              onSuccess={() => {
-                setIsEditOpen(false);
-                setCustomerToEdit(null);
-              }} 
-            />
-          </DialogContent>
-        </Dialog>
+      {renewingCustomer && (
+        <RenewCustomerForm
+          customer={renewingCustomer}
+          onClose={() => setRenewingCustomer(null)}
+          onSuccess={() => {
+            setRenewingCustomer(null);
+            onRefresh();
+          }}
+        />
       )}
-    </div>
+
+      {viewingCredentials && (
+        <CustomerCredentialsDialog
+          customer={viewingCredentials}
+          onClose={() => setViewingCredentials(null)}
+        />
+      )}
+    </>
   );
 }

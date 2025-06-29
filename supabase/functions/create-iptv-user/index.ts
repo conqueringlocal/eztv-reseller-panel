@@ -26,6 +26,8 @@ interface CreateUserRequest {
     accountType: 'm3u' | 'mag';
     status: string;
     isDeactivated: boolean;
+    isTrial?: boolean;
+    trialDurationHours?: number;
   };
 }
 
@@ -43,7 +45,7 @@ serve(async (req) => {
 
     const { resellerId, customerData, serviceCall = false }: CreateUserRequest = await req.json();
 
-    console.log(`🚀 Creating M3U users for reseller: ${resellerId}`);
+    console.log(`🚀 Creating consolidated M3U users for reseller: ${resellerId}`);
     console.log(`📊 Customer data:`, customerData);
     console.log(`🔧 Service call mode: ${serviceCall}`);
 
@@ -92,7 +94,7 @@ serve(async (req) => {
     console.log(`📱 Using provider: ${provider}`);
 
     const connectionsToCreate = customerData.maxConnections || customerData.connections;
-    console.log(`🔌 Creating ${connectionsToCreate} separate accounts`);
+    console.log(`🔌 Creating ${connectionsToCreate} separate accounts for consolidation`);
 
     // Calculate required credits using the database function
     const { data: creditsRequired, error: creditsError } = await supabaseClient.rpc('calculate_credits_required', {
@@ -134,17 +136,18 @@ serve(async (req) => {
       );
     }
 
-    // Generate a unique customer group ID
+    // Generate a unique customer group ID for consolidation
     const customerGroupId = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
-    console.log(`👥 Using customer group: ${customerGroupId}`);
+    console.log(`👥 Using customer group for consolidation: ${customerGroupId}`);
 
     const createdCustomers = [];
     const failedConnections = [];
+    const connectionList = [];
 
-    // Create separate accounts for each connection
+    // Create separate accounts for each connection (will be consolidated later)
     for (let i = 1; i <= connectionsToCreate; i++) {
       try {
-        console.log(`🔄 Creating connection ${i} of ${connectionsToCreate}`);
+        console.log(`🔄 Creating connection ${i} of ${connectionsToCreate} for consolidation`);
 
         // Generate unique username and password for this connection
         const timestamp = Date.now();
@@ -157,7 +160,7 @@ serve(async (req) => {
         // Create IPTV user based on provider
         let iptvResponse;
         let iptvResult;
-        let customerRecord = null; // Initialize customer record variable
+        let customerRecord = null;
 
         if (provider === '8k') {
           console.log(`📡 Creating 8K M3U user ${i} with 1 connection`);
@@ -183,7 +186,7 @@ serve(async (req) => {
             throw new Error(iptvResult.error || iptvResult.result || 'Failed to create IPTV user');
           }
 
-          // Create customer record in database for 8K
+          // Create customer record in database for 8K (will be consolidated later)
           console.log(`💾 Creating customer record for connection ${i}`);
           const { data: newCustomer, error: createError } = await supabaseClient
             .from('customers')
@@ -203,11 +206,14 @@ serve(async (req) => {
               expiration_date: customerData.expirationDate,
               status: customerData.status,
               is_deactivated: customerData.isDeactivated,
+              is_trial: customerData.isTrial || false,
               provider: provider,
-              customer_group: customerGroupId, // Group all connections together
+              customer_group: customerGroupId, // Group all connections together for consolidation
               customer_group_id: iptvResult.user_info?.group_id?.toString() || null,
               m3u_url: iptvResult.user_info?.m3u_url || null,
-              connection_sequence: i
+              connection_sequence: i,
+              total_connections: connectionsToCreate, // Set total connections for later consolidation
+              connection_list: [] // Will be populated during consolidation
             })
             .select()
             .single();
@@ -223,6 +229,15 @@ serve(async (req) => {
           }
 
           customerRecord = newCustomer;
+
+          // Add to connection list for consolidation
+          connectionList.push({
+            connection_number: i,
+            username: username,
+            password: password,
+            m3u_url: iptvResult.user_info?.m3u_url || null,
+            status: customerData.status
+          });
 
         } else if (provider === 'trex') {
           console.log(`📡 Creating Trex M3U user ${i} with 1 connection`);
@@ -268,6 +283,15 @@ serve(async (req) => {
             }
           };
 
+          // Add to connection list for consolidation
+          connectionList.push({
+            connection_number: i,
+            username: trexCustomer.username,
+            password: trexCustomer.password,
+            m3u_url: trexCustomer.m3u_url,
+            status: customerData.status
+          });
+
         } else {
           throw new Error(`Unsupported provider: ${provider}`);
         }
@@ -284,7 +308,7 @@ serve(async (req) => {
             }
           });
 
-          console.log(`✅ Successfully created connection ${i}`);
+          console.log(`✅ Successfully created connection ${i} for consolidation`);
         }
 
       } catch (error) {
@@ -319,7 +343,7 @@ serve(async (req) => {
           connections_used: connectionsToCreate,
           customer_id: createdCustomers[0].id, // Use first customer ID as reference
           customer_name: customerData.name,
-          notes: `Created ${createdCustomers.length} M3U accounts with 1 connection each (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''}) - Group: ${customerGroupId}`
+          notes: `Created ${createdCustomers.length} M3U accounts with 1 connection each (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''}) - Group: ${customerGroupId} - Ready for consolidation`
         });
 
       if (logError) {
@@ -330,7 +354,7 @@ serve(async (req) => {
     const totalCreated = createdCustomers.length;
     const totalFailed = failedConnections.length;
 
-    console.log(`✅ M3U multi-connection creation complete: ${totalCreated} created, ${totalFailed} failed`);
+    console.log(`✅ M3U multi-connection creation complete: ${totalCreated} created, ${totalFailed} failed - Ready for consolidation`);
 
     return new Response(
       JSON.stringify({ 
@@ -341,10 +365,12 @@ serve(async (req) => {
           totalRequested: connectionsToCreate,
           totalCreated: totalCreated,
           totalFailed: totalFailed,
-          customerGroup: customerGroupId
+          customerGroup: customerGroupId,
+          readyForConsolidation: true
         },
         provider: provider,
-        creditsUsed: totalCreated > 0 ? creditsRequired : 0
+        creditsUsed: totalCreated > 0 ? creditsRequired : 0,
+        connectionList: connectionList // Include connection list for consolidation
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
