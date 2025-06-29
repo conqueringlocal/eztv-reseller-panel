@@ -24,7 +24,6 @@ import AdminSettings from "./pages/admin/AdminSettings";
 import ResellerDashboard from "./pages/reseller/ResellerDashboard";
 import ResellerCustomers from "./pages/reseller/ResellerCustomers";
 import ResellerCredits from "./pages/reseller/ResellerCredits";
-import ResellerCreditPurchase from "./pages/reseller/ResellerCreditPurchase";
 import ResellerSubResellers from "./pages/reseller/ResellerSubResellers";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
 import Webhook from "./pages/Webhook";
@@ -118,13 +117,6 @@ function App() {
                     <ProtectedRoute allowedRoles={['reseller']}>
                       <ResellerCredits />
                     </ProtectedRoute>
-                  } />
-                  
-                  {/* Credit Purchase Route - Protected by CreditPurchaseRoute */}
-                  <Route path="/reseller/credits/purchase" element={
-                    <CreditPurchaseRoute>
-                      <ResellerCreditPurchase />
-                    </CreditPurchaseRoute>
                   } />
                   
                   {/* Sub-Resellers Route */}
