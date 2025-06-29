@@ -58,7 +58,7 @@ interface ResellerDataResult {
   errors?: string[];
 }
 
-// Helper function to flatten customer credentials
+// Enhanced helper function to flatten customer credentials with better debugging
 function flattenCustomerCredentials(customers: any[]): any {
   console.log('🔐 Client flattenCustomerCredentials - Input customers:', JSON.stringify(customers, null, 2));
   
@@ -69,12 +69,22 @@ function flattenCustomerCredentials(customers: any[]): any {
     return flattened;
   }
   
-  // Handle consolidated customer with connection_list
-  if (customers.length === 1 && customers[0].connection_list) {
+  // Handle consolidated customer with connection_list (new format)
+  if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
     console.log('🔄 Client processing consolidated customer with connection_list');
-    const connectionList = customers[0].connection_list;
+    const customer = customers[0];
+    const connectionList = customer.connection_list;
+    
+    console.log('📊 Connection list details:', {
+      length: connectionList.length,
+      firstConnection: connectionList[0],
+      totalConnections: customer.total_connections
+    });
+    
     connectionList.slice(0, 3).forEach((connection: any, index: number) => {
       const fieldNumber = index + 1;
+      console.log(`🔐 Processing connection ${fieldNumber}:`, connection);
+      
       if (connection.username) {
         flattened[`username_${fieldNumber}`] = connection.username;
       }
@@ -86,12 +96,20 @@ function flattenCustomerCredentials(customers: any[]): any {
       }
     });
     
-    flattened.total_connections = customers[0].total_connections || connectionList.length;
+    flattened.total_connections = customer.total_connections || connectionList.length;
   } else {
-    // Handle individual customer records
+    // Handle individual customer records (legacy format)
     console.log('🔄 Client processing individual customer records');
+    
     customers.slice(0, 3).forEach((customer, index) => {
       const fieldNumber = index + 1;
+      console.log(`🔐 Processing customer ${fieldNumber}:`, {
+        id: customer.id,
+        username: customer.username,
+        password: customer.password,
+        m3u_url: customer.m3u_url
+      });
+      
       if (customer.username) {
         flattened[`username_${fieldNumber}`] = customer.username;
       }
@@ -250,8 +268,11 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
 
     console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
 
-    // Flatten credentials for HighLevel compatibility
-    const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
+    // Extract and flatten credentials with improved logic
+    const extractedCustomers = extractCustomerCredentials(data);
+    console.log('📋 Extracted customers for trial:', extractedCustomers);
+    
+    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
 
     return {
       success: true,
@@ -343,8 +364,11 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
 
     console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
 
-    // Flatten credentials for HighLevel compatibility
-    const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
+    // Extract and flatten credentials with improved logic
+    const extractedCustomers = extractCustomerCredentials(data);
+    console.log('📋 Extracted customers for account creation:', extractedCustomers);
+    
+    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
 
     return {
       success: true,
@@ -366,6 +390,37 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
       errors: [error instanceof Error ? error.message : 'Unknown error']
     };
   }
+}
+
+// New function to extract customer credentials from different response formats
+function extractCustomerCredentials(data: any): any[] {
+  console.log('🔍 Extracting customer credentials from data:', JSON.stringify(data, null, 2));
+  
+  if (!data) {
+    console.log('⚠️ No data provided for credential extraction');
+    return [];
+  }
+  
+  // Check if data.customers exists and has content
+  if (data.customers && Array.isArray(data.customers) && data.customers.length > 0) {
+    console.log('✅ Found customers array with', data.customers.length, 'customers');
+    return data.customers;
+  }
+  
+  // Check if there's a single customer object
+  if (data.customer) {
+    console.log('✅ Found single customer object');
+    return [data.customer];
+  }
+  
+  // Check if the data itself looks like a customer
+  if (data.username || data.password || data.m3u_url) {
+    console.log('✅ Data appears to be a customer object');
+    return [data];
+  }
+  
+  console.log('⚠️ No valid customer data found in response');
+  return [];
 }
 
 async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> {

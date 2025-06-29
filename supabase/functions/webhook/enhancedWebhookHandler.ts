@@ -65,7 +65,7 @@ interface WebhookResult {
   errors?: string[];
 }
 
-// Helper function to flatten customer credentials for HighLevel compatibility
+// Enhanced helper function to flatten customer credentials with comprehensive debugging
 function flattenCustomerCredentials(customers: any[]): any {
   console.log('🔐 flattenCustomerCredentials - Input customers:', JSON.stringify(customers, null, 2));
   
@@ -76,10 +76,17 @@ function flattenCustomerCredentials(customers: any[]): any {
     return flattened;
   }
   
-  // Handle consolidated customer with connection_list
+  // Handle consolidated customer with connection_list (new format)
   if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
     console.log('🔄 Processing consolidated customer with connection_list');
-    const connectionList = customers[0].connection_list;
+    const customer = customers[0];
+    const connectionList = customer.connection_list;
+    
+    console.log('📊 Connection list details:', {
+      length: connectionList.length,
+      firstConnection: connectionList[0],
+      totalConnections: customer.total_connections
+    });
     
     connectionList.slice(0, 3).forEach((connection: any, index: number) => {
       const fieldNumber = index + 1;
@@ -96,7 +103,7 @@ function flattenCustomerCredentials(customers: any[]): any {
       }
     });
     
-    flattened.total_connections = customers[0].total_connections || connectionList.length;
+    flattened.total_connections = customer.total_connections || connectionList.length;
   } else {
     // Handle individual customer records
     console.log('🔄 Processing individual customer records');
@@ -104,6 +111,7 @@ function flattenCustomerCredentials(customers: any[]): any {
     customers.slice(0, 3).forEach((customer, index) => {
       const fieldNumber = index + 1;
       console.log(`🔐 Processing customer ${fieldNumber}:`, {
+        id: customer.id,
         username: customer.username,
         password: customer.password,
         m3u_url: customer.m3u_url
@@ -125,6 +133,37 @@ function flattenCustomerCredentials(customers: any[]): any {
   
   console.log('✅ Flattened credentials result:', flattened);
   return flattened;
+}
+
+// New function to extract customer credentials from different response formats
+function extractCustomerCredentials(data: any): any[] {
+  console.log('🔍 Extracting customer credentials from data:', JSON.stringify(data, null, 2));
+  
+  if (!data) {
+    console.log('⚠️ No data provided for credential extraction');
+    return [];
+  }
+  
+  // Check if data.customers exists and has content
+  if (data.customers && Array.isArray(data.customers) && data.customers.length > 0) {
+    console.log('✅ Found customers array with', data.customers.length, 'customers');
+    return data.customers;
+  }
+  
+  // Check if there's a single customer object
+  if (data.customer) {
+    console.log('✅ Found single customer object');
+    return [data.customer];
+  }
+  
+  // Check if the data itself looks like a customer
+  if (data.username || data.password || data.m3u_url) {
+    console.log('✅ Data appears to be a customer object');
+    return [data];
+  }
+  
+  console.log('⚠️ No valid customer data found in response');
+  return [];
 }
 
 // Enhanced credit calculation for multi-connection accounts
@@ -180,7 +219,7 @@ async function getResellerByApiKey(apiKey: string): Promise<{
   }
 }
 
-// Enhanced trial account creation with flattened response
+// Enhanced trial account creation with improved credential extraction
 async function createTrialAccount(
   payload: EnhancedWebhookPayload,
   resellerId: string,
@@ -240,48 +279,24 @@ async function createTrialAccount(
 
     console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
 
-    // Consolidate the customer connections if multiple were created
-    if (data.customers?.length > 1) {
-      console.log('🔄 Consolidating trial customer connections');
-      const primaryCustomer = data.customers[0];
-      const customerGroup = primaryCustomer.customer_group;
-      
-      const { data: consolidationResult } = await supabase.rpc('consolidate_customer_connections', {
-        customer_group_name: customerGroup,
-        reseller_id_param: resellerId
-      });
-      
-      console.log('🔄 Consolidation result:', consolidationResult);
-      
-      // Fetch the updated consolidated customer
-      if (consolidationResult && consolidationResult.length > 0) {
-        const { data: updatedCustomer } = await supabase
-          .from('customers')
-          .select('*')
-          .eq('id', consolidationResult[0].consolidated_customer_id)
-          .single();
-        
-        if (updatedCustomer) {
-          data.customers = [updatedCustomer];
-          console.log('📊 Updated consolidated customer:', JSON.stringify(updatedCustomer, null, 2));
-        }
-      }
-    }
-
+    // Extract and flatten credentials with improved logic
+    const extractedCustomers = extractCustomerCredentials(data);
+    console.log('📋 Extracted customers for trial:', extractedCustomers);
+    
     // Send credentials via HighLevel if contact ID provided
-    if (payload.contact_id && data.customers?.length > 0) {
+    if (payload.contact_id && extractedCustomers.length > 0) {
       await syncCredentialsToHighLevel(
         payload.contact_id,
         customerName,
         customerEmail,
-        data.customers,
+        extractedCustomers,
         resellerId,
         deviceType
       );
     }
 
     // Flatten credentials for HighLevel compatibility
-    const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
+    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
     console.log('🎯 Final flattened credentials for trial:', flattenedCredentials);
 
     return {
@@ -306,7 +321,7 @@ async function createTrialAccount(
   }
 }
 
-// Enhanced multi-connection account creation with flattened response
+// Enhanced multi-connection account creation with improved credential extraction
 async function createMultiConnectionAccount(
   payload: EnhancedWebhookPayload,
   resellerId: string,
@@ -389,49 +404,24 @@ async function createMultiConnectionAccount(
 
     console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
 
-    // Consolidate the customer connections if multiple were created
-    let consolidatedCustomer = null;
-    if (data.customers?.length > 1) {
-      console.log('🔄 Consolidating customer connections');
-      const primaryCustomer = data.customers[0];
-      const customerGroup = primaryCustomer.customer_group;
-      
-      const { data: consolidationResult } = await supabase.rpc('consolidate_customer_connections', {
-        customer_group_name: customerGroup,
-        reseller_id_param: resellerId
-      });
-      
-      console.log('🔄 Consolidation result:', consolidationResult);
-      
-      if (consolidationResult && consolidationResult.length > 0) {
-        // Fetch the consolidated customer record
-        const { data: consolidatedCustomerData } = await supabase
-          .from('customers')
-          .select('*')
-          .eq('id', consolidationResult[0].consolidated_customer_id)
-          .single();
-        
-        consolidatedCustomer = consolidatedCustomerData;
-        console.log('📊 Consolidated customer data:', JSON.stringify(consolidatedCustomer, null, 2));
-      }
-    }
+    // Extract and flatten credentials with improved logic
+    const extractedCustomers = extractCustomerCredentials(data);
+    console.log('📋 Extracted customers for account creation:', extractedCustomers);
 
     // Send credentials via HighLevel if contact ID provided
-    if (payload.contact_id) {
-      const customersToSync = consolidatedCustomer ? [consolidatedCustomer] : data.customers;
+    if (payload.contact_id && extractedCustomers.length > 0) {
       await syncCredentialsToHighLevel(
         payload.contact_id,
         customerName,
         customerEmail,
-        customersToSync,
+        extractedCustomers,
         resellerId,
         deviceType
       );
     }
 
     // Flatten credentials for HighLevel compatibility
-    const customersForFlattening = consolidatedCustomer ? [consolidatedCustomer] : data.customers;
-    const flattenedCredentials = flattenCustomerCredentials(customersForFlattening || []);
+    const flattenedCredentials = flattenCustomerCredentials(extractedCustomers);
     console.log('🎯 Final flattened credentials:', flattenedCredentials);
 
     return {
@@ -604,7 +594,7 @@ async function syncCredentialsToHighLevel(
         }
       });
     } else {
-      // Handle individual customer records (legacy format)
+      // Handle individual customer records
       console.log('🔄 Syncing individual customer records');
       customers.slice(0, 3).forEach((customer, index) => {
         const fieldNumber = index + 1;
@@ -697,7 +687,7 @@ async function sendCredentialsMessage(
         }
       });
     } else {
-      // Handle individual customer records (legacy format)
+      // Handle individual customer records
       customers.forEach((customer, index) => {
         if (customers.length > 1) {
           credentialsMessage += `Connection ${index + 1}:\n`;
@@ -778,7 +768,7 @@ async function sendRenewalConfirmationToHighLevel(
   }
 }
 
-// Main enhanced webhook processor with flattened response
+// Main enhanced webhook processor with improved credential extraction
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<WebhookResult> => {
   try {
     console.log('🚀 Processing enhanced webhook payload with consolidation:', JSON.stringify(payload, null, 2));
