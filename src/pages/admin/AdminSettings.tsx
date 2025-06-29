@@ -524,14 +524,13 @@ export default function AdminSettings() {
   "customer": {
     "name": "{{contact.first_name}} {{contact.last_name}}",
     "email": "{{contact.email}}",
-    "device_type": "Smart TV",
-    "plan_duration_months": 1
+    "device_type": "Smart TV"
   }
 }`}
                 </pre>
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                Creates a 24-hour trial account with credentials automatically synced to HighLevel
+                Creates a trial account with the specified duration in hours. Trial accounts use trial_duration_hours instead of plan_duration_months.
               </p>
             </div>
 
