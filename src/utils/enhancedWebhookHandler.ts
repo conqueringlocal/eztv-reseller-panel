@@ -60,10 +60,18 @@ interface ResellerDataResult {
 
 // Helper function to flatten customer credentials
 function flattenCustomerCredentials(customers: any[]): any {
+  console.log('🔐 Client flattenCustomerCredentials - Input customers:', JSON.stringify(customers, null, 2));
+  
   const flattened: any = {};
+  
+  if (!customers || customers.length === 0) {
+    console.log('⚠️ No customers provided to flatten on client side');
+    return flattened;
+  }
   
   // Handle consolidated customer with connection_list
   if (customers.length === 1 && customers[0].connection_list) {
+    console.log('🔄 Client processing consolidated customer with connection_list');
     const connectionList = customers[0].connection_list;
     connectionList.slice(0, 3).forEach((connection: any, index: number) => {
       const fieldNumber = index + 1;
@@ -81,6 +89,7 @@ function flattenCustomerCredentials(customers: any[]): any {
     flattened.total_connections = customers[0].total_connections || connectionList.length;
   } else {
     // Handle individual customer records
+    console.log('🔄 Client processing individual customer records');
     customers.slice(0, 3).forEach((customer, index) => {
       const fieldNumber = index + 1;
       if (customer.username) {
@@ -97,6 +106,7 @@ function flattenCustomerCredentials(customers: any[]): any {
     flattened.total_connections = customers.length;
   }
   
+  console.log('✅ Client flattened credentials result:', flattened);
   return flattened;
 }
 
@@ -238,6 +248,8 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
       };
     }
 
+    console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
+
     // Flatten credentials for HighLevel compatibility
     const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
 
@@ -328,6 +340,8 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
         errors: [error?.message || 'Unknown error']
       };
     }
+
+    console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
 
     // Flatten credentials for HighLevel compatibility
     const flattenedCredentials = flattenCustomerCredentials(data.customers || []);

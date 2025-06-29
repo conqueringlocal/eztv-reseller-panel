@@ -67,13 +67,24 @@ interface WebhookResult {
 
 // Helper function to flatten customer credentials for HighLevel compatibility
 function flattenCustomerCredentials(customers: any[]): any {
+  console.log('🔐 flattenCustomerCredentials - Input customers:', JSON.stringify(customers, null, 2));
+  
   const flattened: any = {};
   
+  if (!customers || customers.length === 0) {
+    console.log('⚠️ No customers provided to flatten');
+    return flattened;
+  }
+  
   // Handle consolidated customer with connection_list
-  if (customers.length === 1 && customers[0].connection_list) {
+  if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
+    console.log('🔄 Processing consolidated customer with connection_list');
     const connectionList = customers[0].connection_list;
+    
     connectionList.slice(0, 3).forEach((connection: any, index: number) => {
       const fieldNumber = index + 1;
+      console.log(`🔐 Processing connection ${fieldNumber}:`, connection);
+      
       if (connection.username) {
         flattened[`username_${fieldNumber}`] = connection.username;
       }
@@ -88,8 +99,16 @@ function flattenCustomerCredentials(customers: any[]): any {
     flattened.total_connections = customers[0].total_connections || connectionList.length;
   } else {
     // Handle individual customer records
+    console.log('🔄 Processing individual customer records');
+    
     customers.slice(0, 3).forEach((customer, index) => {
       const fieldNumber = index + 1;
+      console.log(`🔐 Processing customer ${fieldNumber}:`, {
+        username: customer.username,
+        password: customer.password,
+        m3u_url: customer.m3u_url
+      });
+      
       if (customer.username) {
         flattened[`username_${fieldNumber}`] = customer.username;
       }
@@ -104,6 +123,7 @@ function flattenCustomerCredentials(customers: any[]): any {
     flattened.total_connections = customers.length;
   }
   
+  console.log('✅ Flattened credentials result:', flattened);
   return flattened;
 }
 
@@ -218,16 +238,34 @@ async function createTrialAccount(
       };
     }
 
+    console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
+
     // Consolidate the customer connections if multiple were created
     if (data.customers?.length > 1) {
       console.log('🔄 Consolidating trial customer connections');
       const primaryCustomer = data.customers[0];
       const customerGroup = primaryCustomer.customer_group;
       
-      await supabase.rpc('consolidate_customer_connections', {
+      const { data: consolidationResult } = await supabase.rpc('consolidate_customer_connections', {
         customer_group_name: customerGroup,
         reseller_id_param: resellerId
       });
+      
+      console.log('🔄 Consolidation result:', consolidationResult);
+      
+      // Fetch the updated consolidated customer
+      if (consolidationResult && consolidationResult.length > 0) {
+        const { data: updatedCustomer } = await supabase
+          .from('customers')
+          .select('*')
+          .eq('id', consolidationResult[0].consolidated_customer_id)
+          .single();
+        
+        if (updatedCustomer) {
+          data.customers = [updatedCustomer];
+          console.log('📊 Updated consolidated customer:', JSON.stringify(updatedCustomer, null, 2));
+        }
+      }
     }
 
     // Send credentials via HighLevel if contact ID provided
@@ -244,6 +282,7 @@ async function createTrialAccount(
 
     // Flatten credentials for HighLevel compatibility
     const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
+    console.log('🎯 Final flattened credentials for trial:', flattenedCredentials);
 
     return {
       success: true,
@@ -348,6 +387,8 @@ async function createMultiConnectionAccount(
       };
     }
 
+    console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
+
     // Consolidate the customer connections if multiple were created
     let consolidatedCustomer = null;
     if (data.customers?.length > 1) {
@@ -355,20 +396,23 @@ async function createMultiConnectionAccount(
       const primaryCustomer = data.customers[0];
       const customerGroup = primaryCustomer.customer_group;
       
-      const { data: consolidatedData } = await supabase.rpc('consolidate_customer_connections', {
+      const { data: consolidationResult } = await supabase.rpc('consolidate_customer_connections', {
         customer_group_name: customerGroup,
         reseller_id_param: resellerId
       });
       
-      if (consolidatedData && consolidatedData.length > 0) {
+      console.log('🔄 Consolidation result:', consolidationResult);
+      
+      if (consolidationResult && consolidationResult.length > 0) {
         // Fetch the consolidated customer record
         const { data: consolidatedCustomerData } = await supabase
           .from('customers')
           .select('*')
-          .eq('id', consolidatedData[0].consolidated_customer_id)
+          .eq('id', consolidationResult[0].consolidated_customer_id)
           .single();
         
         consolidatedCustomer = consolidatedCustomerData;
+        console.log('📊 Consolidated customer data:', JSON.stringify(consolidatedCustomer, null, 2));
       }
     }
 
@@ -388,6 +432,7 @@ async function createMultiConnectionAccount(
     // Flatten credentials for HighLevel compatibility
     const customersForFlattening = consolidatedCustomer ? [consolidatedCustomer] : data.customers;
     const flattenedCredentials = flattenCustomerCredentials(customersForFlattening || []);
+    console.log('🎯 Final flattened credentials:', flattenedCredentials);
 
     return {
       success: true,
@@ -411,7 +456,6 @@ async function createMultiConnectionAccount(
   }
 }
 
-// Enhanced group-aware renewal with flattened response
 async function renewCustomerGroup(
   payload: EnhancedWebhookPayload,
   resellerId: string,
@@ -519,6 +563,7 @@ async function syncCredentialsToHighLevel(
 ): Promise<void> {
   try {
     console.log(`📨 Syncing consolidated credentials to HighLevel contact: ${contactId}`);
+    console.log(`📊 Customers to sync:`, JSON.stringify(customers, null, 2));
     
     // First, create/update the contact with customer info and device type
     const { data: createContactResult, error: createContactError } = await supabase.functions.invoke('create-highlevel-contact', {
@@ -540,7 +585,8 @@ async function syncCredentialsToHighLevel(
     const credentialsToSync: any = {};
     
     // If we have a consolidated customer with connection_list
-    if (customers.length === 1 && customers[0].connection_list) {
+    if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
+      console.log('🔄 Syncing consolidated customer with connection_list');
       const connectionList = customers[0].connection_list;
       connectionList.slice(0, 3).forEach((connection: any, index: number) => {
         const fieldNumber = index + 1;
@@ -559,6 +605,7 @@ async function syncCredentialsToHighLevel(
       });
     } else {
       // Handle individual customer records (legacy format)
+      console.log('🔄 Syncing individual customer records');
       customers.slice(0, 3).forEach((customer, index) => {
         const fieldNumber = index + 1;
         
@@ -577,6 +624,7 @@ async function syncCredentialsToHighLevel(
     }
 
     console.log('🔐 Consolidated credentials to sync:', Object.keys(credentialsToSync));
+    console.log('🔐 Credential values:', credentialsToSync);
 
     // Update the HighLevel contact with all credentials
     const { data: updateResult, error: updateError } = await supabase.functions.invoke('update-highlevel-contact-credentials', {
