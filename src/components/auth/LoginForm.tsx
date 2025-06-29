@@ -35,9 +35,18 @@ export function LoginForm({ onSubmit, isLoading }: LoginFormProps) {
     },
   });
 
+  const handleSubmit = async (data: LoginFormData) => {
+    console.log('🔐 LoginForm: Submitting login for:', data.email);
+    try {
+      await onSubmit(data);
+    } catch (error) {
+      console.error('❌ LoginForm: Error during login:', error);
+    }
+  };
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-5">
         <FormField
           control={form.control}
           name="email"

@@ -21,14 +21,16 @@ export default function Login() {
   
   // Handle login form submission
   const onLoginSubmit = async (data: LoginFormData) => {
+    console.log('🔐 Login: Starting login process for:', data.email);
     setIsLoading(true);
     try {
       const success = await login(data.email, data.password);
+      console.log('🔐 Login: Login result:', success);
       if (success) {
-        // Auth context will handle the redirect
+        console.log('✅ Login: Login successful, redirect will be handled by useLoginRedirect');
       }
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ Login: Login error:', error);
     } finally {
       setIsLoading(false);
     }

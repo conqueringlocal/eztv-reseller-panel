@@ -2,14 +2,10 @@
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from "sonner";
 import { UserRole } from '../types';
-import { cleanupAuthState, forceAuthReset } from '../utils';
 
 export const useAuthOperations = () => {
   const signup = async (email: string, password: string, name: string, role: UserRole = 'reseller'): Promise<boolean> => {
     try {
-      // Clean up existing state
-      await forceAuthReset();
-      
       console.log('📝 Attempting signup for:', email, 'with role:', role);
       
       // Sign up with email/password
@@ -49,23 +45,7 @@ export const useAuthOperations = () => {
     try {
       console.log('🔐 Starting login process for:', email);
       
-      // Clean up existing state to prevent JWT conflicts
-      await forceAuthReset();
-      
-      // Attempt global sign out to clear any stale sessions
-      try {
-        await supabase.auth.signOut({ scope: 'global' });
-        console.log('✅ Global signout completed');
-      } catch (err) {
-        console.warn('⚠️ Global signout warning (non-critical):', err);
-      }
-      
-      // Wait a moment for cleanup to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      console.log('🔑 Attempting login for:', email);
-      
-      // Sign in with email/password
+      // Simple login without aggressive cleanup
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -74,13 +54,8 @@ export const useAuthOperations = () => {
       if (error) {
         console.error('❌ Login error:', error);
         
-        // Handle specific JWT errors
         if (error.message.includes('Invalid login credentials')) {
           toast.error('Invalid email or password');
-        } else if (error.message.includes('JWT') || error.message.includes('token')) {
-          toast.error('Authentication error. Please try again.');
-          // Force a complete reset on JWT errors
-          await forceAuthReset();
         } else {
           toast.error(error.message);
         }
@@ -98,7 +73,6 @@ export const useAuthOperations = () => {
     } catch (error) {
       console.error('💥 Login error:', error);
       toast.error('An unexpected error occurred during login');
-      await forceAuthReset();
       return false;
     }
   };
@@ -110,11 +84,8 @@ export const useAuthOperations = () => {
       // Clear user state immediately
       setUser(null);
       
-      // Clean up auth state
-      await forceAuthReset();
-      
-      // Attempt global sign out
-      await supabase.auth.signOut({ scope: 'global' });
+      // Simple sign out
+      await supabase.auth.signOut();
       
       console.log('✅ Logout completed successfully');
       toast.info('You have been logged out');
@@ -124,7 +95,6 @@ export const useAuthOperations = () => {
       
       // Even if logout fails, ensure state is cleaned
       setUser(null);
-      await forceAuthReset();
     }
   };
 
