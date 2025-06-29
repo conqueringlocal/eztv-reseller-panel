@@ -20,6 +20,11 @@ interface CustomerCredentialsDialogProps {
   onClose: () => void;
 }
 
+// Helper function to safely get field values from both snake_case and camelCase formats
+const getFieldValue = (customer: any, snakeCaseField: string, camelCaseField: string): any => {
+  return customer[snakeCaseField] || customer[camelCaseField];
+};
+
 export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredentialsDialogProps) {
   const { user } = useAuth();
   const displayName = getCustomerDisplayName(customer);
@@ -28,6 +33,9 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
   
   // Check if current user is admin
   const isAdmin = user?.role === 'admin';
+
+  // Get device type using field helper
+  const deviceType = getFieldValue(customer, 'device_type', 'deviceType');
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -97,7 +105,7 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Device Type</p>
-                  <p className="text-sm">{customer.device_type || 'Not specified'}</p>
+                  <p className="text-sm">{deviceType || 'Not specified'}</p>
                 </div>
                 {/* Only show provider field to admin users */}
                 {isAdmin && (

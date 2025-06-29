@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +39,11 @@ interface CustomerTableProps {
   onStatusFilterChange?: (filter: string) => void;
 }
 
+// Helper function to safely get field values from both snake_case and camelCase formats
+const getFieldValue = (customer: any, snakeCaseField: string, camelCaseField: string): any => {
+  return customer[snakeCaseField] || customer[camelCaseField];
+};
+
 export function CustomerTable({ 
   customers, 
   onRefresh = () => {},
@@ -69,20 +75,23 @@ export function CustomerTable({
         const sevenDaysFromNow = new Date();
         sevenDaysFromNow.setDate(today.getDate() + 7);
         
-        const daysUntilExpiration = getDaysUntilExpirationSafely(customer.expiration_date);
+        const expirationDate = getFieldValue(customer, 'expiration_date', 'expirationDate');
+        const daysUntilExpiration = getDaysUntilExpirationSafely(expirationDate);
+        const isDeactivated = getFieldValue(customer, 'is_deactivated', 'isDeactivated');
+        const cancelledAt = getFieldValue(customer, 'cancelled_at', 'cancelledAt');
         
         switch (statusFilter) {
           case 'active':
-            return customer.status === 'active' && !customer.is_deactivated && !customer.cancelled_at;
+            return customer.status === 'active' && !isDeactivated && !cancelledAt;
           case 'expiring':
-            return !customer.is_deactivated && !customer.cancelled_at && customer.status !== 'expired' && 
+            return !isDeactivated && !cancelledAt && customer.status !== 'expired' && 
                    daysUntilExpiration !== null && daysUntilExpiration > 0 && daysUntilExpiration <= 7;
           case 'expired':
-            return customer.status === 'expired' && !customer.is_deactivated && !customer.cancelled_at;
+            return customer.status === 'expired' && !isDeactivated && !cancelledAt;
           case 'cancelled':
-            return customer.cancelled_at || customer.status === 'cancelled';
+            return cancelledAt || customer.status === 'cancelled';
           case 'deactivated':
-            return customer.is_deactivated;
+            return isDeactivated;
           default:
             return true;
         }
@@ -124,13 +133,16 @@ export function CustomerTable({
         deleteResult = { error };
       } else {
         // For legacy customers, check if part of a group
-        if (customer.customer_group) {
+        const customerGroup = getFieldValue(customer, 'customer_group', 'customerGroup');
+        const resellerId = getFieldValue(customer, 'reseller_id', 'resellerId');
+        
+        if (customerGroup) {
           // Delete all customers in the same group
           const { error } = await supabase
             .from('customers')
             .delete()
-            .eq('customer_group', customer.customer_group)
-            .eq('reseller_id', customer.reseller_id);
+            .eq('customer_group', customerGroup)
+            .eq('reseller_id', resellerId);
             
           deleteResult = { error };
         } else {
@@ -182,7 +194,12 @@ export function CustomerTable({
     <>
       <div className="grid gap-4">
         {filteredCustomers.map((customer) => {
-          const daysUntilExpiration = getDaysUntilExpirationSafely(customer.expiration_date);
+          const expirationDate = getFieldValue(customer, 'expiration_date', 'expirationDate');
+          const startDate = getFieldValue(customer, 'start_date', 'startDate');
+          const planDuration = getFieldValue(customer, 'plan_duration', 'planDuration');
+          const deviceType = getFieldValue(customer, 'device_type', 'deviceType');
+          
+          const daysUntilExpiration = getDaysUntilExpirationSafely(expirationDate);
           const totalConnections = getTotalConnections(customer);
           const displayName = getCustomerDisplayName(customer);
           
@@ -190,10 +207,10 @@ export function CustomerTable({
           console.log('Rendering customer:', {
             id: customer.id,
             name: displayName,
-            start_date: customer.start_date,
-            expiration_date: customer.expiration_date,
-            plan_duration: customer.plan_duration,
-            device_type: customer.device_type
+            start_date: startDate,
+            expiration_date: expirationDate,
+            plan_duration: planDuration,
+            device_type: deviceType
           });
           
           return (
@@ -225,7 +242,7 @@ export function CustomerTable({
                 <div className={`grid gap-4 mb-4 ${isAdmin ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'}`}>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Device Type</p>
-                    <p className="text-sm">{customer.device_type || 'Not specified'}</p>
+                    <p className="text-sm">{deviceType || 'Not specified'}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Connections</p>
@@ -234,8 +251,8 @@ export function CustomerTable({
                   <div>
                     <p className="text-sm font-medium text-gray-500">Plan Duration</p>
                     <p className="text-sm">
-                      {customer.plan_duration && customer.plan_duration > 0 
-                        ? `${customer.plan_duration} month${customer.plan_duration > 1 ? 's' : ''}` 
+                      {planDuration && planDuration > 0 
+                        ? `${planDuration} month${planDuration > 1 ? 's' : ''}` 
                         : 'Not specified'}
                     </p>
                   </div>
@@ -251,12 +268,12 @@ export function CustomerTable({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Start Date</p>
-                    <p className="text-sm">{formatDateSafely(customer.start_date)}</p>
+                    <p className="text-sm">{formatDateSafely(startDate)}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Expiration Date</p>
                     <div className="flex items-center space-x-2">
-                      <p className="text-sm">{formatDateSafely(customer.expiration_date)}</p>
+                      <p className="text-sm">{formatDateSafely(expirationDate)}</p>
                       {daysUntilExpiration !== null && daysUntilExpiration <= 7 && daysUntilExpiration > 0 && (
                         <Badge variant="destructive" className="text-xs">
                           {daysUntilExpiration} days left

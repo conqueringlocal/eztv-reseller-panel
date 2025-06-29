@@ -1,3 +1,4 @@
+
 // Utility functions for handling consolidated customer records
 
 export interface ConsolidatedCustomer {
@@ -54,6 +55,13 @@ export interface LegacyCustomer {
 }
 
 /**
+ * Helper function to safely get a field value from both snake_case and camelCase formats
+ */
+const getFieldValue = (customer: any, snakeCaseField: string, camelCaseField: string): any => {
+  return customer[snakeCaseField] || customer[camelCaseField];
+};
+
+/**
  * Check if a customer record uses the new consolidated format
  */
 export const isConsolidatedCustomer = (customer: any): customer is ConsolidatedCustomer => {
@@ -84,7 +92,7 @@ export const getTotalConnections = (customer: any): number => {
     return customer.total_connections || customer.connection_list.length;
   }
   
-  return customer.max_connections || 1;
+  return getFieldValue(customer, 'max_connections', 'maxConnections') || 1;
 };
 
 /**
@@ -97,10 +105,10 @@ export const getCustomerCredentials = (customer: any): ConnectionDetail[] => {
   
   // For legacy customers, create a single connection detail
   return [{
-    connection_number: customer.connection_sequence || 1,
+    connection_number: getFieldValue(customer, 'connection_sequence', 'connectionSequence') || 1,
     username: customer.username,
     password: customer.password,
-    m3u_url: customer.m3u_url,
+    m3u_url: getFieldValue(customer, 'm3u_url', 'm3uUrl'),
     status: customer.status
   }];
 };
@@ -136,7 +144,10 @@ export const createCustomerGroupKey = (name: string, email: string): string => {
  * Check if customers should be grouped together based on name and email similarity
  */
 export const shouldGroupCustomers = (customer1: any, customer2: any): boolean => {
-  if (customer1.reseller_id !== customer2.reseller_id) {
+  const resellerId1 = getFieldValue(customer1, 'reseller_id', 'resellerId');
+  const resellerId2 = getFieldValue(customer2, 'reseller_id', 'resellerId');
+  
+  if (resellerId1 !== resellerId2) {
     return false;
   }
   
@@ -152,7 +163,7 @@ export const shouldGroupCustomers = (customer1: any, customer2: any): boolean =>
 export const groupLegacyCustomers = (customers: any[]): { [key: string]: any[] } => {
   return customers.reduce((groups, customer) => {
     // First try to use existing customer_group if it exists and is meaningful
-    let groupKey = customer.customer_group;
+    let groupKey = getFieldValue(customer, 'customer_group', 'customerGroup');
     
     // If no customer_group or it's generic, create one based on name + email
     if (!groupKey || groupKey === 'ungrouped' || groupKey.startsWith('default_')) {
@@ -177,21 +188,23 @@ export const createVirtualConsolidatedCustomer = (legacyCustomers: any[]): Conso
 
   // Sort by connection sequence for consistent ordering
   const sortedCustomers = legacyCustomers.sort((a, b) => 
-    (a.connection_sequence || 1) - (b.connection_sequence || 1)
+    (getFieldValue(a, 'connection_sequence', 'connectionSequence') || 1) - 
+    (getFieldValue(b, 'connection_sequence', 'connectionSequence') || 1)
   );
 
   const primaryCustomer = sortedCustomers[0];
   
   // Create connection list from all customers
   const connectionList: ConnectionDetail[] = sortedCustomers.map((customer, index) => ({
-    connection_number: customer.connection_sequence || (index + 1),
+    connection_number: getFieldValue(customer, 'connection_sequence', 'connectionSequence') || (index + 1),
     username: customer.username,
     password: customer.password,
-    m3u_url: customer.m3u_url,
+    m3u_url: getFieldValue(customer, 'm3u_url', 'm3uUrl'),
     status: customer.status
   }));
 
   // Ensure all required fields are properly preserved from the primary customer
+  // Use snake_case for the consolidated format to match database structure
   return {
     id: primaryCustomer.id,
     name: getCustomerDisplayName(primaryCustomer),
@@ -199,17 +212,17 @@ export const createVirtualConsolidatedCustomer = (legacyCustomers: any[]): Conso
     total_connections: sortedCustomers.length,
     connection_list: connectionList,
     status: primaryCustomer.status,
-    expiration_date: primaryCustomer.expiration_date, // Preserve original date string
-    start_date: primaryCustomer.start_date, // Preserve original date string
-    plan_duration: primaryCustomer.plan_duration, // Preserve original plan duration
-    device_type: primaryCustomer.device_type,
+    expiration_date: getFieldValue(primaryCustomer, 'expiration_date', 'expirationDate'), // Preserve original date string
+    start_date: getFieldValue(primaryCustomer, 'start_date', 'startDate'), // Preserve original date string
+    plan_duration: getFieldValue(primaryCustomer, 'plan_duration', 'planDuration'), // Preserve original plan duration
+    device_type: getFieldValue(primaryCustomer, 'device_type', 'deviceType'),
     provider: primaryCustomer.provider,
-    customer_group: primaryCustomer.customer_group,
-    reseller_id: primaryCustomer.reseller_id,
-    is_deactivated: primaryCustomer.is_deactivated,
-    cancelled_at: primaryCustomer.cancelled_at,
-    is_trial: primaryCustomer.is_trial,
-    created_at: primaryCustomer.created_at,
+    customer_group: getFieldValue(primaryCustomer, 'customer_group', 'customerGroup'),
+    reseller_id: getFieldValue(primaryCustomer, 'reseller_id', 'resellerId'),
+    is_deactivated: getFieldValue(primaryCustomer, 'is_deactivated', 'isDeactivated'),
+    cancelled_at: getFieldValue(primaryCustomer, 'cancelled_at', 'cancelledAt'),
+    is_trial: getFieldValue(primaryCustomer, 'is_trial', 'isTrial'),
+    created_at: getFieldValue(primaryCustomer, 'created_at', 'createdAt'),
     // Copy other fields from primary customer to ensure nothing is lost
     ...primaryCustomer
   };
@@ -232,9 +245,9 @@ export const processCustomersForDisplay = (customers: any[]): (ConsolidatedCusto
       };
       console.log('Single customer data:', {
         name: customer.name,
-        start_date: customer.start_date,
-        expiration_date: customer.expiration_date,
-        plan_duration: customer.plan_duration
+        start_date: getFieldValue(customer, 'start_date', 'startDate'),
+        expiration_date: getFieldValue(customer, 'expiration_date', 'expirationDate'),
+        plan_duration: getFieldValue(customer, 'plan_duration', 'planDuration')
       });
       processedCustomers.push(customer);
     } else {
@@ -245,9 +258,9 @@ export const processCustomersForDisplay = (customers: any[]): (ConsolidatedCusto
         // Use the consolidated customer
         console.log('Using consolidated customer:', {
           name: consolidatedCustomer.name,
-          start_date: consolidatedCustomer.start_date,
-          expiration_date: consolidatedCustomer.expiration_date,
-          plan_duration: consolidatedCustomer.plan_duration
+          start_date: getFieldValue(consolidatedCustomer, 'start_date', 'startDate'),
+          expiration_date: getFieldValue(consolidatedCustomer, 'expiration_date', 'expirationDate'),
+          plan_duration: getFieldValue(consolidatedCustomer, 'plan_duration', 'planDuration')
         });
         processedCustomers.push(consolidatedCustomer);
       } else {
