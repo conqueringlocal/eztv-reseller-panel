@@ -7,8 +7,8 @@ export function getCustomersNeedingConsolidation(customers: Customer[]): Custome
   const groupedCustomers = new Map<string, Customer[]>();
   
   customers.forEach(customer => {
-    // Skip already consolidated customers
-    if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
+    // Skip already consolidated customers - check for connectionDetails array with multiple entries
+    if (customer.connectionDetails && Array.isArray(customer.connectionDetails) && customer.connectionDetails.length > 0) {
       return;
     }
     
@@ -17,7 +17,7 @@ export function getCustomersNeedingConsolidation(customers: Customer[]): Custome
       return;
     }
     
-    const groupKey = `${customer.customer_group}_${customer.reseller_id}`;
+    const groupKey = `${customer.customer_group}_${customer.resellerId}`;
     
     if (!groupedCustomers.has(groupKey)) {
       groupedCustomers.set(groupKey, []);
@@ -34,7 +34,7 @@ export function getCustomersNeedingConsolidation(customers: Customer[]): Custome
       customers,
       name: customers[0].name,
       email: customers[0].email,
-      resellerId: customers[0].reseller_id
+      resellerId: customers[0].resellerId
     }));
 }
 
@@ -44,15 +44,15 @@ export function processCustomersForDisplay(customers: Customer[]): Customer[] {
   const processedGroups = new Set<string>();
   
   customers.forEach(customer => {
-    // If this is a consolidated customer (has connection_list), add it directly
-    if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
+    // If this is a consolidated customer (has connectionDetails), add it directly
+    if (customer.connectionDetails && Array.isArray(customer.connectionDetails) && customer.connectionDetails.length > 0) {
       processedCustomers.push(customer);
       return;
     }
     
     // For non-consolidated customers, check if they're part of a group
     if (customer.customer_group) {
-      const groupKey = `${customer.customer_group}_${customer.reseller_id}`;
+      const groupKey = `${customer.customer_group}_${customer.resellerId}`;
       
       // If we haven't processed this group yet, add the first customer
       if (!processedGroups.has(groupKey)) {
