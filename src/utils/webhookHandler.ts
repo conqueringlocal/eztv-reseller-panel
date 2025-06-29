@@ -29,6 +29,26 @@ export interface WebhookData {
   packageId?: string;
 }
 
+// Flattened response structure for HighLevel compatibility
+export interface LegacyWebhookResult {
+  success: boolean;
+  message: string;
+  // Customer information
+  name?: string;
+  email?: string;
+  device_type?: string;
+  start_date?: string;
+  end_date?: string;
+  account_type?: string;
+  // Single connection credentials (legacy format)
+  username?: string;
+  password?: string;
+  m3u_url?: string;
+  credits_used?: number;
+  // Error information
+  errors?: string[];
+}
+
 export const determineCustomerStatus = (expirationDate: string): 'active' | 'expired' | 'cancelled' | 'pending' => {
   const expiration = new Date(expirationDate);
   const now = new Date();
@@ -83,18 +103,18 @@ export const createCustomerRecord = async (
   }
 };
 
-// Legacy webhook processor for backward compatibility
-export const processWebhook = async (payload: WebhookPayload): Promise<{ success: boolean; message: string }> => {
+// Legacy webhook processor with flattened response
+export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWebhookResult> => {
   try {
     console.log('📋 Processing legacy webhook payload:', payload);
 
     // Validate required fields
     if (!payload.resellerId) {
-      return { success: false, message: 'Missing reseller ID' };
+      return { success: false, message: 'Missing reseller ID', errors: ['missing_reseller_id'] };
     }
 
     if (!payload.customer?.name || !payload.customer?.email) {
-      return { success: false, message: 'Missing required customer information (name and email)' };
+      return { success: false, message: 'Missing required customer information (name and email)', errors: ['missing_customer_data'] };
     }
 
     // Check if reseller exists
@@ -105,20 +125,25 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
       .single();
 
     if (resellerError || !resellerData) {
-      return { success: false, message: 'Invalid reseller ID' };
+      return { success: false, message: 'Invalid reseller ID', errors: ['invalid_reseller'] };
     }
 
     if (payload.action === 'create') {
       // Check if reseller has enough credits (legacy assumes 1 connection)
       if (resellerData.credits < payload.customer.plan_duration_months) {
-        return { success: false, message: 'Insufficient credits' };
+        return { 
+          success: false, 
+          message: 'Insufficient credits',
+          errors: ['insufficient_credits']
+        };
       }
 
       // Generate credentials
       const username = `user_${Date.now()}`;
       const password = Math.random().toString(36).substring(2, 15);
       
-      // Calculate expiration date
+      // Calculate dates
+      const startDate = new Date();
       const expirationDate = new Date();
       expirationDate.setMonth(expirationDate.getMonth() + payload.customer.plan_duration_months);
 
@@ -141,7 +166,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
         maxConnections: 1,
         m3uUrl: '',
         isTrial: false,
-        startDate: new Date().toISOString().split('T')[0],
+        startDate: startDate.toISOString().split('T')[0],
         packageId: 'default',
         currentConnections: 0,
         connectionDetails: [],
@@ -151,7 +176,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
       const result = await createCustomerRecord(customerData, payload.resellerId);
       
       if (!result.success) {
-        return { success: false, message: result.error || 'Failed to create customer' };
+        return { 
+          success: false, 
+          message: result.error || 'Failed to create customer',
+          errors: ['create_failed']
+        };
       }
 
       // Deduct credit
@@ -172,7 +201,21 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
           notes: 'Customer created via legacy webhook'
         });
 
-      return { success: true, message: `Customer ${payload.customer.name} created successfully` };
+      // Return flattened response for HighLevel compatibility
+      return { 
+        success: true, 
+        message: `Customer ${payload.customer.name} created successfully`,
+        name: payload.customer.name,
+        email: payload.customer.email,
+        device_type: payload.customer.device_type || 'Unknown',
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: expirationDate.toISOString().split('T')[0],
+        account_type: payload.customer.mac ? 'mag' : 'm3u',
+        username: username,
+        password: password,
+        m3u_url: customerData.m3uUrl,
+        credits_used: payload.customer.plan_duration_months
+      };
 
     } else if (payload.action === 'renew') {
       // Find existing customer by name and email
@@ -185,12 +228,20 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
         .single();
 
       if (findError || !existingCustomer) {
-        return { success: false, message: 'Customer not found for renewal' };
+        return { 
+          success: false, 
+          message: 'Customer not found for renewal',
+          errors: ['customer_not_found']
+        };
       }
 
       // Check if reseller has enough credits
       if (resellerData.credits < payload.customer.plan_duration_months) {
-        return { success: false, message: 'Insufficient credits for renewal' };
+        return { 
+          success: false, 
+          message: 'Insufficient credits for renewal',
+          errors: ['insufficient_credits']
+        };
       }
 
       // Calculate new expiration date
@@ -209,7 +260,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
         .eq('id', existingCustomer.id);
 
       if (updateError) {
-        return { success: false, message: 'Failed to renew customer' };
+        return { 
+          success: false, 
+          message: 'Failed to renew customer',
+          errors: ['renewal_failed']
+        };
       }
 
       // Deduct credit
@@ -230,14 +285,36 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{ success
           notes: 'Customer renewed via legacy webhook'
         });
 
-      return { success: true, message: `Customer ${payload.customer.name} renewed successfully` };
+      // Return flattened response for HighLevel compatibility
+      return { 
+        success: true, 
+        message: `Customer ${payload.customer.name} renewed successfully`,
+        name: payload.customer.name,
+        email: payload.customer.email,
+        device_type: existingCustomer.device_type || 'Unknown',
+        start_date: existingCustomer.start_date,
+        end_date: newExpiration.toISOString().split('T')[0],
+        account_type: existingCustomer.mac_address ? 'mag' : 'm3u',
+        username: existingCustomer.username,
+        password: existingCustomer.password,
+        m3u_url: existingCustomer.m3u_url,
+        credits_used: payload.customer.plan_duration_months
+      };
     }
 
-    return { success: false, message: 'Invalid action specified' };
+    return { 
+      success: false, 
+      message: 'Invalid action specified',
+      errors: ['invalid_action']
+    };
 
   } catch (error) {
     console.error('Error processing legacy webhook:', error);
-    return { success: false, message: 'Internal server error' };
+    return { 
+      success: false, 
+      message: 'Internal server error',
+      errors: [error instanceof Error ? error.message : 'Unknown error']
+    };
   }
 };
 

@@ -7,9 +7,35 @@ import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { CheckCircle, XCircle, Info, Zap, Users, Clock, Repeat } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
+// Define the flattened result interface for display
+interface WebhookResultDisplay {
+  success: boolean;
+  message: string;
+  name?: string;
+  email?: string;
+  device_type?: string;
+  start_date?: string;
+  end_date?: string;
+  total_connections?: number;
+  account_type?: string;
+  credits_used?: number;
+  accounts_renewed?: number;
+  trial_expires_at?: string;
+  username_1?: string;
+  password_1?: string;
+  m3u_url_1?: string;
+  username_2?: string;
+  password_2?: string;
+  m3u_url_2?: string;
+  username_3?: string;
+  password_3?: string;
+  m3u_url_3?: string;
+  errors?: string[];
+}
+
 export default function Webhook() {
   const [searchParams] = useSearchParams();
-  const [result, setResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
+  const [result, setResult] = useState<WebhookResultDisplay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -52,19 +78,21 @@ export default function Webhook() {
         } else {
           setResult({
             success: false,
-            message: "No data provided in webhook request"
+            message: "No data provided in webhook request",
+            errors: ['no_data']
           });
           setIsLoading(false);
           return;
         }
         
-        // Process the enhanced webhook
+        // Process the enhanced webhook and get flattened response
         const response = await processEnhancedWebhook(payload);
-        setResult(response);
+        setResult(response as WebhookResultDisplay);
       } catch (error) {
         setResult({
           success: false,
-          message: error instanceof Error ? error.message : "An unknown error occurred"
+          message: error instanceof Error ? error.message : "An unknown error occurred",
+          errors: ['processing_error']
         });
       } finally {
         setIsLoading(false);
@@ -80,7 +108,7 @@ export default function Webhook() {
         {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">EZTV Club Enhanced Webhook System</h1>
-          <p className="text-gray-600">Automated IPTV account management with multi-connection support</p>
+          <p className="text-gray-600">Automated IPTV account management with flattened response for HighLevel</p>
         </div>
 
         {/* Webhook Response */}
@@ -103,27 +131,86 @@ export default function Webhook() {
                 </h3>
                 <p className="text-gray-600 text-center mt-2 mb-4">{result.message}</p>
                 
-                {/* Display additional data if available */}
-                {result.success && result.data && (
-                  <div className="bg-gray-50 p-4 rounded-lg w-full max-w-md">
-                    <h4 className="font-semibold text-gray-800 mb-2">Details:</h4>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      {result.data.totalConnections && (
-                        <div>Connections: {result.data.totalConnections}</div>
+                {/* Display flattened response data if available */}
+                {result.success && (
+                  <div className="bg-gray-50 p-4 rounded-lg w-full max-w-4xl">
+                    <h4 className="font-semibold text-gray-800 mb-4">Response Data (HighLevel Compatible):</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                      {/* Customer Information */}
+                      {result.name && (
+                        <div><strong>name:</strong> {result.name}</div>
                       )}
-                      {result.data.creditsUsed && (
-                        <div>Credits Used: {result.data.creditsUsed}</div>
+                      {result.email && (
+                        <div><strong>email:</strong> {result.email}</div>
                       )}
-                      {result.data.accountsRenewed && (
-                        <div>Accounts Renewed: {result.data.accountsRenewed}</div>
+                      {result.device_type && (
+                        <div><strong>device_type:</strong> {result.device_type}</div>
                       )}
-                      {result.data.accountType && (
-                        <div>Account Type: {result.data.accountType.toUpperCase()}</div>
+                      {result.start_date && (
+                        <div><strong>start_date:</strong> {result.start_date}</div>
                       )}
-                      {result.data.trialExpiresAt && (
-                        <div>Trial Expires: {new Date(result.data.trialExpiresAt).toLocaleString()}</div>
+                      {result.end_date && (
+                        <div><strong>end_date:</strong> {result.end_date}</div>
+                      )}
+                      {result.account_type && (
+                        <div><strong>account_type:</strong> {result.account_type.toUpperCase()}</div>
+                      )}
+                      {result.total_connections && (
+                        <div><strong>total_connections:</strong> {result.total_connections}</div>
+                      )}
+                      {result.credits_used && (
+                        <div><strong>credits_used:</strong> {result.credits_used}</div>
+                      )}
+                      {result.accounts_renewed && (
+                        <div><strong>accounts_renewed:</strong> {result.accounts_renewed}</div>
+                      )}
+                      {result.trial_expires_at && (
+                        <div><strong>trial_expires_at:</strong> {new Date(result.trial_expires_at).toLocaleString()}</div>
+                      )}
+                      
+                      {/* Connection Credentials */}
+                      {result.username_1 && (
+                        <div><strong>username_1:</strong> {result.username_1}</div>
+                      )}
+                      {result.password_1 && (
+                        <div><strong>password_1:</strong> {result.password_1}</div>
+                      )}
+                      {result.m3u_url_1 && (
+                        <div className="col-span-full"><strong>m3u_url_1:</strong> <span className="break-all">{result.m3u_url_1}</span></div>
+                      )}
+                      
+                      {result.username_2 && (
+                        <div><strong>username_2:</strong> {result.username_2}</div>
+                      )}
+                      {result.password_2 && (
+                        <div><strong>password_2:</strong> {result.password_2}</div>
+                      )}
+                      {result.m3u_url_2 && (
+                        <div className="col-span-full"><strong>m3u_url_2:</strong> <span className="break-all">{result.m3u_url_2}</span></div>
+                      )}
+                      
+                      {result.username_3 && (
+                        <div><strong>username_3:</strong> {result.username_3}</div>
+                      )}
+                      {result.password_3 && (
+                        <div><strong>password_3:</strong> {result.password_3}</div>
+                      )}
+                      {result.m3u_url_3 && (
+                        <div className="col-span-full"><strong>m3u_url_3:</strong> <span className="break-all">{result.m3u_url_3}</span></div>
                       )}
                     </div>
+                  </div>
+                )}
+                
+                {/* Error details */}
+                {!result.success && result.errors && result.errors.length > 0 && (
+                  <div className="bg-red-50 p-4 rounded-lg w-full max-w-md mt-4">
+                    <h4 className="font-semibold text-red-800 mb-2">Error Details:</h4>
+                    <ul className="list-disc list-inside text-sm text-red-600">
+                      {result.errors.map((error, index) => (
+                        <li key={index}>{error}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
                 
@@ -150,29 +237,32 @@ export default function Webhook() {
                 <div>
                   <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                     Multi-Connection Support
-                    <Badge variant="secondary">Enhanced</Badge>
+                    <Badge variant="secondary">Flattened Response</Badge>
                   </h4>
-                  <p className="text-sm text-gray-600">Create accounts with 1-10 connections automatically</p>
+                  <p className="text-sm text-gray-600">Create accounts with 1-10 connections, response flattened for HighLevel</p>
                 </div>
               </div>
               
               <div className="bg-gray-50 p-3 rounded-md">
                 <p className="text-xs font-mono text-gray-800">
-                  POST /webhook<br/>
-                  Content-Type: application/json<br/><br/>
+                  Response Format:<br/>
                   {`{
-  "api_key": "your_api_key",
-  "action": "create",
-  "connections": 3,
-  "contact_id": "hl_contact_id",
-  "customer": {
-    "name": "John Doe",
-    "email": "john@example.com",
-    "mac": "00:11:22:33:44:55",
-    "device_type": "Smart TV",
-    "plan_duration_months": 3,
-    "package_id": "premium"
-  }
+  "success": true,
+  "message": "Account created...",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "device_type": "Smart TV",
+  "start_date": "2025-01-29",
+  "end_date": "2025-04-29",
+  "account_type": "m3u",
+  "total_connections": 3,
+  "credits_used": 9,
+  "username_1": "johndoe123",
+  "password_1": "pass123",
+  "m3u_url_1": "https://...",
+  "username_2": "johndoe124",
+  "password_2": "pass124",
+  "m3u_url_2": "https://..."
 }`}
                 </p>
               </div>
@@ -180,10 +270,10 @@ export default function Webhook() {
               <div className="text-xs text-gray-600">
                 <strong>Features:</strong>
                 <ul className="list-disc list-inside mt-1">
-                  <li>Automatic credit calculation (connections × months)</li>
-                  <li>M3U or MAG account type detection</li>
-                  <li>HighLevel integration for credential delivery</li>
-                  <li>Customer grouping for multi-connection accounts</li>
+                  <li>Direct field mapping for HighLevel workflows</li>
+                  <li>Up to 3 connection credentials (username_1, password_1, etc.)</li>
+                  <li>Start and end dates for automation triggers</li>
+                  <li>Account type and connection count information</li>
                 </ul>
               </div>
             </div>
@@ -197,25 +287,26 @@ export default function Webhook() {
                 <div>
                   <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                     Smart Group Renewal
-                    <Badge variant="secondary">Enhanced</Badge>
+                    <Badge variant="secondary">Flattened Response</Badge>
                   </h4>
-                  <p className="text-sm text-gray-600">Automatically renew all accounts in a customer group</p>
+                  <p className="text-sm text-gray-600">Automatically renew all accounts with flat response structure</p>
                 </div>
               </div>
               
               <div className="bg-gray-50 p-3 rounded-md">
                 <p className="text-xs font-mono text-gray-800">
-                  POST /webhook<br/>
-                  Content-Type: application/json<br/><br/>
+                  Response Format:<br/>
                   {`{
-  "api_key": "your_api_key",
-  "action": "renew",
-  "contact_id": "hl_contact_id",
-  "customer": {
-    "name": "John Doe",
-    "email": "john@example.com",
-    "plan_duration_months": 6
-  }
+  "success": true,
+  "message": "Customer renewed...",
+  "name": "John Doe",
+  "email": "john@example.com",
+  "device_type": "Smart TV",
+  "start_date": "2025-01-29",
+  "end_date": "2025-10-29",  
+  "account_type": "m3u",
+  "accounts_renewed": 3,
+  "credits_used": 18
 }`}
                 </p>
               </div>
@@ -223,10 +314,10 @@ export default function Webhook() {
               <div className="text-xs text-gray-600">
                 <strong>Features:</strong>
                 <ul className="list-disc list-inside mt-1">
-                  <li>Finds all accounts for a customer automatically</li>
-                  <li>Renews entire group with one request</li>
-                  <li>Proper credit calculation for all accounts</li>
-                  <li>Renewal confirmation via HighLevel</li>
+                  <li>Simple renewal confirmation fields</li>
+                  <li>Updated end_date for automation triggers</li>
+                  <li>Accounts renewed count for reporting</li>
+                  <li>Credits used for billing integration</li>
                 </ul>
               </div>
             </div>
@@ -240,28 +331,29 @@ export default function Webhook() {
                 <div>
                   <h4 className="font-semibold text-gray-900 flex items-center gap-2">
                     Automated Trials
-                    <Badge variant="secondary">New</Badge>
+                    <Badge variant="secondary">Flattened Response</Badge>
                   </h4>
-                  <p className="text-sm text-gray-600">Create 24-hour trial accounts with no credit deduction</p>
+                  <p className="text-sm text-gray-600">Create trial accounts with hour-based expiration</p>
                 </div>
               </div>
               
               <div className="bg-gray-50 p-3 rounded-md">
                 <p className="text-xs font-mono text-gray-800">
-                  POST /webhook<br/>
-                  Content-Type: application/json<br/><br/>
+                  Response Format:<br/>
                   {`{
-  "api_key": "your_api_key",
-  "action": "trial",
-  "connections": 1,
-  "trial_duration_hours": 24,
-  "contact_id": "hl_contact_id",
-  "customer": {
-    "name": "Jane Smith",
-    "email": "jane@example.com",
-    "device_type": "Smart TV",
-    "plan_duration_months": 1
-  }
+  "success": true,
+  "message": "Trial account created...",
+  "name": "Jane Smith",
+  "email": "jane@example.com",
+  "device_type": "Smart TV",
+  "start_date": "2025-01-29",
+  "end_date": "2025-01-30",
+  "account_type": "trial",
+  "total_connections": 1,
+  "trial_expires_at": "2025-01-30T14:30:00Z",
+  "username_1": "janesmith456",
+  "password_1": "trial123",
+  "m3u_url_1": "https://..."
 }`}
                 </p>
               </div>
@@ -269,45 +361,45 @@ export default function Webhook() {
               <div className="text-xs text-gray-600">
                 <strong>Features:</strong>
                 <ul className="list-disc list-inside mt-1">
-                  <li>No credit deduction for trial accounts</li>
-                  <li>Automatic expiration after specified hours</li>
-                  <li>Support for multi-connection trials</li>
-                  <li>Instant credential delivery via HighLevel</li>
+                  <li>Trial-specific expiration timestamp</li>
+                  <li>No credit deduction (credits_used not included)</li>
+                  <li>Immediate credential delivery</li>
+                  <li>Account type marked as "trial"</li>
                 </ul>
               </div>
             </div>
           </DashboardCard>
 
           {/* Enhanced Features */}
-          <DashboardCard title="Enhanced Features" className="h-fit">
+          <DashboardCard title="HighLevel Integration Benefits" className="h-fit">
             <div className="p-4 space-y-4">
               <div className="flex items-start space-x-3">
                 <Zap className="h-6 w-6 text-yellow-500 mt-1" />
                 <div>
-                  <h4 className="font-semibold text-gray-900">Advanced Capabilities</h4>
-                  <p className="text-sm text-gray-600">Enterprise-grade webhook automation</p>
+                  <h4 className="font-semibold text-gray-900">Flattened Response Structure</h4>
+                  <p className="text-sm text-gray-600">Optimized for HighLevel workflow mapping</p>
                 </div>
               </div>
               
               <div className="space-y-3">
                 <div className="bg-blue-50 p-3 rounded-md">
-                  <h5 className="font-medium text-blue-800">Smart Routing</h5>
-                  <p className="text-sm text-blue-600">Automatic detection of webhook type and processing</p>
+                  <h5 className="font-medium text-blue-800">Direct Field Mapping</h5>
+                  <p className="text-sm text-blue-600">No nested objects - all fields accessible at root level</p>
                 </div>
                 
                 <div className="bg-green-50 p-3 rounded-md">
-                  <h5 className="font-medium text-green-800">Error Handling</h5>
-                  <p className="text-sm text-green-600">Comprehensive validation and detailed error messages</p>
+                  <h5 className="font-medium text-green-800">Multi-Connection Support</h5>
+                  <p className="text-sm text-green-600">username_1, username_2, username_3 fields for up to 3 connections</p>
                 </div>
                 
                 <div className="bg-purple-50 p-3 rounded-md">
-                  <h5 className="font-medium text-purple-800">Credit Management</h5>
-                  <p className="text-sm text-purple-600">Intelligent credit calculation and validation</p>
+                  <h5 className="font-medium text-purple-800">Date Fields</h5>
+                  <p className="text-sm text-purple-600">start_date and end_date for automation triggers</p>
                 </div>
                 
                 <div className="bg-orange-50 p-3 rounded-md">
-                  <h5 className="font-medium text-orange-800">HighLevel Integration</h5>
-                  <p className="text-sm text-orange-600">Automatic credential delivery and account updates</p>
+                  <h5 className="font-medium text-orange-800">Backward Compatible</h5>
+                  <p className="text-sm text-orange-600">Legacy webhooks still work, enhanced responses available</p>
                 </div>
               </div>
             </div>
@@ -316,22 +408,41 @@ export default function Webhook() {
 
         {/* Backward Compatibility */}
         <div className="mb-8">
-          <DashboardCard title="Backward Compatibility">
+          <DashboardCard title="Response Structure">
             <div className="p-4">
               <div className="flex items-start space-x-3 mb-4">
                 <Info className="h-5 w-5 text-blue-500 mt-0.5" />
                 <div>
-                  <h4 className="font-medium text-gray-900">Legacy Webhook Support</h4>
-                  <p className="text-sm text-gray-600">All existing webhook integrations continue to work unchanged</p>
+                  <h4 className="font-medium text-gray-900">Flattened for HighLevel Compatibility</h4>
+                  <p className="text-sm text-gray-600">All response fields are at the root level for easy workflow mapping</p>
                 </div>
               </div>
               
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>• <strong>Legacy Format:</strong> Old webhook payloads are automatically converted</li>
-                <li>• <strong>Feature Detection:</strong> System detects enhanced vs legacy webhooks automatically</li>
-                <li>• <strong>No Breaking Changes:</strong> Existing HighLevel automations work without modification</li>
-                <li>• <strong>Progressive Enhancement:</strong> Add new features when ready, no rush to upgrade</li>
-              </ul>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <h5 className="font-semibold text-gray-800 mb-2">Customer Fields</h5>
+                  <ul className="space-y-1 text-gray-600">
+                    <li>• <code>name</code> - Customer name</li>
+                    <li>• <code>email</code> - Customer email</li>
+                    <li>• <code>device_type</code> - Device type</li>
+                    <li>• <code>start_date</code> - Service start date</li>
+                    <li>• <code>end_date</code> - Service expiration date</li>
+                    <li>• <code>account_type</code> - m3u, mag, or trial</li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <h5 className="font-semibold text-gray-800 mb-2">Connection Fields</h5>
+                  <ul className="space-y-1 text-gray-600">
+                    <li>• <code>username_1</code> - First connection username</li>
+                    <li>• <code>password_1</code> - First connection password</li>
+                    <li>• <code>m3u_url_1</code> - First connection M3U URL</li>
+                    <li>• <code>username_2</code> - Second connection (if exists)</li>
+                    <li>• <code>username_3</code> - Third connection (if exists)</li>
+                    <li>• <code>total_connections</code> - Total number of connections</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           </DashboardCard>
         </div>
@@ -348,20 +459,20 @@ export default function Webhook() {
           </div>
           
           <div className="bg-white p-4 rounded-lg border">
-            <h4 className="font-semibold text-gray-800 mb-2">Connections</h4>
+            <h4 className="font-semibold text-gray-800 mb-2">Response Format</h4>
             <div className="space-y-1 text-sm">
-              <div>Range: 1-10 connections</div>
-              <div>Credit formula: connections × months</div>
-              <div>Auto-grouped internally</div>
+              <div>Flattened structure</div>
+              <div>Direct field access</div>
+              <div>HighLevel compatible</div>
             </div>
           </div>
           
           <div className="bg-white p-4 rounded-lg border">
-            <h4 className="font-semibold text-gray-800 mb-2">Account Types</h4>
+            <h4 className="font-semibold text-gray-800 mb-2">Connections</h4>
             <div className="space-y-1 text-sm">
-              <div><Badge variant="secondary">M3U</Badge> - Multi-connection</div>
-              <div><Badge variant="secondary">MAG</Badge> - Single + MAC</div>
-              <div><Badge variant="secondary">Trial</Badge> - Time-limited</div>
+              <div>username_1, password_1</div>
+              <div>username_2, password_2</div>
+              <div>username_3, password_3</div>
             </div>
           </div>
         </div>

@@ -22,14 +22,27 @@ export interface EnhancedWebhookPayload {
 export interface EnhancedWebhookResult {
   success: boolean;
   message: string;
-  data?: {
-    customers?: any[];
-    creditsUsed?: number;
-    totalConnections?: number;
-    accountType?: string;
-    accountsRenewed?: number;
-    trialExpiresAt?: string;
-  };
+  // Flattened response structure for HighLevel compatibility
+  name?: string;
+  email?: string;
+  device_type?: string;
+  start_date?: string;
+  end_date?: string;
+  total_connections?: number;
+  account_type?: string;
+  credits_used?: number;
+  accounts_renewed?: number;
+  trial_expires_at?: string;
+  // Connection credentials (up to 3 connections)
+  username_1?: string;
+  password_1?: string;
+  m3u_url_1?: string;
+  username_2?: string;
+  password_2?: string;
+  m3u_url_2?: string;
+  username_3?: string;
+  password_3?: string;
+  m3u_url_3?: string;
   errors?: string[];
 }
 
@@ -43,6 +56,48 @@ interface ResellerDataResult {
     provider: string;
   };
   errors?: string[];
+}
+
+// Helper function to flatten customer credentials
+function flattenCustomerCredentials(customers: any[]): any {
+  const flattened: any = {};
+  
+  // Handle consolidated customer with connection_list
+  if (customers.length === 1 && customers[0].connection_list) {
+    const connectionList = customers[0].connection_list;
+    connectionList.slice(0, 3).forEach((connection: any, index: number) => {
+      const fieldNumber = index + 1;
+      if (connection.username) {
+        flattened[`username_${fieldNumber}`] = connection.username;
+      }
+      if (connection.password) {
+        flattened[`password_${fieldNumber}`] = connection.password;
+      }
+      if (connection.m3u_url) {
+        flattened[`m3u_url_${fieldNumber}`] = connection.m3u_url;
+      }
+    });
+    
+    flattened.total_connections = customers[0].total_connections || connectionList.length;
+  } else {
+    // Handle individual customer records
+    customers.slice(0, 3).forEach((customer, index) => {
+      const fieldNumber = index + 1;
+      if (customer.username) {
+        flattened[`username_${fieldNumber}`] = customer.username;
+      }
+      if (customer.password) {
+        flattened[`password_${fieldNumber}`] = customer.password;
+      }
+      if (customer.m3u_url) {
+        flattened[`m3u_url_${fieldNumber}`] = customer.m3u_url;
+      }
+    });
+    
+    flattened.total_connections = customers.length;
+  }
+  
+  return flattened;
 }
 
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
@@ -148,6 +203,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
     // Calculate trial expiration
     const expirationDate = new Date();
     expirationDate.setHours(expirationDate.getHours() + trialDurationHours);
+    const startDate = new Date();
 
     // Create trial account via create-iptv-user function
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
@@ -162,7 +218,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
           planDuration: 1,
           connections: connections,
           maxConnections: connections,
-          startDate: new Date().toISOString().split('T')[0],
+          startDate: startDate.toISOString().split('T')[0],
           expirationDate: expirationDate.toISOString().split('T')[0],
           accountType: 'm3u',
           status: 'active',
@@ -182,15 +238,20 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
       };
     }
 
+    // Flatten credentials for HighLevel compatibility
+    const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
+
     return {
       success: true,
       message: `Trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
-      data: {
-        customers: data.customers,
-        totalConnections: connections,
-        trialExpiresAt: expirationDate.toISOString(),
-        accountType: 'trial'
-      }
+      name: payload.customer.name,
+      email: payload.customer.email,
+      device_type: payload.customer.device_type || 'Smart TV',
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: expirationDate.toISOString().split('T')[0],
+      account_type: 'trial',
+      trial_expires_at: expirationDate.toISOString(),
+      ...flattenedCredentials
     };
   } catch (error) {
     console.error('💥 Error handling trial creation:', error);
@@ -230,7 +291,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
     }
 
     // Calculate dates
-    const startDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date();
     const expirationDate = new Date();
     expirationDate.setMonth(expirationDate.getMonth() + planDuration);
 
@@ -250,7 +311,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
           planDuration: planDuration,
           connections: connections,
           maxConnections: connections,
-          startDate: startDate,
+          startDate: startDate.toISOString().split('T')[0],
           expirationDate: expirationDate.toISOString().split('T')[0],
           accountType: accountType,
           status: 'active',
@@ -268,15 +329,20 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
       };
     }
 
+    // Flatten credentials for HighLevel compatibility
+    const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
+
     return {
       success: true,
       message: `Account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
-      data: {
-        customers: data.customers,
-        creditsUsed: creditsRequired,
-        totalConnections: connections,
-        accountType: accountType
-      }
+      name: payload.customer.name,
+      email: payload.customer.email,
+      device_type: payload.customer.device_type || 'Smart TV',
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: expirationDate.toISOString().split('T')[0],
+      account_type: accountType,
+      credits_used: creditsRequired,
+      ...flattenedCredentials
     };
   } catch (error) {
     console.error('💥 Error handling account creation:', error);
@@ -340,13 +406,22 @@ async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<En
       };
     }
 
+    // Calculate new end date
+    const currentExpiry = new Date(customer.expiration_date);
+    const newExpiry = new Date(currentExpiry);
+    newExpiry.setMonth(newExpiry.getMonth() + payload.customer.plan_duration_months);
+
     return {
       success: true,
       message: `Customer renewed successfully. ${data.accountsRenewed} accounts renewed for ${payload.customer.plan_duration_months} months`,
-      data: {
-        accountsRenewed: data.accountsRenewed,
-        creditsUsed: data.creditsUsed
-      }
+      name: payload.customer.name,
+      email: payload.customer.email,
+      device_type: customer.device_type || 'Smart TV',
+      start_date: customer.start_date,
+      end_date: newExpiry.toISOString().split('T')[0],
+      account_type: customer.mac_address ? 'mag' : 'm3u',
+      accounts_renewed: data.accountsRenewed,
+      credits_used: data.creditsUsed
     };
   } catch (error) {
     console.error('💥 Error handling account renewal:', error);

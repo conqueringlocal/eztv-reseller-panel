@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Initialize Supabase client
@@ -38,11 +37,74 @@ export interface EnhancedWebhookPayload {
   contactId?: string;
 }
 
+// Flattened webhook result for HighLevel compatibility
 interface WebhookResult {
   success: boolean;
   message: string;
-  data?: any;
+  // Customer information
+  name?: string;
+  email?: string;
+  device_type?: string;
+  start_date?: string;
+  end_date?: string;
+  total_connections?: number;
+  account_type?: string;
+  credits_used?: number;
+  accounts_renewed?: number;
+  trial_expires_at?: string;
+  // Connection credentials (up to 3 connections)
+  username_1?: string;
+  password_1?: string;
+  m3u_url_1?: string;
+  username_2?: string;
+  password_2?: string;
+  m3u_url_2?: string;
+  username_3?: string;
+  password_3?: string;
+  m3u_url_3?: string;
   errors?: string[];
+}
+
+// Helper function to flatten customer credentials for HighLevel compatibility
+function flattenCustomerCredentials(customers: any[]): any {
+  const flattened: any = {};
+  
+  // Handle consolidated customer with connection_list
+  if (customers.length === 1 && customers[0].connection_list) {
+    const connectionList = customers[0].connection_list;
+    connectionList.slice(0, 3).forEach((connection: any, index: number) => {
+      const fieldNumber = index + 1;
+      if (connection.username) {
+        flattened[`username_${fieldNumber}`] = connection.username;
+      }
+      if (connection.password) {
+        flattened[`password_${fieldNumber}`] = connection.password;
+      }
+      if (connection.m3u_url) {
+        flattened[`m3u_url_${fieldNumber}`] = connection.m3u_url;
+      }
+    });
+    
+    flattened.total_connections = customers[0].total_connections || connectionList.length;
+  } else {
+    // Handle individual customer records
+    customers.slice(0, 3).forEach((customer, index) => {
+      const fieldNumber = index + 1;
+      if (customer.username) {
+        flattened[`username_${fieldNumber}`] = customer.username;
+      }
+      if (customer.password) {
+        flattened[`password_${fieldNumber}`] = customer.password;
+      }
+      if (customer.m3u_url) {
+        flattened[`m3u_url_${fieldNumber}`] = customer.m3u_url;
+      }
+    });
+    
+    flattened.total_connections = customers.length;
+  }
+  
+  return flattened;
 }
 
 // Enhanced credit calculation for multi-connection accounts
@@ -98,7 +160,7 @@ async function getResellerByApiKey(apiKey: string): Promise<{
   }
 }
 
-// Enhanced trial account creation with consolidated structure
+// Enhanced trial account creation with flattened response
 async function createTrialAccount(
   payload: EnhancedWebhookPayload,
   resellerId: string,
@@ -112,6 +174,7 @@ async function createTrialAccount(
     const connections = payload.connections || 1;
     
     // Calculate trial expiration
+    const startDate = new Date();
     const expirationDate = new Date();
     expirationDate.setHours(expirationDate.getHours() + trialDurationHours);
     
@@ -135,7 +198,7 @@ async function createTrialAccount(
           planDuration: 1, // Trial duration in months (will be overridden by hours)
           connections: connections,
           maxConnections: connections,
-          startDate: new Date().toISOString().split('T')[0],
+          startDate: startDate.toISOString().split('T')[0],
           expirationDate: expirationDate.toISOString().split('T')[0],
           accountType: 'm3u',
           status: 'active',
@@ -179,14 +242,20 @@ async function createTrialAccount(
       );
     }
 
+    // Flatten credentials for HighLevel compatibility
+    const flattenedCredentials = flattenCustomerCredentials(data.customers || []);
+
     return {
       success: true,
       message: `Consolidated trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
-      data: {
-        customers: data.customers,
-        trialExpiresAt: expirationDate.toISOString(),
-        totalConnections: connections
-      }
+      name: customerName,
+      email: customerEmail,
+      device_type: deviceType,
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: expirationDate.toISOString().split('T')[0],
+      account_type: 'trial',
+      trial_expires_at: expirationDate.toISOString(),
+      ...flattenedCredentials
     };
   } catch (error) {
     console.error('💥 Error creating trial account:', error);
@@ -198,7 +267,7 @@ async function createTrialAccount(
   }
 }
 
-// Enhanced multi-connection account creation with consolidation
+// Enhanced multi-connection account creation with flattened response
 async function createMultiConnectionAccount(
   payload: EnhancedWebhookPayload,
   resellerId: string,
@@ -243,7 +312,7 @@ async function createMultiConnectionAccount(
     console.log(`🎯 Creating consolidated ${accountType} account with ${connections} connections`);
     
     // Calculate dates
-    const startDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date();
     const expirationDate = new Date();
     expirationDate.setMonth(expirationDate.getMonth() + planDuration);
     
@@ -261,7 +330,7 @@ async function createMultiConnectionAccount(
           planDuration: planDuration,
           connections: connections,
           maxConnections: connections,
-          startDate: startDate,
+          startDate: startDate.toISOString().split('T')[0],
           expirationDate: expirationDate.toISOString().split('T')[0],
           accountType: accountType,
           status: 'active',
@@ -316,15 +385,21 @@ async function createMultiConnectionAccount(
       );
     }
 
+    // Flatten credentials for HighLevel compatibility
+    const customersForFlattening = consolidatedCustomer ? [consolidatedCustomer] : data.customers;
+    const flattenedCredentials = flattenCustomerCredentials(customersForFlattening || []);
+
     return {
       success: true,
       message: `Consolidated account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
-      data: {
-        customers: consolidatedCustomer ? [consolidatedCustomer] : data.customers,
-        creditsUsed: creditsRequired,
-        totalConnections: connections,
-        accountType: accountType
-      }
+      name: customerName,
+      email: customerEmail,
+      device_type: deviceType,
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: expirationDate.toISOString().split('T')[0],
+      account_type: accountType,
+      credits_used: creditsRequired,
+      ...flattenedCredentials
     };
   } catch (error) {
     console.error('💥 Error creating multi-connection account:', error);
@@ -336,7 +411,7 @@ async function createMultiConnectionAccount(
   }
 }
 
-// Enhanced group-aware renewal
+// Enhanced group-aware renewal with flattened response
 async function renewCustomerGroup(
   payload: EnhancedWebhookPayload,
   resellerId: string,
@@ -406,14 +481,22 @@ async function renewCustomerGroup(
       );
     }
 
+    // Calculate new end date
+    const currentExpiry = new Date(primaryCustomer.expiration_date);
+    const newExpiry = new Date(currentExpiry);
+    newExpiry.setMonth(newExpiry.getMonth() + planDuration);
+
     return {
       success: true,
       message: `Customer group renewed successfully. ${renewalResult.accountsRenewed} accounts renewed for ${planDuration} months`,
-      data: {
-        accountsRenewed: renewalResult.accountsRenewed,
-        creditsUsed: renewalResult.creditsUsed,
-        planDuration: planDuration
-      }
+      name: customerName,
+      email: customerEmail,
+      device_type: primaryCustomer.device_type || 'Smart TV',
+      start_date: primaryCustomer.start_date,
+      end_date: newExpiry.toISOString().split('T')[0],
+      account_type: primaryCustomer.mac_address ? 'mag' : 'm3u',
+      accounts_renewed: renewalResult.accountsRenewed,
+      credits_used: renewalResult.creditsUsed
     };
   } catch (error) {
     console.error('💥 Error renewing customer group:', error);
@@ -647,7 +730,7 @@ async function sendRenewalConfirmationToHighLevel(
   }
 }
 
-// Main enhanced webhook processor
+// Main enhanced webhook processor with flattened response
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<WebhookResult> => {
   try {
     console.log('🚀 Processing enhanced webhook payload with consolidation:', JSON.stringify(payload, null, 2));

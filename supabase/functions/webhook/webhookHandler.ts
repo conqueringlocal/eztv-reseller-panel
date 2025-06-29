@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Initialize Supabase client
@@ -49,6 +48,26 @@ export interface WebhookPayload {
   planDuration?: number;
   packageId?: string; // Optional package ID for legacy format
   contactId?: string; // Legacy support for contact ID
+}
+
+// Flattened webhook result for HighLevel compatibility
+interface LegacyWebhookResult {
+  success: boolean;
+  message: string;
+  // Customer information
+  name?: string;
+  email?: string;
+  device_type?: string;
+  start_date?: string;
+  end_date?: string;
+  account_type?: string;
+  // Single connection credentials (legacy format)
+  username?: string;
+  password?: string;
+  m3u_url?: string;
+  credits_used?: number;
+  // Error information
+  errors?: string[];
 }
 
 // Generate IPTV credentials
@@ -147,16 +166,13 @@ async function findCustomerByNameAndEmail(
   }
 }
 
-// Process customer renewal
+// Process customer renewal with flattened response
 async function processCustomerRenewal(
   customer: any,
   additionalMonths: number,
   resellerId: string,
   contactId?: string
-): Promise<{
-  success: boolean;
-  message: string;
-}> {
+): Promise<LegacyWebhookResult> {
   try {
     console.log(`🔄 Processing renewal for customer: ${customer.id} (${additionalMonths} months)`);
 
@@ -171,7 +187,8 @@ async function processCustomerRenewal(
       console.error('❌ Error fetching reseller data:', resellerError);
       return {
         success: false,
-        message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
+        message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`,
+        errors: ['reseller_not_found']
       };
     }
 
@@ -179,7 +196,8 @@ async function processCustomerRenewal(
       console.error('❌ Insufficient credits for renewal');
       return {
         success: false,
-        message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${additionalMonths} are required`
+        message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${additionalMonths} are required`,
+        errors: ['insufficient_credits']
       };
     }
 
@@ -196,7 +214,8 @@ async function processCustomerRenewal(
       console.error('❌ Failed to renew IPTV user:', error || data);
       return {
         success: false,
-        message: "Failed to renew IPTV user in panel"
+        message: "Failed to renew IPTV user in panel",
+        errors: ['renewal_api_failed']
       };
     }
 
@@ -224,7 +243,8 @@ async function processCustomerRenewal(
       console.error('❌ Error updating customer record:', updateError);
       return {
         success: false,
-        message: `Failed to update customer record: ${updateError.message}`
+        message: `Failed to update customer record: ${updateError.message}`,
+        errors: ['database_update_failed']
       };
     }
 
@@ -240,7 +260,8 @@ async function processCustomerRenewal(
       console.error('❌ Error deducting credits:', creditError);
       return {
         success: false,
-        message: `Failed to deduct credits: ${creditError.message}`
+        message: `Failed to deduct credits: ${creditError.message}`,
+        errors: ['credit_deduction_failed']
       };
     }
 
@@ -279,15 +300,27 @@ async function processCustomerRenewal(
 
     console.log('🎉 Customer renewal completed successfully');
 
+    // Return flattened response for HighLevel compatibility
     return {
       success: true,
-      message: `Customer ${customer.name} renewed successfully for ${additionalMonths} months`
+      message: `Customer ${customer.name} renewed successfully for ${additionalMonths} months`,
+      name: customer.name,
+      email: customer.email,
+      device_type: customer.device_type || 'Unknown',
+      start_date: customer.start_date,
+      end_date: newExpirationDate,
+      account_type: customer.mac_address ? 'mag' : 'm3u',
+      username: customer.username,
+      password: customer.password,
+      m3u_url: customer.m3u_url,
+      credits_used: additionalMonths
     };
   } catch (error) {
     console.error('💥 Error in processCustomerRenewal:', error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Unknown error during renewal"
+      message: error instanceof Error ? error.message : "Unknown error during renewal",
+      errors: ['unknown_error']
     };
   }
 }
@@ -399,12 +432,8 @@ async function sendHighLevelCredentials(
   }
 }
 
-// Process incoming webhook
-export const processWebhook = async (payload: WebhookPayload): Promise<{
-  success: boolean;
-  message: string;
-  customer?: Omit<Customer, 'id' | 'createdAt'>;
-}> => {
+// Process incoming webhook with flattened response
+export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWebhookResult> => {
   try {
     console.log(`🔄 Processing webhook payload:`, payload);
     
@@ -426,7 +455,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         console.error('❌ Invalid or inactive API key:', payload.api_key);
         return {
           success: false,
-          message: "Invalid or inactive API key"
+          message: "Invalid or inactive API key",
+          errors: ['invalid_api_key']
         };
       }
 
@@ -453,7 +483,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.error('❌ Missing API key or reseller ID in webhook payload');
       return {
         success: false,
-        message: "Missing API key or reseller ID in webhook payload"
+        message: "Missing API key or reseller ID in webhook payload",
+        errors: ['missing_auth']
       };
     }
 
@@ -475,7 +506,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.error('❌ Missing required customer fields');
       return {
         success: false,
-        message: "Missing required customer fields in webhook payload"
+        message: "Missing required customer fields in webhook payload",
+        errors: ['missing_customer_data']
       };
     }
 
@@ -489,7 +521,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       if (!existingCustomer) {
         return {
           success: false,
-          message: `No customer found with name "${customerName}" and email "${customerEmail}"`
+          message: `No customer found with name "${customerName}" and email "${customerEmail}"`,
+          errors: ['customer_not_found']
         };
       }
 
@@ -532,7 +565,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.error('❌ MAC address is required for customer creation');
       return {
         success: false,
-        message: "MAC address is required for customer creation"
+        message: "MAC address is required for customer creation",
+        errors: ['missing_mac_address']
       };
     }
 
@@ -549,7 +583,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         console.error('❌ Reseller not found:', resellerError?.message);
         return {
           success: false,
-          message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
+          message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`,
+          errors: ['reseller_not_found']
         };
       }
 
@@ -560,7 +595,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         console.error('❌ Insufficient credits');
         return {
           success: false,
-          message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${planDuration} are required`
+          message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${planDuration} are required`,
+          errors: ['insufficient_credits']
         };
       }
     } else {
@@ -577,7 +613,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         console.error('❌ Reseller not found:', resellerError?.message);
         return {
           success: false,
-          message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`
+          message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`,
+          errors: ['reseller_not_found']
         };
       }
 
@@ -626,7 +663,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.error('❌ Failed to create IPTV user:', error || data);
       return {
         success: false,
-        message: "Failed to create IPTV user"
+        message: "Failed to create IPTV user",
+        errors: ['iptv_creation_failed']
       };
     }
 
@@ -673,7 +711,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
       console.error('❌ Failed to add customer to database:', customerError);
       return {
         success: false,
-        message: `Failed to add customer to database: ${customerError.message}`
+        message: `Failed to add customer to database: ${customerError.message}`,
+        errors: ['database_insert_failed']
       };
     }
 
@@ -691,7 +730,8 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
         console.error('❌ Failed to deduct credits:', creditError);
         return {
           success: false,
-          message: `Failed to deduct credits: ${creditError.message}`
+          message: `Failed to deduct credits: ${creditError.message}`,
+          errors: ['credit_deduction_failed']
         };
       }
 
@@ -755,26 +795,27 @@ export const processWebhook = async (payload: WebhookPayload): Promise<{
 
     console.log('🎉 Webhook processing completed successfully');
 
-    // Return success with customer data
+    // Return flattened success response for HighLevel compatibility
     return {
       success: true,
       message: isTrialAccount ? "Trial account created successfully" : "Customer provisioned successfully",
-      customer: {
-        resellerId,
-        name: customerName,
-        email: customerEmail,
-        macAddress,
-        deviceType,
-        planDuration,
-        startDate,
-        expirationDate
-      }
+      name: customerName,
+      email: customerEmail,
+      device_type: deviceType,
+      start_date: startDate,
+      end_date: expirationDate,
+      account_type: macAddress ? 'mag' : 'm3u',
+      username: finalUsername,
+      password: finalPassword,
+      m3u_url: data.user?.m3u_url || '',
+      credits_used: isTrialAccount ? 0 : planDuration
     };
   } catch (error) {
     console.error("💥 Error processing webhook:", error);
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Unknown error"
+      message: error instanceof Error ? error.message : "Unknown error",
+      errors: ['unknown_processing_error']
     };
   }
 };
