@@ -9,12 +9,15 @@ import { RenewCustomerForm } from './RenewCustomerForm';
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   isConsolidatedCustomer, 
   getCustomerDisplayName, 
   getTotalConnections, 
   getConnectionSummary,
-  processCustomersForDisplay
+  processCustomersForDisplay,
+  formatDateSafely,
+  getDaysUntilExpirationSafely
 } from '@/utils/consolidatedCustomerUtils';
 import {
   Dialog,
@@ -49,10 +52,14 @@ export function CustomerTable({
   statusFilter,
   onStatusFilterChange
 }: CustomerTableProps) {
+  const { user } = useAuth();
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
   const [viewingCredentials, setViewingCredentials] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+
+  // Check if current user is admin
+  const isAdmin = user?.role === 'admin';
 
   // Process customers to handle both consolidated and legacy formats
   const processedCustomers = processCustomersForDisplay(customers);
@@ -63,14 +70,15 @@ export function CustomerTable({
         const today = new Date();
         const sevenDaysFromNow = new Date();
         sevenDaysFromNow.setDate(today.getDate() + 7);
-        const expirationDate = new Date(customer.expiration_date);
+        
+        const daysUntilExpiration = getDaysUntilExpirationSafely(customer.expiration_date);
         
         switch (statusFilter) {
           case 'active':
             return customer.status === 'active' && !customer.is_deactivated && !customer.cancelled_at;
           case 'expiring':
             return !customer.is_deactivated && !customer.cancelled_at && customer.status !== 'expired' && 
-                   expirationDate > today && expirationDate <= sevenDaysFromNow;
+                   daysUntilExpiration !== null && daysUntilExpiration > 0 && daysUntilExpiration <= 7;
           case 'expired':
             return customer.status === 'expired' && !customer.is_deactivated && !customer.cancelled_at;
           case 'cancelled':
@@ -110,7 +118,6 @@ export function CustomerTable({
       
       if (isConsolidatedCustomer(customer)) {
         // For consolidated customers, delete the single record
-        // The connection_list contains all the connection details
         const { error } = await supabase
           .from('customers')
           .delete()
@@ -163,18 +170,6 @@ export function CustomerTable({
     onRefresh();
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  const getDaysUntilExpiration = (expirationDate: string) => {
-    const expDate = new Date(expirationDate);
-    const today = new Date();
-    const diffTime = expDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays;
-  };
-
   if (filteredCustomers.length === 0) {
     return (
       <Card>
@@ -189,7 +184,7 @@ export function CustomerTable({
     <>
       <div className="grid gap-4">
         {filteredCustomers.map((customer) => {
-          const daysUntilExpiration = getDaysUntilExpiration(customer.expiration_date);
+          const daysUntilExpiration = getDaysUntilExpirationSafely(customer.expiration_date);
           const totalConnections = getTotalConnections(customer);
           const displayName = getCustomerDisplayName(customer);
           
@@ -219,10 +214,10 @@ export function CustomerTable({
               </CardHeader>
               
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className={`grid gap-4 mb-4 ${isAdmin ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'}`}>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Device Type</p>
-                    <p className="text-sm">{customer.device_type}</p>
+                    <p className="text-sm">{customer.device_type || 'Not specified'}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Connections</p>
@@ -230,29 +225,34 @@ export function CustomerTable({
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Plan Duration</p>
-                    <p className="text-sm">{customer.plan_duration} month{customer.plan_duration > 1 ? 's' : ''}</p>
+                    <p className="text-sm">
+                      {customer.plan_duration ? `${customer.plan_duration} month${customer.plan_duration > 1 ? 's' : ''}` : 'Not specified'}
+                    </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Provider</p>
-                    <p className="text-sm">{customer.provider || '8K'}</p>
-                  </div>
+                  {/* Only show provider field to admin users */}
+                  {isAdmin && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Provider</p>
+                      <p className="text-sm">{customer.provider || 'Default'}</p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                   <div>
                     <p className="text-sm font-medium text-gray-500">Start Date</p>
-                    <p className="text-sm">{formatDate(customer.start_date)}</p>
+                    <p className="text-sm">{formatDateSafely(customer.start_date)}</p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Expiration Date</p>
                     <div className="flex items-center space-x-2">
-                      <p className="text-sm">{formatDate(customer.expiration_date)}</p>
-                      {daysUntilExpiration <= 7 && daysUntilExpiration > 0 && (
+                      <p className="text-sm">{formatDateSafely(customer.expiration_date)}</p>
+                      {daysUntilExpiration !== null && daysUntilExpiration <= 7 && daysUntilExpiration > 0 && (
                         <Badge variant="destructive" className="text-xs">
                           {daysUntilExpiration} days left
                         </Badge>
                       )}
-                      {daysUntilExpiration <= 0 && (
+                      {daysUntilExpiration !== null && daysUntilExpiration <= 0 && (
                         <Badge variant="destructive" className="text-xs">
                           Expired
                         </Badge>

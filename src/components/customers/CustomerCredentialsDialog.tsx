@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Copy, Download, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   isConsolidatedCustomer, 
   getCustomerDisplayName, 
@@ -20,9 +21,13 @@ interface CustomerCredentialsDialogProps {
 }
 
 export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredentialsDialogProps) {
+  const { user } = useAuth();
   const displayName = getCustomerDisplayName(customer);
   const totalConnections = getTotalConnections(customer);
   const credentials = getCustomerCredentials(customer);
+  
+  // Check if current user is admin
+  const isAdmin = user?.role === 'admin';
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -77,7 +82,7 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
               <CardTitle className="text-lg">Customer Information</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4">
+              <div className={`grid gap-4 ${isAdmin ? 'grid-cols-2' : 'grid-cols-2'}`}>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Name</p>
                   <p className="text-sm">{displayName}</p>
@@ -92,12 +97,15 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-500">Device Type</p>
-                  <p className="text-sm">{customer.device_type}</p>
+                  <p className="text-sm">{customer.device_type || 'Not specified'}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Provider</p>
-                  <p className="text-sm">{customer.provider || '8K'}</p>
-                </div>
+                {/* Only show provider field to admin users */}
+                {isAdmin && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Provider</p>
+                    <p className="text-sm">{customer.provider || 'Default'}</p>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-medium text-gray-500">Status</p>
                   <Badge className={
