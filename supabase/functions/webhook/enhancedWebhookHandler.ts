@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Initialize Supabase client
@@ -121,10 +120,11 @@ async function createTrialAccount(
     
     console.log(`🔄 Creating ${connections} trial connections for ${customerName}`);
     
-    // Call the create-iptv-user function for trial accounts
+    // Call the create-iptv-user function for trial accounts with serviceCall parameter
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
       body: {
         resellerId: resellerId,
+        serviceCall: true, // Enable service call mode to bypass JWT authentication
         customerData: {
           name: customerName,
           email: customerEmail,
@@ -234,10 +234,11 @@ async function createMultiConnectionAccount(
     const expirationDate = new Date();
     expirationDate.setMonth(expirationDate.getMonth() + planDuration);
     
-    // Call create-iptv-user function
+    // Call create-iptv-user function with serviceCall parameter
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
       body: {
         resellerId: resellerId,
+        serviceCall: true, // Enable service call mode to bypass JWT authentication
         customerData: {
           name: customerName,
           email: customerEmail,

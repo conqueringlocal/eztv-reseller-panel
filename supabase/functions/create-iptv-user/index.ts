@@ -9,6 +9,7 @@ const corsHeaders = {
 
 interface CreateUserRequest {
   resellerId: string;
+  serviceCall?: boolean; // New parameter to indicate internal service calls
   customerData: {
     name: string;
     email: string;
@@ -40,31 +41,37 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Get the authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Verify the JWT token
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    
-    if (authError || !user) {
-      console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const { resellerId, customerData }: CreateUserRequest = await req.json();
+    const { resellerId, customerData, serviceCall = false }: CreateUserRequest = await req.json();
 
     console.log(`🚀 Creating M3U users for reseller: ${resellerId}`);
     console.log(`📊 Customer data:`, customerData);
+    console.log(`🔧 Service call mode: ${serviceCall}`);
+
+    // Only verify JWT authentication if this is NOT a service call
+    if (!serviceCall) {
+      // Get the authorization header
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'No authorization header' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Verify the JWT token
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      
+      if (authError || !user) {
+        console.error('Auth error:', authError);
+        return new Response(
+          JSON.stringify({ error: 'Invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else {
+      console.log('🔐 Bypassing JWT authentication for service call');
+    }
 
     // Get reseller's profile to determine provider and check credits
     const { data: reseller, error: resellerError } = await supabaseClient
