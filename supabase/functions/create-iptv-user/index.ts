@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -185,18 +184,25 @@ serve(async (req) => {
         } else if (provider === 'trex') {
           console.log(`📡 Creating Trex M3U user ${i} with 1 connection`);
           
-          // Call the create-trex-user function for each connection
+          // Call the create-trex-user function for each connection with serviceCall parameter
           const { data: trexResult, error: trexError } = await supabaseClient.functions.invoke('create-trex-user', {
             body: {
-              userParams: {
-                username: username,
-                password: password,
+              resellerId: resellerId,
+              serviceCall: true, // Enable service call mode to bypass JWT authentication
+              customerData: {
+                name: `${customerData.name} (Connection ${i})`,
+                email: customerData.email,
+                macAddress: customerData.macAddress,
+                deviceType: customerData.deviceType,
+                packageId: customerData.packageId,
+                planDuration: customerData.planDuration,
+                connections: 1,
                 maxConnections: 1,
-                expiryDate: customerData.expirationDate,
-                isTrial: false,
-                bouquet: customerData.packageId,
-                customerName: `${customerData.name} (Connection ${i})`,
-                resellerName: reseller.name || 'Unknown'
+                startDate: customerData.startDate,
+                expirationDate: customerData.expirationDate,
+                accountType: 'm3u',
+                status: customerData.status,
+                isDeactivated: customerData.isDeactivated
               }
             }
           });
@@ -205,10 +211,16 @@ serve(async (req) => {
             throw new Error(trexResult?.error || trexError?.message || 'Failed to create Trex IPTV user');
           }
 
+          // Extract the first customer from the Trex result (since we're creating 1 connection at a time)
+          const trexCustomer = trexResult.customers?.[0];
+          if (!trexCustomer) {
+            throw new Error('No customer data returned from Trex API');
+          }
+
           iptvResult = {
             user_info: {
-              m3u_url: trexResult.m3uUrl,
-              group_id: null
+              m3u_url: trexCustomer.m3u_url,
+              group_id: trexCustomer.customer_group_id
             }
           };
 
@@ -220,52 +232,73 @@ serve(async (req) => {
         console.log(`💾 Creating customer record for connection ${i}`);
         const { data: newCustomer, error: createError } = await supabaseClient
           .from('customers')
-          .insert({
-            reseller_id: resellerId,
-            name: `${customerData.name} (Connection ${i})`,
-            email: customerData.email,
-            username: username,
-            password: password,
-            mac_address: customerData.macAddress || null,
-            device_type: customerData.deviceType,
-            plan_duration: customerData.planDuration,
-            max_connections: 1, // Each account has 1 connection
-            current_connections: 0,
-            connection_details: [],
-            start_date: customerData.startDate,
-            expiration_date: customerData.expirationDate,
-            status: customerData.status,
-            is_deactivated: customerData.isDeactivated,
-            provider: provider,
-            customer_group: customerGroupId, // Group all connections together
-            customer_group_id: iptvResult.user_info?.group_id?.toString() || null,
-            m3u_url: iptvResult.user_info?.m3u_url || null,
-            connection_sequence: i
-          })
           .select()
+          .eq('id', trexCustomer?.id || null)
           .single();
 
-        if (createError) {
-          console.error(`Error creating customer record for connection ${i}:`, createError);
-          failedConnections.push({
-            connectionNumber: i,
-            error: createError.message,
-            credentials: { username, password }
+        if (createError && provider === 'trex') {
+          // For Trex, the customer was already created by create-trex-user
+          // Just add it to our results
+          createdCustomers.push({
+            ...trexCustomer,
+            credentials: {
+              username: trexCustomer.username,
+              password: trexCustomer.password,
+              maxConnections: 1,
+              m3uUrl: trexCustomer.m3u_url
+            }
           });
-          continue;
-        }
+        } else if (provider === '8k') {
+          console.log(`💾 Creating customer record for connection ${i}`);
+          const { data: newCustomer, error: createError } = await supabaseClient
+            .from('customers')
+            .insert({
+              reseller_id: resellerId,
+              name: `${customerData.name} (Connection ${i})`,
+              email: customerData.email,
+              username: username,
+              password: password,
+              mac_address: customerData.macAddress || null,
+              device_type: customerData.deviceType,
+              plan_duration: customerData.planDuration,
+              max_connections: 1, // Each account has 1 connection
+              current_connections: 0,
+              connection_details: [],
+              start_date: customerData.startDate,
+              expiration_date: customerData.expirationDate,
+              status: customerData.status,
+              is_deactivated: customerData.isDeactivated,
+              provider: provider,
+              customer_group: customerGroupId, // Group all connections together
+              customer_group_id: iptvResult.user_info?.group_id?.toString() || null,
+              m3u_url: iptvResult.user_info?.m3u_url || null,
+              connection_sequence: i
+            })
+            .select()
+            .single();
 
-        createdCustomers.push({
-          ...newCustomer,
-          credentials: {
-            username: username,
-            password: password,
-            maxConnections: 1,
-            m3uUrl: iptvResult.user_info?.m3u_url
+          if (createError) {
+            console.error(`Error creating customer record for connection ${i}:`, createError);
+            failedConnections.push({
+              connectionNumber: i,
+              error: createError.message,
+              credentials: { username, password }
+            });
+            continue;
           }
-        });
 
-        console.log(`✅ Successfully created connection ${i}`);
+          createdCustomers.push({
+            ...newCustomer,
+            credentials: {
+              username: username,
+              password: password,
+              maxConnections: 1,
+              m3uUrl: iptvResult.user_info?.m3u_url
+            }
+          });
+
+          console.log(`✅ Successfully created connection ${i}`);
+        }
 
       } catch (error) {
         console.error(`❌ Failed to create connection ${i}:`, error);
