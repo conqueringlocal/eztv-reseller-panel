@@ -124,15 +124,15 @@ function extractAndFlattenCredentials(data: any): {
     let password: string | undefined;
     let m3u_url: string | undefined;
     
-    // Try to extract credentials from different locations
-    if (customer.credentials) {
-      // Credentials are in a nested credentials object
-      console.log(`📋 Found credentials object for customer ${index + 1}:`, customer.credentials);
+    // Extract credentials from nested credentials object first
+    if (customer.credentials && typeof customer.credentials === 'object') {
+      console.log(`📋 Found nested credentials object for customer ${index + 1}:`, customer.credentials);
       username = customer.credentials.username;
       password = customer.credentials.password;
       m3u_url = customer.credentials.m3uUrl || customer.credentials.m3u_url;
-    } else if (customer.username) {
-      // Credentials are directly on the customer object
+    } 
+    // Then try direct username/password on customer object
+    else if (customer.username && customer.password) {
       console.log(`📋 Found direct credentials for customer ${index + 1}`);
       username = customer.username;
       password = customer.password;
@@ -169,39 +169,6 @@ function extractAndFlattenCredentials(data: any): {
       console.log(`❌ No valid credentials found for customer ${index + 1}`);
     }
   });
-  
-  // Handle consolidated customer with connection_list
-  if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
-    console.log('🔄 Processing consolidated customer with connection_list');
-    const connectionList = customers[0].connection_list;
-    
-    connectionList.forEach((connection: any, index: number) => {
-      if (connection.username && connection.password) {
-        const credentialSet = {
-          username: connection.username,
-          password: connection.password,
-          m3u_url: connection.m3u_url || undefined
-        };
-        
-        credentialsArray.push(credentialSet);
-        
-        if (index === 0) {
-          primaryCredentials = credentialSet;
-        }
-        
-        if (index < 3) {
-          const fieldNumber = index + 1;
-          flattenedFields[`username_${fieldNumber}`] = connection.username;
-          flattenedFields[`password_${fieldNumber}`] = connection.password;
-          if (connection.m3u_url) {
-            flattenedFields[`m3u_url_${fieldNumber}`] = connection.m3u_url;
-          }
-        }
-        
-        console.log(`✅ Extracted connection ${index + 1}:`, credentialSet);
-      }
-    });
-  }
   
   flattenedFields.total_connections = credentialsArray.length;
   
