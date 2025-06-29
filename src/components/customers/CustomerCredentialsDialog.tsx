@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -12,8 +11,9 @@ import {
   getCustomerDisplayName, 
   getTotalConnections, 
   getCustomerCredentials,
-  formatCredentialsForDisplay
-} from '@/utils/consolidatedCustomerUtils';
+  formatCredentialsForDisplay,
+  getFieldValue
+} from '@/utils/customerConsolidation';
 
 interface CustomerCredentialsDialogProps {
   customer: any;

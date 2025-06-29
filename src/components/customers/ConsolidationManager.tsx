@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { 
   getCustomersNeedingConsolidation,
   getCustomerDisplayName 
-} from '@/utils/consolidatedCustomerUtils';
+} from '@/utils/customerConsolidation';
 import { Customer } from '@/contexts/AppContext';
 import { Users, AlertTriangle, CheckCircle } from 'lucide-react';
 
