@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,8 +34,19 @@ export const useIptvPackages = () => {
   const [source, setSource] = useState<'api' | 'default'>('api');
   const [provider, setProvider] = useState<string>('8k');
   const [debugInfo, setDebugInfo] = useState<PackageResponse['debug_info'] | null>(null);
-
-  const fetchPackages = async () => {
+  
+  // Use ref to track if we're already fetching to prevent concurrent requests
+  const isFetchingRef = useRef(false);
+  
+  // Memoize the fetchPackages function to prevent unnecessary re-renders
+  const fetchPackages = useCallback(async () => {
+    // Prevent concurrent requests
+    if (isFetchingRef.current) {
+      console.log('🔄 Fetch already in progress, skipping...');
+      return;
+    }
+    
+    isFetchingRef.current = true;
     setIsLoading(true);
     setError(null);
     
@@ -116,14 +127,18 @@ export const useIptvPackages = () => {
       toast.error(`💥 ${errorMsg}: ${error.message}`);
     } finally {
       setIsLoading(false);
+      isFetchingRef.current = false;
     }
-  };
+  }, [user?.provider]); // Only depend on user.provider, not the entire user object
 
-  // Auto-run fetch on mount and when user changes (provider might change)
+  // Use specific user properties as dependencies instead of the entire user object
   useEffect(() => {
-    console.log('🔄 Initializing IPTV packages fetch...');
-    fetchPackages();
-  }, [user]);
+    // Only fetch if we have a user and haven't fetched yet
+    if (user?.id && packages.length === 0 && !isFetchingRef.current) {
+      console.log('🔄 Initializing IPTV packages fetch for user:', user.id, 'provider:', user.provider);
+      fetchPackages();
+    }
+  }, [user?.id, user?.provider, fetchPackages]); // Depend on specific user properties
 
   return {
     packages,
