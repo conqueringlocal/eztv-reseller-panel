@@ -15,7 +15,8 @@ import {
   getCustomerDisplayName, 
   getTotalConnections, 
   getConnectionSummary,
-  getFieldValue
+  getFieldValue,
+  processCustomersForDisplay
 } from '@/utils/customerConsolidation';
 import { formatDateSafely, getDaysUntilExpirationSafely } from '@/lib/utils';
 import {
@@ -39,17 +40,6 @@ interface CustomerTableProps {
   onStatusFilterChange?: (filter: string) => void;
 }
 
-// Process customers to handle consolidated format
-const processCustomersForDisplay = (customers: any[]) => {
-  return customers.map(customer => ({
-    ...customer,
-    // Ensure we have proper field mappings
-    totalConnections: getTotalConnections(customer),
-    displayName: getCustomerDisplayName(customer),
-    isConsolidated: isConsolidatedCustomer(customer)
-  }));
-};
-
 export function CustomerTable({ 
   customers, 
   onRefresh = () => {},
@@ -71,7 +61,7 @@ export function CustomerTable({
   // Check if current user is admin
   const isAdmin = user?.role === 'admin';
 
-  // Process customers to handle both consolidated and legacy formats
+  // Process customers to handle consolidated format
   const processedCustomers = processCustomersForDisplay(customers);
 
   // Filter customers based on statusFilter if provided

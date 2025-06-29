@@ -19,7 +19,7 @@ export interface EnhancedWebhookPayload {
     email: string;
     mac?: string;
     device_type?: string;
-    plan_duration_months?: number; // Optional - only for paid plans
+    plan_duration_months?: number;
     package_id?: string;
   };
   customerName?: string;
@@ -199,14 +199,14 @@ async function createTrialAccount(
   }
 }
 
-// Create multi-connection account function
-async function createMultiConnectionAccount(
+// Create consolidated multi-connection account function
+async function createConsolidatedAccount(
   payload: EnhancedWebhookPayload, 
   resellerId: string, 
   resellerData: any
 ): Promise<EnhancedWebhookResult> {
   try {
-    console.log('➕ Creating multi-connection account');
+    console.log('🔄 Creating consolidated multi-connection account');
 
     const connections = payload.connections || 1;
     const planDuration = payload.customer.plan_duration_months || 1;
@@ -221,19 +221,38 @@ async function createMultiConnectionAccount(
       };
     }
 
+    // Check if customer already exists
+    const { data: existingCustomer } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('reseller_id', resellerId)
+      .eq('name', payload.customer.name)
+      .eq('email', payload.customer.email)
+      .neq('status', 'cancelled')
+      .single();
+
+    if (existingCustomer) {
+      return {
+        success: false,
+        message: `Customer ${payload.customer.name} already exists. Use renewal instead.`,
+        errors: ['customer_already_exists']
+      };
+    }
+
     // Calculate dates
     const startDate = new Date();
     const expirationDate = new Date();
     expirationDate.setMonth(expirationDate.getMonth() + planDuration);
 
-    // Determine account type
-    const accountType = payload.customer.mac && connections === 1 ? 'mag' : 'm3u';
+    // Generate unique customer group ID
+    const customerGroupId = `${payload.customer.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
 
-    // Create account via create-iptv-user function
-    const { data, error } = await supabase.functions.invoke('create-iptv-user', {
+    // Create individual connections using the create-iptv-user function
+    const { data: createResult, error: createError } = await supabase.functions.invoke('create-iptv-user', {
       body: {
         resellerId: resellerId,
         serviceCall: true,
+        consolidate: false, // Don't auto-consolidate yet
         customerData: {
           name: payload.customer.name,
           email: payload.customer.email,
@@ -245,43 +264,117 @@ async function createMultiConnectionAccount(
           maxConnections: connections,
           startDate: startDate.toISOString().split('T')[0],
           expirationDate: expirationDate.toISOString().split('T')[0],
-          accountType: accountType,
+          accountType: 'm3u',
           status: 'active',
           isDeactivated: false
         }
       }
     });
 
-    if (error || !data?.success) {
-      console.error('❌ Failed to create account:', error || data);
+    if (createError || !createResult?.success) {
+      console.error('❌ Failed to create connections:', createError || createResult);
       return {
         success: false,
-        message: 'Failed to create account',
-        raw_api_response: data,
-        errors: [error?.message || 'Unknown error']
+        message: 'Failed to create connections',
+        raw_api_response: createResult,
+        errors: [createError?.message || 'Unknown error']
       };
     }
 
-    console.log('✅ Account created successfully');
+    // Now manually consolidate the created connections
+    const connectionList = createResult.connectionList || [];
+    const consolidatedConnectionDetails = connectionList.map((conn: any, index: number) => ({
+      connection_number: index + 1,
+      username: conn.username,
+      password: conn.password,
+      m3u_url: conn.m3u_url,
+      status: 'active'
+    }));
 
-    return {
+    // Create the consolidated customer record
+    const { data: consolidatedCustomer, error: consolidateError } = await supabase
+      .from('customers')
+      .insert({
+        reseller_id: resellerId,
+        name: payload.customer.name,
+        email: payload.customer.email,
+        mac_address: payload.customer.mac || null,
+        device_type: payload.customer.device_type || 'Smart TV',
+        plan_duration: planDuration,
+        max_connections: connections,
+        total_connections: connections,
+        current_connections: 0,
+        connection_details: consolidatedConnectionDetails,
+        connection_list: consolidatedConnectionDetails,
+        start_date: startDate.toISOString().split('T')[0],
+        expiration_date: expirationDate.toISOString().split('T')[0],
+        status: 'active',
+        is_deactivated: false,
+        provider: resellerData.provider || '8k',
+        customer_group: customerGroupId,
+        customer_group_id: null,
+        highlevel_contact_id: payload.contact_id
+      })
+      .select()
+      .single();
+
+    if (consolidateError) {
+      console.error('❌ Failed to create consolidated customer:', consolidateError);
+      return {
+        success: false,
+        message: 'Failed to create consolidated customer record',
+        errors: [consolidateError.message]
+      };
+    }
+
+    // Delete the individual connection records created by create-iptv-user
+    if (createResult.customers && createResult.customers.length > 0) {
+      const customerIds = createResult.customers.map((c: any) => c.id);
+      await supabase
+        .from('customers')
+        .delete()
+        .in('id', customerIds);
+    }
+
+    console.log('✅ Consolidated account created successfully');
+
+    // Prepare response with individual credentials for HighLevel compatibility
+    const response: EnhancedWebhookResult = {
       success: true,
-      message: `Account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
+      message: `Consolidated account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
       name: payload.customer.name,
       email: payload.customer.email,
       device_type: payload.customer.device_type || 'Smart TV',
       start_date: startDate.toISOString().split('T')[0],
       end_date: expirationDate.toISOString().split('T')[0],
-      account_type: accountType,
+      account_type: 'm3u',
       credits_used: creditsRequired,
       total_connections: connections,
-      raw_api_response: data
+      credentials: consolidatedConnectionDetails,
+      raw_api_response: createResult
     };
+
+    // Add individual credential fields for backwards compatibility
+    consolidatedConnectionDetails.forEach((cred: any, index: number) => {
+      const num = index + 1;
+      response[`username_${num}` as keyof EnhancedWebhookResult] = cred.username;
+      response[`password_${num}` as keyof EnhancedWebhookResult] = cred.password;
+      response[`m3u_url_${num}` as keyof EnhancedWebhookResult] = cred.m3u_url;
+    });
+
+    // Set primary credentials to first connection
+    if (consolidatedConnectionDetails.length > 0) {
+      response.username = consolidatedConnectionDetails[0].username;
+      response.password = consolidatedConnectionDetails[0].password;
+      response.m3u_url = consolidatedConnectionDetails[0].m3u_url;
+    }
+
+    return response;
   } catch (error) {
-    console.error('💥 Error creating account:', error);
+    console.error('💥 Error creating consolidated account:', error);
     return {
       success: false,
-      message: 'Internal error creating account',
+      message: 'Internal error creating consolidated account',
       errors: [error instanceof Error ? error.message : 'Unknown error']
     };
   }
@@ -365,7 +458,7 @@ async function renewCustomerGroup(
 
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
-    console.log('🚀 Processing enhanced webhook payload with Trex-only trials:', JSON.stringify(payload, null, 2));
+    console.log('🚀 Processing enhanced webhook payload with consolidated multi-connection support:', JSON.stringify(payload, null, 2));
     
     // Validate payload structure
     if (!payload.action) {
@@ -432,7 +525,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
         return await createTrialAccount(payload, resellerData.resellerId, resellerData.name, resellerData.provider);
       
       case 'create':
-        return await createMultiConnectionAccount(payload, resellerData.resellerId, resellerData);
+        return await createConsolidatedAccount(payload, resellerData.resellerId, resellerData);
       
       case 'renew':
         return await renewCustomerGroup(payload, resellerData.resellerId, resellerData);
