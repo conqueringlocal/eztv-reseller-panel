@@ -135,6 +135,11 @@ export default function ResellerCustomers() {
       toast.error('An error occurred while syncing to CRM');
     }
   };
+
+  // Handle status filter change - wrapper function to convert string to StatusFilter
+  const handleStatusFilterChange = (filter: string) => {
+    setStatusFilter(filter as StatusFilter);
+  };
   
   // Get customer counts by status - Fixed property names to use camelCase
   const today = new Date();
@@ -203,7 +208,6 @@ export default function ResellerCustomers() {
         </div>
       </div>
       
-      {/* Stats Cards - Fixed grid to ensure consistent sizing */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div 
           className={`cursor-pointer transition-all ${statusFilter === 'active' ? 'ring-2 ring-green-500' : ''}`}
@@ -288,12 +292,11 @@ export default function ResellerCustomers() {
             onRefresh={refreshData}
             onRenew={handleRenewCustomer}
             statusFilter={statusFilter}
-            onStatusFilterChange={setStatusFilter}
+            onStatusFilterChange={handleStatusFilterChange}
           />
         </CardContent>
       </Card>
       
-      {/* Bulk Import Dialog */}
       <Dialog open={isBulkImportOpen} onOpenChange={setIsBulkImportOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -310,7 +313,6 @@ export default function ResellerCustomers() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Customer Dialog */}
       <Dialog open={isAddCustomerOpen} onOpenChange={setIsAddCustomerOpen}>
         <DialogContent>
           <DialogHeader>
@@ -323,7 +325,6 @@ export default function ResellerCustomers() {
         </DialogContent>
       </Dialog>
 
-      {/* Create Trial Dialog */}
       {canCreateTrials && (
         <Dialog open={isCreateTrialOpen} onOpenChange={setIsCreateTrialOpen}>
           <DialogContent>
@@ -338,7 +339,6 @@ export default function ResellerCustomers() {
         </Dialog>
       )}
 
-      {/* Renew Customer Dialog */}
       {customerToRenew && (
         <Dialog open={isRenewCustomerOpen} onOpenChange={setIsRenewCustomerOpen}>
           <DialogContent>
@@ -359,7 +359,6 @@ export default function ResellerCustomers() {
         </Dialog>
       )}
 
-      {/* CRM Contact Manager Dialog */}
       {selectedCustomerForCrm && (
         <Dialog open={isCrmManagerOpen} onOpenChange={setIsCrmManagerOpen}>
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
