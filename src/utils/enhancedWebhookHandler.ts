@@ -14,7 +14,7 @@ export interface EnhancedWebhookPayload {
     email: string;
     mac?: string;
     device_type?: string;
-    plan_duration_months: number;
+    plan_duration_months?: number; // Optional - only for paid plans, not trials
     package_id?: string;
   };
 }
@@ -290,8 +290,16 @@ function validateWebhookPayload(payload: EnhancedWebhookPayload): {
     errors.push('Missing customer email');
   }
 
-  if (!payload.customer?.plan_duration_months || payload.customer.plan_duration_months <= 0) {
-    errors.push('Invalid plan duration');
+  // Only validate plan_duration_months for non-trial actions
+  if (payload.action !== 'trial') {
+    if (!payload.customer?.plan_duration_months || payload.customer.plan_duration_months <= 0) {
+      errors.push('Invalid plan duration');
+    }
+  }
+
+  // Ensure trials don't have plan_duration_months
+  if (payload.action === 'trial' && payload.customer?.plan_duration_months) {
+    errors.push('Trial actions should not include plan_duration_months');
   }
 
   if (!payload.api_key && !payload.resellerId) {
@@ -329,32 +337,32 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
     const connections = payload.connections || 1;
     const trialDurationHours = payload.trial_duration_hours || 24;
 
-    // Calculate trial expiration
+    // Calculate trial dates (24 hours from now)
+    const startDate = new Date();
     const expirationDate = new Date();
     expirationDate.setHours(expirationDate.getHours() + trialDurationHours);
-    const startDate = new Date();
 
-    // Create trial account via create-iptv-user function
-    const { data, error } = await supabase.functions.invoke('create-iptv-user', {
+    console.log(`📅 Trial period: ${startDate.toISOString().split('T')[0]} to ${expirationDate.toISOString().split('T')[0]} (${trialDurationHours} hours)`);
+
+    // Create trial account via create-trial-user function (not create-iptv-user)
+    const { data, error } = await supabase.functions.invoke('create-trial-user', {
       body: {
         resellerId: resellerData.data.resellerId,
-        serviceCall: true, // Enable service call mode to bypass JWT authentication
         customerData: {
           name: payload.customer.name,
           email: payload.customer.email,
           macAddress: payload.customer.mac || null,
           deviceType: payload.customer.device_type || 'Smart TV',
-          packageId: payload.customer.package_id || 'trial',
-          planDuration: 1,
+          // Note: No planDuration or plan_duration_months for trials
           connections: connections,
           maxConnections: connections,
           startDate: startDate.toISOString().split('T')[0],
           expirationDate: expirationDate.toISOString().split('T')[0],
-          accountType: 'm3u',
           status: 'active',
           isDeactivated: false,
           isTrial: true,
-          trialDurationHours: trialDurationHours
+          trialDurationHours: trialDurationHours,
+          highlevelContactId: payload.contact_id
         }
       }
     });

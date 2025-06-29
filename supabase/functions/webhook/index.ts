@@ -60,23 +60,33 @@ serve(async (req) => {
       const url = new URL(req.url)
       const searchParams = url.searchParams
       
+      const action = searchParams.get('action') as 'create' | 'renew' | 'trial' || 'create';
+      const isTrial = searchParams.get('is_trial') === 'true' || action === 'trial';
+      
       payload = {
         api_key: searchParams.get('api_key') || searchParams.get('apiKey') || '',
         resellerId: searchParams.get('resellerId') || '',
-        action: searchParams.get('action') as 'create' | 'renew' | 'trial' || 'create',
+        action: action,
         connections: parseInt(searchParams.get('connections') || '1', 10),
         customer: {
           name: searchParams.get('name') || searchParams.get('customerName') || '',
           email: searchParams.get('email') || searchParams.get('customerEmail') || '',
           mac: searchParams.get('mac') || searchParams.get('macAddress') || '',
           device_type: searchParams.get('device_type') || searchParams.get('deviceType') || 'Smart TV',
-          plan_duration_months: parseInt(searchParams.get('plan_duration_months') || searchParams.get('planDuration') || '0', 10),
+          // Only include plan_duration_months for non-trial actions
+          plan_duration_months: isTrial ? undefined : parseInt(searchParams.get('plan_duration_months') || searchParams.get('planDuration') || '0', 10),
           package_id: searchParams.get('package_id') || searchParams.get('packageId') || undefined
         },
         contact_id: searchParams.get('contact_id') || searchParams.get('contactId') || undefined,
-        is_trial: searchParams.get('is_trial') === 'true' || searchParams.get('action') === 'trial',
+        is_trial: isTrial,
         trial_duration_hours: parseInt(searchParams.get('trial_duration_hours') || '24', 10)
       }
+      
+      // Remove undefined plan_duration_months for cleaner payload
+      if (payload.customer.plan_duration_months === undefined) {
+        delete payload.customer.plan_duration_months;
+      }
+      
       console.log(`🔗 Query Params Payload:`, payload)
     } else {
       return new Response(

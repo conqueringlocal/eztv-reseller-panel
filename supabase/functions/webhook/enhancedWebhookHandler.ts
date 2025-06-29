@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // Initialize Supabase client
@@ -18,7 +19,7 @@ export interface EnhancedWebhookPayload {
     email: string;
     mac?: string;
     device_type?: string;
-    plan_duration_months: number;
+    plan_duration_months?: number; // Optional - only for paid plans
     package_id?: string;
   };
   customerName?: string;
@@ -74,6 +75,283 @@ interface ResellerDataResult {
     provider: string;
   };
   errors?: string[];
+}
+
+// Get reseller data by API key
+async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['data'] | null> {
+  try {
+    const { data: apiKeyData, error: apiKeyError } = await supabase
+      .from('reseller_api_keys')
+      .select(`
+        reseller_id,
+        is_active,
+        profiles!inner(credits, name, provider)
+      `)
+      .eq('api_key', apiKey)
+      .eq('is_active', true)
+      .single();
+
+    if (apiKeyError || !apiKeyData) {
+      console.error('❌ Invalid or inactive API key:', apiKeyError);
+      return null;
+    }
+
+    return {
+      resellerId: apiKeyData.reseller_id,
+      credits: apiKeyData.profiles.credits,
+      name: apiKeyData.profiles.name,
+      provider: apiKeyData.profiles.provider || '8k'
+    };
+  } catch (error) {
+    console.error('💥 Error getting reseller by API key:', error);
+    return null;
+  }
+}
+
+// Create trial account function
+async function createTrialAccount(
+  payload: EnhancedWebhookPayload, 
+  resellerId: string, 
+  resellerName: string, 
+  provider: string
+): Promise<EnhancedWebhookResult> {
+  try {
+    console.log('🆓 Creating trial account via create-trial-user function');
+
+    const connections = payload.connections || 1;
+    const trialDurationHours = payload.trial_duration_hours || 24;
+
+    // Calculate trial expiration
+    const expirationDate = new Date();
+    expirationDate.setHours(expirationDate.getHours() + trialDurationHours);
+    const startDate = new Date();
+
+    // Create trial account using the create-trial-user function
+    const { data, error } = await supabase.functions.invoke('create-trial-user', {
+      body: {
+        resellerId: resellerId,
+        customerData: {
+          name: payload.customer.name,
+          email: payload.customer.email,
+          macAddress: payload.customer.mac || null,
+          deviceType: payload.customer.device_type || 'Smart TV',
+          // Note: No plan_duration_months for trials - this is the key fix
+          connections: connections,
+          maxConnections: connections,
+          startDate: startDate.toISOString().split('T')[0],
+          expirationDate: expirationDate.toISOString().split('T')[0],
+          status: 'active',
+          isDeactivated: false,
+          isTrial: true,
+          trialDurationHours: trialDurationHours,
+          highlevelContactId: payload.contact_id
+        }
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to create trial account:', error || data);
+      return {
+        success: false,
+        message: 'Failed to create trial account',
+        raw_api_response: data,
+        errors: [error?.message || 'Unknown error']
+      };
+    }
+
+    console.log('✅ Trial account created successfully');
+
+    return {
+      success: true,
+      message: `Trial account created successfully for ${trialDurationHours} hours`,
+      name: payload.customer.name,
+      email: payload.customer.email,
+      device_type: payload.customer.device_type || 'Smart TV',
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: expirationDate.toISOString().split('T')[0],
+      account_type: 'trial',
+      trial_expires_at: expirationDate.toISOString(),
+      total_connections: connections,
+      username: data.customer?.username,
+      password: data.customer?.password,
+      m3u_url: data.customer?.m3uUrl,
+      username_1: data.customer?.username,
+      password_1: data.customer?.password,
+      m3u_url_1: data.customer?.m3uUrl,
+      raw_api_response: data
+    };
+  } catch (error) {
+    console.error('💥 Error creating trial account:', error);
+    return {
+      success: false,
+      message: 'Internal error creating trial account',
+      errors: [error instanceof Error ? error.message : 'Unknown error']
+    };
+  }
+}
+
+// Create multi-connection account function
+async function createMultiConnectionAccount(
+  payload: EnhancedWebhookPayload, 
+  resellerId: string, 
+  resellerData: any
+): Promise<EnhancedWebhookResult> {
+  try {
+    console.log('➕ Creating multi-connection account');
+
+    const connections = payload.connections || 1;
+    const planDuration = payload.customer.plan_duration_months || 1;
+    const creditsRequired = connections * planDuration;
+
+    // Check credits
+    if (resellerData.credits < creditsRequired) {
+      return {
+        success: false,
+        message: `Insufficient credits. Required: ${creditsRequired}, Available: ${resellerData.credits}`,
+        errors: ['insufficient_credits']
+      };
+    }
+
+    // Calculate dates
+    const startDate = new Date();
+    const expirationDate = new Date();
+    expirationDate.setMonth(expirationDate.getMonth() + planDuration);
+
+    // Determine account type
+    const accountType = payload.customer.mac && connections === 1 ? 'mag' : 'm3u';
+
+    // Create account via create-iptv-user function
+    const { data, error } = await supabase.functions.invoke('create-iptv-user', {
+      body: {
+        resellerId: resellerId,
+        serviceCall: true,
+        customerData: {
+          name: payload.customer.name,
+          email: payload.customer.email,
+          macAddress: payload.customer.mac,
+          deviceType: payload.customer.device_type || 'Smart TV',
+          packageId: payload.customer.package_id || 'default',
+          planDuration: planDuration,
+          connections: connections,
+          maxConnections: connections,
+          startDate: startDate.toISOString().split('T')[0],
+          expirationDate: expirationDate.toISOString().split('T')[0],
+          accountType: accountType,
+          status: 'active',
+          isDeactivated: false
+        }
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to create account:', error || data);
+      return {
+        success: false,
+        message: 'Failed to create account',
+        raw_api_response: data,
+        errors: [error?.message || 'Unknown error']
+      };
+    }
+
+    console.log('✅ Account created successfully');
+
+    return {
+      success: true,
+      message: `Account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
+      name: payload.customer.name,
+      email: payload.customer.email,
+      device_type: payload.customer.device_type || 'Smart TV',
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: expirationDate.toISOString().split('T')[0],
+      account_type: accountType,
+      credits_used: creditsRequired,
+      total_connections: connections,
+      raw_api_response: data
+    };
+  } catch (error) {
+    console.error('💥 Error creating account:', error);
+    return {
+      success: false,
+      message: 'Internal error creating account',
+      errors: [error instanceof Error ? error.message : 'Unknown error']
+    };
+  }
+}
+
+// Renew customer group function
+async function renewCustomerGroup(
+  payload: EnhancedWebhookPayload, 
+  resellerId: string, 
+  resellerData: any
+): Promise<EnhancedWebhookResult> {
+  try {
+    console.log('🔄 Renewing customer group');
+
+    const planDuration = payload.customer.plan_duration_months || 1;
+
+    // Find existing customer
+    const { data: customers, error: findError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('reseller_id', resellerId)
+      .eq('name', payload.customer.name)
+      .eq('email', payload.customer.email)
+      .in('status', ['active', 'expired', 'expiring_soon'])
+      .limit(1);
+
+    if (findError || !customers || customers.length === 0) {
+      return {
+        success: false,
+        message: `No customer found with name "${payload.customer.name}" and email "${payload.customer.email}"`,
+        errors: ['customer_not_found']
+      };
+    }
+
+    const customer = customers[0];
+
+    // Use the renew-customer-group function
+    const { data, error } = await supabase.functions.invoke('renew-customer-group', {
+      body: {
+        customerId: customer.id,
+        planDuration: planDuration,
+        resellerId: resellerId
+      }
+    });
+
+    if (error || !data?.success) {
+      console.error('❌ Failed to renew customer:', error || data);
+      return {
+        success: false,
+        message: data?.message || 'Failed to renew customer',
+        errors: [error?.message || 'renewal_failed']
+      };
+    }
+
+    // Calculate new end date
+    const currentExpiry = new Date(customer.expiration_date);
+    const newExpiry = new Date(currentExpiry);
+    newExpiry.setMonth(newExpiry.getMonth() + planDuration);
+
+    return {
+      success: true,
+      message: `Customer renewed successfully. ${data.accountsRenewed} accounts renewed for ${planDuration} months`,
+      name: payload.customer.name,
+      email: payload.customer.email,
+      device_type: customer.device_type || 'Smart TV',
+      start_date: customer.start_date,
+      end_date: newExpiry.toISOString().split('T')[0],
+      account_type: customer.mac_address ? 'mag' : 'm3u',
+      accounts_renewed: data.accountsRenewed,
+      credits_used: data.creditsUsed
+    };
+  } catch (error) {
+    console.error('💥 Error renewing customer:', error);
+    return {
+      success: false,
+      message: 'Internal error during renewal',
+      errors: [error instanceof Error ? error.message : 'Unknown error']
+    };
+  }
 }
 
 // Enhanced consolidation function for post-creation cleanup
@@ -142,6 +420,12 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
         message: 'Missing action field in webhook payload',
         errors: ['missing_action']
       };
+    }
+    
+    // Validate trial payload - ensure no plan_duration_months for trials
+    if (payload.action === 'trial' && payload.customer.plan_duration_months) {
+      console.log('⚠️ WARNING: Trial action should not include plan_duration_months. Removing it.');
+      delete payload.customer.plan_duration_months;
     }
     
     // Get reseller information
