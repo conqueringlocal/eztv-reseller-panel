@@ -9,7 +9,8 @@ import { useApp } from '@/contexts/AppContext';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CustomerTable } from '@/components/customers/CustomerTable';
-import { ArrowLeft, Users, DollarSign, Activity, Calendar } from 'lucide-react';
+import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
+import { ArrowLeft, Users, DollarSign, Activity, Calendar, Settings } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminResellerDetail() {
@@ -140,6 +141,10 @@ export default function AdminResellerDetail() {
             ))}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="mb-6">
+        <HighLevelSettings resellerId={id!} isAdminView={true} />
       </div>
 
       <div className="mb-6">
