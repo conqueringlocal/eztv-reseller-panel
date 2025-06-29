@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -181,279 +180,285 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   };
   
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <FormField
-          control={form.control}
-          name="name"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Name</FormLabel>
-              <FormControl>
-                <Input placeholder="John Doe" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Email</FormLabel>
-              <FormControl>
-                <Input type="email" placeholder="john@example.com" {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+    <div className="p-1">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <div className="grid grid-cols-1 gap-4">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="John Doe" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input type="email" placeholder="john@example.com" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
 
-        <FormField
-          control={form.control}
-          name="accountType"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Account Type</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account type" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  <SelectItem value="m3u">M3U (Multi-Connection Support)</SelectItem>
-                  <SelectItem value="mag">MAG (Single Connection Only)</SelectItem>
-                </SelectContent>
-              </Select>
-              <FormDescription>
-                {watchAccountType === 'm3u' 
-                  ? 'M3U accounts support multiple connections and work with any streaming player'
-                  : 'MAG accounts are single-connection and designed for STB/MAG devices'
-                }
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {watchAccountType === 'mag' && (
           <FormField
             control={form.control}
-            name="macAddress"
+            name="accountType"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>MAC Address *</FormLabel>
-                <FormControl>
-                  <Input placeholder="00:1A:79:XX:XX:XX" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Required for MAG devices. Enter the MAC address of the STB/MAG device.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
-        
-        <FormField
-          control={form.control}
-          name="deviceType"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Device Type</FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a device type" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {watchAccountType === 'mag' ? (
-                    <>
-                      <SelectItem value="MAG Box">MAG Box</SelectItem>
-                      <SelectItem value="STB Device">STB Device</SelectItem>
-                      <SelectItem value="MAG 254">MAG 254</SelectItem>
-                      <SelectItem value="MAG 256">MAG 256</SelectItem>
-                      <SelectItem value="MAG 322">MAG 322</SelectItem>
-                      <SelectItem value="MAG 424">MAG 424</SelectItem>
-                      <SelectItem value="Other MAG">Other MAG</SelectItem>
-                    </>
-                  ) : (
-                    <>
-                      <SelectItem value="Smart TV">Smart TV</SelectItem>
-                      <SelectItem value="Android Box">Android Box</SelectItem>
-                      <SelectItem value="Apple TV">Apple TV</SelectItem>
-                      <SelectItem value="Fire TV">Fire TV</SelectItem>
-                      <SelectItem value="Mobile Device">Mobile Device</SelectItem>
-                      <SelectItem value="Tablet">Tablet</SelectItem>
-                      <SelectItem value="Computer">Computer</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="packageId"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel className="flex items-center justify-between">
-                <span>Streaming Package</span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTestConnection}
-                  disabled={packagesLoading}
-                  className="h-8 px-3"
-                >
-                  <RefreshCw className={`h-3 w-3 mr-1 ${packagesLoading ? 'animate-spin' : ''}`} />
-                  Test Connection
-                </Button>
-              </FormLabel>
-              <Select onValueChange={field.onChange} defaultValue={field.value}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue placeholder={packagesLoading ? "Testing connection..." : "Select a package"} />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {packages.map((pkg) => (
-                    <SelectItem key={pkg.id} value={pkg.id}>
-                      <div>
-                        <div className="font-medium">{pkg.name}</div>
-                        {pkg.description && (
-                          <div className="text-sm text-gray-500">{pkg.description}</div>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {/* Enhanced status indicators */}
-              {packagesError && (
-                <FormDescription className="text-red-500 space-y-1">
-                  <div className="font-medium">❌ Connection Failed</div>
-                  <div>{packagesError}</div>
-                </FormDescription>
-              )}
-              
-              {source === 'default' && (
-                <FormDescription className="text-amber-600 space-y-2">
-                  <div className="font-medium">⚠️ Using Fallback Packages</div>
-                  <div>Streaming service API connection failed - using default options for testing</div>
-                  {debugInfo && (
-                    <div className="text-xs space-y-1 p-2 bg-amber-50 rounded border">
-                      <div><strong>Debug Info:</strong></div>
-                      <div>• Auth format: {debugInfo.auth_format}</div>
-                      <div>• Actions tried: {debugInfo.total_actions_tried}</div>
-                      {debugInfo.last_error && (
-                        <div>• Last error: {debugInfo.last_error}</div>
-                      )}
-                    </div>
-                  )}
-                </FormDescription>
-              )}
-              
-              {source === 'api' && packages.length > 0 && (
-                <FormDescription className="text-green-600">
-                  <div className="flex items-center space-x-1">
-                    <span>✅</span>
-                    <span>Connected to streaming service ({packages.length} packages loaded)</span>
-                  </div>
-                </FormDescription>
-              )}
-              
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="planDuration"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Plan Duration</FormLabel>
+                <FormLabel>Account Type</FormLabel>
                 <Select onValueChange={field.onChange} defaultValue={field.value}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select duration" />
+                      <SelectValue placeholder="Select account type" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="1">1 Month</SelectItem>
-                    <SelectItem value="3">3 Months</SelectItem>
-                    <SelectItem value="6">6 Months</SelectItem>
-                    <SelectItem value="12">12 Months</SelectItem>
+                    <SelectItem value="m3u">M3U (Multi-Connection Support)</SelectItem>
+                    <SelectItem value="mag">MAG (Single Connection Only)</SelectItem>
                   </SelectContent>
                 </Select>
+                <FormDescription className="text-xs">
+                  {watchAccountType === 'm3u' 
+                    ? 'M3U accounts support multiple connections and work with any streaming player'
+                    : 'MAG accounts are single-connection and designed for STB/MAG devices'
+                  }
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
-          
-          {watchAccountType === 'm3u' && (
+
+          {watchAccountType === 'mag' && (
             <FormField
               control={form.control}
-              name="connections"
+              name="macAddress"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Number of Connections</FormLabel>
-                  <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value.toString()}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select connections" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="1">1 Connection</SelectItem>
-                      <SelectItem value="2">2 Connections</SelectItem>
-                      <SelectItem value="3">3 Connections</SelectItem>
-                      <SelectItem value="4">4 Connections</SelectItem>
-                      <SelectItem value="5">5 Connections</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    Multiple connections allow simultaneous streaming on different devices
+                  <FormLabel>MAC Address *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="00:1A:79:XX:XX:XX" {...field} />
+                  </FormControl>
+                  <FormDescription className="text-xs">
+                    Required for MAG devices. Enter the MAC address of the STB/MAG device.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
           )}
-        </div>
-        
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <p className="text-sm text-blue-800 mb-2">
-            <strong>Account Type:</strong> {watchAccountType.toUpperCase()} 
-            {watchAccountType === 'm3u' ? ` with ${watchConnections} connection${watchConnections > 1 ? 's' : ''}` : ' (Single connection)'}
-          </p>
-          <p className="text-sm text-amber-600 font-medium">
-            This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
-            {watchAccountType === 'm3u' && watchConnections > 1 && (
-              <span> ({parseInt(watchPlanDuration)} month{parseInt(watchPlanDuration) !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})</span>
+          
+          <FormField
+            control={form.control}
+            name="deviceType"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Device Type</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a device type" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {watchAccountType === 'mag' ? (
+                      <>
+                        <SelectItem value="MAG Box">MAG Box</SelectItem>
+                        <SelectItem value="STB Device">STB Device</SelectItem>
+                        <SelectItem value="MAG 254">MAG 254</SelectItem>
+                        <SelectItem value="MAG 256">MAG 256</SelectItem>
+                        <SelectItem value="MAG 322">MAG 322</SelectItem>
+                        <SelectItem value="MAG 424">MAG 424</SelectItem>
+                        <SelectItem value="Other MAG">Other MAG</SelectItem>
+                      </>
+                    ) : (
+                      <>
+                        <SelectItem value="Smart TV">Smart TV</SelectItem>
+                        <SelectItem value="Android Box">Android Box</SelectItem>
+                        <SelectItem value="Apple TV">Apple TV</SelectItem>
+                        <SelectItem value="Fire TV">Fire TV</SelectItem>
+                        <SelectItem value="Mobile Device">Mobile Device</SelectItem>
+                        <SelectItem value="Tablet">Tablet</SelectItem>
+                        <SelectItem value="Computer">Computer</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
             )}
-          </p>
-        </div>
-        
-        <Button type="submit" className="w-full">
-          Add {watchAccountType.toUpperCase()} Customer
-          {watchAccountType === 'm3u' && watchConnections > 1 && (
-            <span> ({watchConnections} Connections)</span>
-          )}
-        </Button>
-      </form>
-    </Form>
+          />
+
+          <FormField
+            control={form.control}
+            name="packageId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="flex items-center justify-between">
+                  <span>Streaming Package</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestConnection}
+                    disabled={packagesLoading}
+                    className="h-8 px-3"
+                  >
+                    <RefreshCw className={`h-3 w-3 mr-1 ${packagesLoading ? 'animate-spin' : ''}`} />
+                    Test Connection
+                  </Button>
+                </FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder={packagesLoading ? "Testing connection..." : "Select a package"} />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {packages.map((pkg) => (
+                      <SelectItem key={pkg.id} value={pkg.id}>
+                        <div>
+                          <div className="font-medium">{pkg.name}</div>
+                          {pkg.description && (
+                            <div className="text-sm text-gray-500">{pkg.description}</div>
+                          )}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                {/* Enhanced status indicators */}
+                {packagesError && (
+                  <FormDescription className="text-red-500 space-y-1 text-xs">
+                    <div className="font-medium">❌ Connection Failed</div>
+                    <div>{packagesError}</div>
+                  </FormDescription>
+                )}
+                
+                {source === 'default' && (
+                  <FormDescription className="text-amber-600 space-y-2 text-xs">
+                    <div className="font-medium">⚠️ Using Fallback Packages</div>
+                    <div>Streaming service API connection failed - using default options for testing</div>
+                    {debugInfo && (
+                      <div className="text-xs space-y-1 p-2 bg-amber-50 rounded border">
+                        <div><strong>Debug Info:</strong></div>
+                        <div>• Auth format: {debugInfo.auth_format}</div>
+                        <div>• Actions tried: {debugInfo.total_actions_tried}</div>
+                        {debugInfo.last_error && (
+                          <div>• Last error: {debugInfo.last_error}</div>
+                        )}
+                      </div>
+                    )}
+                  </FormDescription>
+                )}
+                
+                {source === 'api' && packages.length > 0 && (
+                  <FormDescription className="text-green-600 text-xs">
+                    <div className="flex items-center space-x-1">
+                      <span>✅</span>
+                      <span>Connected to streaming service ({packages.length} packages loaded)</span>
+                    </div>
+                  </FormDescription>
+                )}
+                
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FormField
+              control={form.control}
+              name="planDuration"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Plan Duration</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select duration" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="1">1 Month</SelectItem>
+                      <SelectItem value="3">3 Months</SelectItem>
+                      <SelectItem value="6">6 Months</SelectItem>
+                      <SelectItem value="12">12 Months</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            {watchAccountType === 'm3u' && (
+              <FormField
+                control={form.control}
+                name="connections"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Number of Connections</FormLabel>
+                    <Select onValueChange={(value) => field.onChange(parseInt(value))} value={field.value.toString()}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select connections" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="1">1 Connection</SelectItem>
+                        <SelectItem value="2">2 Connections</SelectItem>
+                        <SelectItem value="3">3 Connections</SelectItem>
+                        <SelectItem value="4">4 Connections</SelectItem>
+                        <SelectItem value="5">5 Connections</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormDescription className="text-xs">
+                      Multiple connections allow simultaneous streaming on different devices
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+          </div>
+          
+          <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+            <p className="text-sm text-blue-800 mb-2">
+              <strong>Account Type:</strong> {watchAccountType.toUpperCase()} 
+              {watchAccountType === 'm3u' ? ` with ${watchConnections} connection${watchConnections > 1 ? 's' : ''}` : ' (Single connection)'}
+            </p>
+            <p className="text-sm text-amber-600 font-medium">
+              This will consume {totalCreditsNeeded} credit{totalCreditsNeeded !== 1 ? 's' : ''} 
+              {watchAccountType === 'm3u' && watchConnections > 1 && (
+                <span> ({parseInt(watchPlanDuration)} month{parseInt(watchPlanDuration) !== 1 ? 's' : ''} × {watchConnections} connection{watchConnections !== 1 ? 's' : ''})</span>
+              )}
+            </p>
+          </div>
+          
+          <div className="pt-2">
+            <Button type="submit" className="w-full">
+              Add {watchAccountType.toUpperCase()} Customer
+              {watchAccountType === 'm3u' && watchConnections > 1 && (
+                <span> ({watchConnections} Connections)</span>
+              )}
+            </Button>
+          </div>
+        </form>
+      </Form>
+    </div>
   );
 }
