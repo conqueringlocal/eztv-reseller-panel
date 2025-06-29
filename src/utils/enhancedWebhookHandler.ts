@@ -231,7 +231,7 @@ async function consolidateCustomerIfNeeded(
 
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
-    console.log('🚀 Processing enhanced webhook payload:', payload);
+    console.log('🚀 Processing enhanced webhook payload (Trex-only trials):', payload);
 
     // Validate required fields based on action
     const validationResult = validateWebhookPayload(payload);
@@ -322,7 +322,7 @@ function validateWebhookPayload(payload: EnhancedWebhookPayload): {
 
 async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> {
   try {
-    console.log('🆓 Handling trial account creation');
+    console.log('🆓 Handling trial account creation (Trex only)');
 
     // Get reseller information
     const resellerData = await getResellerData(payload);
@@ -331,6 +331,15 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
         success: false,
         message: resellerData.message,
         errors: resellerData.errors
+      };
+    }
+
+    // Validate that this is a Trex reseller
+    if (resellerData.data.provider !== 'trex') {
+      return {
+        success: false,
+        message: 'Trial accounts are only available for Trex resellers',
+        errors: ['invalid_provider_for_trials']
       };
     }
 
@@ -344,7 +353,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
 
     console.log(`📅 Trial period: ${startDate.toISOString().split('T')[0]} to ${expirationDate.toISOString().split('T')[0]} (${trialDurationHours} hours)`);
 
-    // Create trial account via create-trial-user function (not create-iptv-user)
+    // Create trial account via create-trial-user function (now the unified Trex trial function)
     const { data, error } = await supabase.functions.invoke('create-trial-user', {
       body: {
         resellerId: resellerData.data.resellerId,
@@ -353,7 +362,6 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
           email: payload.customer.email,
           macAddress: payload.customer.mac || null,
           deviceType: payload.customer.device_type || 'Smart TV',
-          // Note: No planDuration or plan_duration_months for trials
           connections: connections,
           maxConnections: connections,
           startDate: startDate.toISOString().split('T')[0],
@@ -404,7 +412,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
 
     return {
       success: true,
-      message: `Consolidated trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
+      message: `Trex trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
       // Primary credentials at root level
       username: primaryCredentials.username,
       password: primaryCredentials.password,

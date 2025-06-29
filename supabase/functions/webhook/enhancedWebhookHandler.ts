@@ -100,7 +100,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       resellerId: apiKeyData.reseller_id,
       credits: apiKeyData.profiles.credits,
       name: apiKeyData.profiles.name,
-      provider: apiKeyData.profiles.provider || '8k'
+      provider: apiKeyData.profiles.provider || 'trex'
     };
   } catch (error) {
     console.error('💥 Error getting reseller by API key:', error);
@@ -108,7 +108,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
   }
 }
 
-// Create trial account function
+// Create trial account function (Trex only)
 async function createTrialAccount(
   payload: EnhancedWebhookPayload, 
   resellerId: string, 
@@ -118,6 +118,16 @@ async function createTrialAccount(
   try {
     console.log('🆓 Creating trial account via create-trial-user function');
 
+    // Validate that this is a Trex reseller
+    if (provider !== 'trex') {
+      console.log(`❌ Trial creation rejected. Provider: ${provider}, Required: trex`);
+      return {
+        success: false,
+        message: 'Trial accounts are only available for Trex resellers',
+        errors: ['invalid_provider_for_trials']
+      };
+    }
+
     const connections = payload.connections || 1;
     const trialDurationHours = payload.trial_duration_hours || 24;
 
@@ -126,7 +136,7 @@ async function createTrialAccount(
     expirationDate.setHours(expirationDate.getHours() + trialDurationHours);
     const startDate = new Date();
 
-    // Create trial account using the create-trial-user function
+    // Create trial account using the create-trial-user function (now the renamed Trex function)
     const { data, error } = await supabase.functions.invoke('create-trial-user', {
       body: {
         resellerId: resellerId,
@@ -135,7 +145,6 @@ async function createTrialAccount(
           email: payload.customer.email,
           macAddress: payload.customer.mac || null,
           deviceType: payload.customer.device_type || 'Smart TV',
-          // Note: No plan_duration_months for trials - this is the key fix
           connections: connections,
           maxConnections: connections,
           startDate: startDate.toISOString().split('T')[0],
@@ -354,64 +363,9 @@ async function renewCustomerGroup(
   }
 }
 
-// Enhanced consolidation function for post-creation cleanup
-async function consolidateCustomerIfNeeded(
-  resellerId: string, 
-  customerName: string, 
-  customerEmail: string
-): Promise<{ success: boolean; consolidatedId?: string }> {
-  try {
-    console.log('🔄 Checking for consolidation opportunities...');
-    
-    // Find customers with the same name and email
-    const { data: existingCustomers, error: findError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('reseller_id', resellerId)
-      .eq('name', customerName)
-      .eq('email', customerEmail);
-    
-    if (findError || !existingCustomers || existingCustomers.length <= 1) {
-      console.log('No consolidation needed');
-      return { success: true };
-    }
-    
-    // Use customer_group from first customer or create one
-    const firstCustomer = existingCustomers[0];
-    const customerGroup = firstCustomer.customer_group || `${customerName.toLowerCase().replace(/\s+/g, '_')}_${resellerId}`;
-    
-    // Call the database function to consolidate customer connections
-    const { data, error } = await supabase.rpc('consolidate_customer_connections', {
-      customer_group_name: customerGroup,
-      reseller_id_param: resellerId
-    });
-    
-    if (error) {
-      console.error('❌ Consolidation error:', error);
-      return { success: false };
-    }
-    
-    // Handle the response properly - data should be an array
-    const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
-    
-    if (result) {
-      console.log('✅ Customer records consolidated:', result);
-      return { 
-        success: true, 
-        consolidatedId: result.consolidated_customer_id 
-      };
-    }
-    
-    return { success: true };
-  } catch (error) {
-    console.error('💥 Error during consolidation:', error);
-    return { success: false };
-  }
-}
-
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
-    console.log('🚀 Processing enhanced webhook payload with consolidation:', JSON.stringify(payload, null, 2));
+    console.log('🚀 Processing enhanced webhook payload with Trex-only trials:', JSON.stringify(payload, null, 2));
     
     // Validate payload structure
     if (!payload.action) {
@@ -460,7 +414,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
         resellerId: reseller.id,
         credits: reseller.credits,
         name: reseller.name,
-        provider: reseller.provider || '8k'
+        provider: reseller.provider || 'trex'
       };
     } else {
       return {
@@ -470,7 +424,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
       };
     }
     
-    console.log(`✅ Reseller authenticated: ${resellerData.name} (${resellerData.resellerId})`);
+    console.log(`✅ Reseller authenticated: ${resellerData.name} (${resellerData.resellerId}) - Provider: ${resellerData.provider}`);
     
     // Route to appropriate handler based on action
     switch (payload.action) {

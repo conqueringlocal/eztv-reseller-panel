@@ -27,8 +27,7 @@ export default function AdminSettings() {
   const [trexPanelUrl, setTrexPanelUrl] = useState("");
   const [trexDefaultPackageId, setTrexDefaultPackageId] = useState("");
   
-  // Trial limits
-  const [eightKTrialLimit, setEightKTrialLimit] = useState("");
+  // Trial limits (Trex only)
   const [trexTrialLimit, setTrexTrialLimit] = useState("");
   
   const [isLoading, setIsLoading] = useState(false);
@@ -47,7 +46,7 @@ export default function AdminSettings() {
           .in('id', [
             'iptv_api_key', 'default_package_id', 
             'trex_api_key', 'trex_panel_url', 'trex_default_package_id',
-            '8k_trial_daily_limit', 'trex_trial_daily_limit'
+            'trex_trial_daily_limit'
           ]);
         
         if (error) throw error;
@@ -69,9 +68,6 @@ export default function AdminSettings() {
               break;
             case 'trex_default_package_id':
               setTrexDefaultPackageId(setting.value);
-              break;
-            case '8k_trial_daily_limit':
-              setEightKTrialLimit(setting.value);
               break;
             case 'trex_trial_daily_limit':
               setTrexTrialLimit(setting.value);
@@ -204,25 +200,19 @@ export default function AdminSettings() {
   };
 
   const saveTrialLimits = async () => {
+    if (!trexTrialLimit.trim()) {
+      toast.error('Trex Trial Limit cannot be empty');
+      return;
+    }
+    
     setIsSaving(true);
     try {
-      const promises = [];
+      const success = await saveSetting('trex_trial_daily_limit', trexTrialLimit, 'Daily trial limit for Trex provider');
       
-      if (eightKTrialLimit.trim()) {
-        promises.push(saveSetting('8k_trial_daily_limit', eightKTrialLimit, 'Daily trial limit for 8K provider'));
-      }
-      
-      if (trexTrialLimit.trim()) {
-        promises.push(saveSetting('trex_trial_daily_limit', trexTrialLimit, 'Daily trial limit for Trex provider'));
-      }
-      
-      const results = await Promise.all(promises);
-      const allSuccessful = results.every(Boolean);
-      
-      if (allSuccessful) {
-        toast.success('Trial limits saved successfully');
+      if (success) {
+        toast.success('Trial limit saved successfully');
       } else {
-        toast.error('Failed to save some trial limits');
+        toast.error('Failed to save trial limit');
       }
     } finally {
       setIsSaving(false);
@@ -245,7 +235,7 @@ export default function AdminSettings() {
         {/* 8K IPTV API Settings */}
         <DashboardCard
           title="8K IPTV API Configuration"
-          description="Your 8K IPTV API connection settings"
+          description="Your 8K IPTV API connection settings (paid accounts only)"
         >
           <div className="space-y-4">
             <div>
@@ -334,7 +324,7 @@ export default function AdminSettings() {
         {/* Trex IPTV API Settings */}
         <DashboardCard
           title="Trex IPTV API Configuration"
-          description="Your Trex IPTV API connection settings"
+          description="Your Trex IPTV API connection settings (supports trials and paid accounts)"
         >
           <div className="space-y-4">
             <div>
@@ -410,35 +400,22 @@ export default function AdminSettings() {
           </div>
         </DashboardCard>
 
-        {/* Trial Limits Settings */}
+        {/* Trial Limits Settings - Trex Only */}
         <DashboardCard
           title="Daily Trial Limits"
-          description="Configure daily trial limits per provider to control costs"
+          description="Configure daily trial limits for Trex provider to control costs"
         >
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm font-medium mb-1.5">8K Daily Trial Limit</p>
-                <Input 
-                  value={eightKTrialLimit} 
-                  onChange={(e) => setEightKTrialLimit(e.target.value)}
-                  type="number"
-                  min="0"
-                  placeholder="50" 
-                  disabled={isLoading}
-                />
-              </div>
-              <div>
-                <p className="text-sm font-medium mb-1.5">Trex Daily Trial Limit</p>
-                <Input 
-                  value={trexTrialLimit} 
-                  onChange={(e) => setTrexTrialLimit(e.target.value)}
-                  type="number"
-                  min="0"
-                  placeholder="10" 
-                  disabled={isLoading}
-                />
-              </div>
+            <div>
+              <p className="text-sm font-medium mb-1.5">Trex Daily Trial Limit</p>
+              <Input 
+                value={trexTrialLimit} 
+                onChange={(e) => setTrexTrialLimit(e.target.value)}
+                type="number"
+                min="0"
+                placeholder="10" 
+                disabled={isLoading}
+              />
             </div>
             <div className="flex justify-end">
               <Button 
@@ -446,14 +423,14 @@ export default function AdminSettings() {
                 disabled={isLoading || isSaving}
               >
                 <Save size={16} className="mr-2" />
-                Save Trial Limits
+                Save Trial Limit
               </Button>
             </div>
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-800">
-              <p className="text-sm font-medium">Trial Limit Information</p>
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-blue-800">
+              <p className="text-sm font-medium">Trial Information</p>
               <p className="text-xs mt-1">
-                These limits prevent excessive trial creation per provider per day. When the limit is reached, 
-                new trial requests will be rejected with a 429 error until the next day.
+                Trial accounts are only available for Trex resellers. 8K provider does not support trial functionality.
+                This limit prevents excessive trial creation per day. When reached, new trial requests will be rejected with a 429 error.
               </p>
             </div>
           </div>
@@ -512,11 +489,11 @@ export default function AdminSettings() {
             </div>
 
             <div>
-              <h3 className="text-sm font-medium mb-2">Trial Account Webhook Format</h3>
+              <h3 className="text-sm font-medium mb-2">Trial Account Webhook Format (Trex Only)</h3>
               <div className="bg-gray-50 p-3 rounded-md">
                 <pre className="text-xs overflow-x-auto">
 {`{
-  "api_key": "YOUR_API_KEY",
+  "api_key": "YOUR_TREX_API_KEY",
   "contact_id": "{{contact.id}}",
   "action": "trial",
   "connections": 1,
@@ -530,7 +507,7 @@ export default function AdminSettings() {
                 </pre>
               </div>
               <p className="text-xs text-muted-foreground mt-1.5">
-                Creates a trial account with the specified duration in hours. Trial accounts use trial_duration_hours instead of plan_duration_months.
+                Creates a trial account with the specified duration in hours. Only available for Trex resellers. 8K provider does not support trials.
               </p>
             </div>
 
@@ -571,14 +548,14 @@ export default function AdminSettings() {
                 variant="outline" 
                 className="flex items-center"
                 onClick={() => {
-                  window.open(`${webhookUrl}?api_key=test&contact_id=test123&action=create&connections=2&customerName=Test+Customer&customerEmail=test@example.com&macAddress=00:1A:2B:3C:4D:5E&deviceType=Test+Device&planDuration=1`, '_blank');
+                  window.open(`${webhookUrl}?api_key=test&contact_id=test123&action=trial&connections=1&customerName=Test+Customer&customerEmail=test@example.com&deviceType=Test+Device&trial_duration_hours=24`, '_blank');
                 }}
               >
                 <Webhook size={16} className="mr-2" />
-                Test Multi-Connection Webhook
+                Test Trex Trial Webhook
               </Button>
               <p className="text-xs text-muted-foreground ml-3 flex items-center">
-                This will test creating 2 IPTV accounts with credential syncing
+                This will test creating a Trex trial account
               </p>
             </div>
           </div>
@@ -602,10 +579,10 @@ export default function AdminSettings() {
             </div>
             
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-4 text-yellow-800 mt-4">
-              <p className="text-sm font-medium">Demo Mode Notice</p>
+              <p className="text-sm font-medium">Trial System Update</p>
               <p className="text-xs mt-1">
-                This application is currently operating in demo mode. In a production environment,
-                sensitive API calls would be secured through server-side processing.
+                The system has been updated to support Trex-only trials. 8K provider does not support trial functionality.
+                All trial requests will now be processed through the Trex system.
               </p>
             </div>
           </div>
