@@ -136,8 +136,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Update session when user changes
   useEffect(() => {
     const getSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('❌ Error getting session in AppContext:', error);
+          setSession(null);
+          return;
+        }
+        
+        setSession(session);
+      } catch (error) {
+        console.error('💥 Critical error getting session:', error);
+        setSession(null);
+      }
     };
     
     if (user) {
@@ -150,11 +162,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const fetchCustomers = async () => {
     try {
       if (!user) {
-        console.warn('User not available, skipping fetchCustomers');
+        console.warn('⚠️ User not available, skipping fetchCustomers');
         return;
       }
       
+      console.log('📊 Fetching customers for user:', user.id, 'role:', user.role);
       setIsLoading(true);
+      
       let query = supabase
         .from('customers')
         .select('*')
@@ -162,26 +176,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       // Only filter by reseller_id if user is not an admin
       if (user.role !== 'admin') {
-        console.log(`Fetching customers for reseller ID: ${user.id}`);
+        console.log(`🔍 Fetching customers for reseller ID: ${user.id}`);
         query = query.eq('reseller_id', user.id);
       } else {
-        console.log('Fetching all customers for admin user');
+        console.log('👑 Fetching all customers for admin user');
       }
 
       const { data, error } = await query;
 
       if (error) {
-        console.error('Error fetching customers:', error);
+        console.error('❌ Error fetching customers:', error);
+        
+        // Handle specific auth-related errors
+        if (error.message.includes('JWT') || error.message.includes('token') || error.code === 'PGRST301') {
+          console.error('🚨 Authentication error while fetching customers');
+          toast.error('Authentication error. Please login again.');
+          // Don't set customers to empty array, keep existing data
+          return;
+        }
+        
         toast.error('Failed to load customer data');
+        setCustomers([]); // Only clear on non-auth errors
       } else {
         const customerCount = data.length;
-        console.log(`Successfully fetched ${customerCount} customers`);
+        console.log(`✅ Successfully fetched ${customerCount} customers`);
         const convertedCustomers = data.map(convertDbCustomerToCustomer);
         setCustomers(convertedCustomers);
       }
     } catch (error) {
-      console.error('Unexpected error fetching customers:', error);
+      console.error('💥 Unexpected error fetching customers:', error);
       toast.error('An unexpected error occurred while loading customers');
+      // Don't clear customers on unexpected errors
     } finally {
       setIsLoading(false);
     }
@@ -189,7 +214,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const fetchResellers = async () => {
     try {
-      if (!user || user.role !== 'admin') return;
+      if (!user || user.role !== 'admin') {
+        console.log('⚠️ User not admin or not available, skipping fetchResellers');
+        return;
+      }
+      
+      console.log('👥 Fetching resellers for admin user');
       
       const { data, error } = await supabase
         .from('profiles')
@@ -198,18 +228,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .order('name');
 
       if (error) {
-        console.error('Error fetching resellers:', error);
+        console.error('❌ Error fetching resellers:', error);
+        
+        // Handle auth errors
+        if (error.message.includes('JWT') || error.message.includes('token') || error.code === 'PGRST301') {
+          console.error('🚨 Authentication error while fetching resellers');
+          toast.error('Authentication error. Please login again.');
+          return;
+        }
+        
+        toast.error('Failed to load reseller data');
+        setResellers([]);
       } else {
+        console.log(`✅ Successfully fetched ${data.length} resellers`);
         setResellers(data || []);
       }
     } catch (error) {
-      console.error('Error fetching resellers:', error);
+      console.error('💥 Error fetching resellers:', error);
+      toast.error('An unexpected error occurred while loading resellers');
     }
   };
 
   const fetchCreditLogs = async () => {
     try {
-      if (!user) return;
+      if (!user) {
+        console.warn('⚠️ User not available, skipping fetchCreditLogs');
+        return;
+      }
+      
+      console.log('📈 Fetching credit logs for user:', user.id, 'role:', user.role);
       
       let query = supabase
         .from('credit_logs')
@@ -224,20 +271,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await query;
 
       if (error) {
-        console.error('Error fetching credit logs:', error);
+        console.error('❌ Error fetching credit logs:', error);
+        
+        // Handle auth errors
+        if (error.message.includes('JWT') || error.message.includes('token') || error.code === 'PGRST301') {
+          console.error('🚨 Authentication error while fetching credit logs');
+          toast.error('Authentication error. Please login again.');
+          return;
+        }
+        
+        toast.error('Failed to load credit logs');
+        setCreditLogs([]);
       } else {
+        console.log(`✅ Successfully fetched ${data.length} credit logs`);
         setCreditLogs(data || []);
       }
     } catch (error) {
-      console.error('Error fetching credit logs:', error);
+      console.error('💥 Error fetching credit logs:', error);
+      toast.error('An unexpected error occurred while loading credit logs');
     }
   };
 
   useEffect(() => {
     if (user) {
-      fetchCustomers();
-      fetchResellers();
-      fetchCreditLogs();
+      console.log('🔄 User changed, refreshing data for:', user.id);
+      Promise.all([
+        fetchCustomers(),
+        fetchResellers(),
+        fetchCreditLogs()
+      ]).catch(error => {
+        console.error('💥 Error refreshing data:', error);
+      });
+    } else {
+      console.log('👤 No user, clearing data');
+      setCustomers([]);
+      setResellers([]);
+      setCreditLogs([]);
     }
   }, [user]);
 
@@ -525,6 +594,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshData = async () => {
+    if (!user) {
+      console.warn('⚠️ Cannot refresh data: no user available');
+      return;
+    }
+    
+    console.log('🔄 Refreshing all data');
     await Promise.all([fetchCustomers(), fetchResellers(), fetchCreditLogs()]);
   };
 
