@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -156,6 +157,7 @@ serve(async (req) => {
         // Create IPTV user based on provider
         let iptvResponse;
         let iptvResult;
+        let customerRecord = null; // Initialize customer record variable
 
         if (provider === '8k') {
           console.log(`📡 Creating 8K M3U user ${i} with 1 connection`);
@@ -181,74 +183,7 @@ serve(async (req) => {
             throw new Error(iptvResult.error || iptvResult.result || 'Failed to create IPTV user');
           }
 
-        } else if (provider === 'trex') {
-          console.log(`📡 Creating Trex M3U user ${i} with 1 connection`);
-          
-          // Call the create-trex-user function for each connection with serviceCall parameter
-          const { data: trexResult, error: trexError } = await supabaseClient.functions.invoke('create-trex-user', {
-            body: {
-              resellerId: resellerId,
-              serviceCall: true, // Enable service call mode to bypass JWT authentication
-              customerData: {
-                name: `${customerData.name} (Connection ${i})`,
-                email: customerData.email,
-                macAddress: customerData.macAddress,
-                deviceType: customerData.deviceType,
-                packageId: customerData.packageId,
-                planDuration: customerData.planDuration,
-                connections: 1,
-                maxConnections: 1,
-                startDate: customerData.startDate,
-                expirationDate: customerData.expirationDate,
-                accountType: 'm3u',
-                status: customerData.status,
-                isDeactivated: customerData.isDeactivated
-              }
-            }
-          });
-
-          if (trexError || !trexResult?.success) {
-            throw new Error(trexResult?.error || trexError?.message || 'Failed to create Trex IPTV user');
-          }
-
-          // Extract the first customer from the Trex result (since we're creating 1 connection at a time)
-          const trexCustomer = trexResult.customers?.[0];
-          if (!trexCustomer) {
-            throw new Error('No customer data returned from Trex API');
-          }
-
-          iptvResult = {
-            user_info: {
-              m3u_url: trexCustomer.m3u_url,
-              group_id: trexCustomer.customer_group_id
-            }
-          };
-
-        } else {
-          throw new Error(`Unsupported provider: ${provider}`);
-        }
-
-        // Create customer record in database
-        console.log(`💾 Creating customer record for connection ${i}`);
-        const { data: newCustomer, error: createError } = await supabaseClient
-          .from('customers')
-          .select()
-          .eq('id', trexCustomer?.id || null)
-          .single();
-
-        if (createError && provider === 'trex') {
-          // For Trex, the customer was already created by create-trex-user
-          // Just add it to our results
-          createdCustomers.push({
-            ...trexCustomer,
-            credentials: {
-              username: trexCustomer.username,
-              password: trexCustomer.password,
-              maxConnections: 1,
-              m3uUrl: trexCustomer.m3u_url
-            }
-          });
-        } else if (provider === '8k') {
+          // Create customer record in database for 8K
           console.log(`💾 Creating customer record for connection ${i}`);
           const { data: newCustomer, error: createError } = await supabaseClient
             .from('customers')
@@ -287,13 +222,65 @@ serve(async (req) => {
             continue;
           }
 
+          customerRecord = newCustomer;
+
+        } else if (provider === 'trex') {
+          console.log(`📡 Creating Trex M3U user ${i} with 1 connection`);
+          
+          // Call the create-trex-user function for each connection with serviceCall parameter
+          const { data: trexResult, error: trexError } = await supabaseClient.functions.invoke('create-trex-user', {
+            body: {
+              resellerId: resellerId,
+              serviceCall: true, // Enable service call mode to bypass JWT authentication
+              customerData: {
+                name: `${customerData.name} (Connection ${i})`,
+                email: customerData.email,
+                macAddress: customerData.macAddress,
+                deviceType: customerData.deviceType,
+                packageId: customerData.packageId,
+                planDuration: customerData.planDuration,
+                connections: 1,
+                maxConnections: 1,
+                startDate: customerData.startDate,
+                expirationDate: customerData.expirationDate,
+                accountType: 'm3u',
+                status: customerData.status,
+                isDeactivated: customerData.isDeactivated
+              }
+            }
+          });
+
+          if (trexError || !trexResult?.success) {
+            throw new Error(trexResult?.error || trexError?.message || 'Failed to create Trex IPTV user');
+          }
+
+          // Extract the first customer from the Trex result (since we're creating 1 connection at a time)
+          const trexCustomer = trexResult.customers?.[0];
+          if (!trexCustomer) {
+            throw new Error('No customer data returned from Trex API');
+          }
+
+          customerRecord = trexCustomer;
+          iptvResult = {
+            user_info: {
+              m3u_url: trexCustomer.m3u_url,
+              group_id: trexCustomer.customer_group_id
+            }
+          };
+
+        } else {
+          throw new Error(`Unsupported provider: ${provider}`);
+        }
+
+        // Add customer to created list if we have a valid customer record
+        if (customerRecord) {
           createdCustomers.push({
-            ...newCustomer,
+            ...customerRecord,
             credentials: {
-              username: username,
-              password: password,
+              username: customerRecord.username,
+              password: customerRecord.password,
               maxConnections: 1,
-              m3uUrl: iptvResult.user_info?.m3u_url
+              m3uUrl: customerRecord.m3u_url || iptvResult.user_info?.m3u_url
             }
           });
 
