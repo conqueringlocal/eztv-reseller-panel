@@ -63,9 +63,9 @@ export const groupCustomersByEmailAndReseller = (customers: Customer[]): Custome
   const groups: { [key: string]: Customer[] } = {};
   
   customers.forEach(customer => {
-    // Skip already consolidated customers
-    const connectionList = customer.connection_list || customer.connectionList || [];
-    if (Array.isArray(connectionList) && connectionList.length > 0) {
+    // Skip already consolidated customers by checking total_connections
+    const totalConnections = (customer as any).total_connections || (customer as any).totalConnections;
+    if (totalConnections && totalConnections > 1) {
       return;
     }
     
