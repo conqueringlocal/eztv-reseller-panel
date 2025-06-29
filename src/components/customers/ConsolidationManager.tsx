@@ -34,19 +34,23 @@ export function ConsolidationManager({
     try {
       console.log(`🔄 Consolidating group: ${groupKey}`, { name, email, count: groupCustomers.length });
       
-      // Call the consolidation function
-      const { data, error } = await supabase.rpc('consolidate_duplicate_customers', {
-        reseller_id_param: resellerId,
-        customer_name_param: name,
-        customer_email_param: email
+      // Use the existing consolidate_customer_connections function with customer_group from first customer
+      const firstCustomer = groupCustomers[0];
+      const customerGroup = firstCustomer.customer_group || `${name.toLowerCase().replace(/\s+/g, '_')}_${resellerId}`;
+      
+      const { data, error } = await supabase.rpc('consolidate_customer_connections', {
+        customer_group_name: customerGroup,
+        reseller_id_param: resellerId
       });
       
       if (error) {
         throw error;
       }
       
-      if (data && data.length > 0) {
-        const result = data[0];
+      // Handle the response properly - data should be an array
+      const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
+      
+      if (result) {
         setConsolidationResults(prev => [...prev, {
           groupKey,
           name,

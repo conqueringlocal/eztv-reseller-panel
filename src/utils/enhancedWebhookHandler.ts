@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 
 export interface EnhancedWebhookPayload {
@@ -182,11 +183,27 @@ async function consolidateCustomerIfNeeded(
   try {
     console.log('🔄 Checking for consolidation opportunities...');
     
-    // Call the database function to consolidate duplicates
-    const { data, error } = await supabase.rpc('consolidate_duplicate_customers', {
-      reseller_id_param: resellerId,
-      customer_name_param: customerName,
-      customer_email_param: customerEmail
+    // Find customers with the same name and email
+    const { data: existingCustomers, error: findError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('reseller_id', resellerId)
+      .eq('name', customerName)
+      .eq('email', customerEmail);
+    
+    if (findError || !existingCustomers || existingCustomers.length <= 1) {
+      console.log('No consolidation needed');
+      return { success: true };
+    }
+    
+    // Use customer_group from first customer or create one
+    const firstCustomer = existingCustomers[0];
+    const customerGroup = firstCustomer.customer_group || `${customerName.toLowerCase().replace(/\s+/g, '_')}_${resellerId}`;
+    
+    // Call the database function to consolidate customer connections
+    const { data, error } = await supabase.rpc('consolidate_customer_connections', {
+      customer_group_name: customerGroup,
+      reseller_id_param: resellerId
     });
     
     if (error) {
@@ -194,11 +211,14 @@ async function consolidateCustomerIfNeeded(
       return { success: false };
     }
     
-    if (data && data.length > 0) {
-      console.log('✅ Customer records consolidated:', data[0]);
+    // Handle the response properly - data should be an array
+    const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    
+    if (result) {
+      console.log('✅ Customer records consolidated:', result);
       return { 
         success: true, 
-        consolidatedId: data[0].consolidated_customer_id 
+        consolidatedId: result.consolidated_customer_id 
       };
     }
     

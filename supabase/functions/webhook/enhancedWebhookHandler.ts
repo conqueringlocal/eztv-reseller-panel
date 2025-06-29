@@ -6,28 +6,21 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 export interface EnhancedWebhookPayload {
-  // API key for reseller identification
   api_key?: string;
-  // Legacy reseller ID for backwards compatibility
   resellerId?: string;
-  // HighLevel contact ID for sending credentials
   contact_id?: string;
-  // Action type to differentiate between create, renew, and trial
   action: 'create' | 'renew' | 'trial';
-  // Number of connections for multi-connection accounts
   connections?: number;
-  // Trial account flag and duration
   is_trial?: boolean;
   trial_duration_hours?: number;
   customer: {
     name: string;
     email: string;
-    mac?: string; // Optional for renewals and some account types
-    device_type?: string; // Optional for renewals
+    mac?: string;
+    device_type?: string;
     plan_duration_months: number;
-    package_id?: string; // Optional package ID
+    package_id?: string;
   };
-  // Support for older format for backwards compatibility
   customerName?: string;
   customerEmail?: string;
   macAddress?: string;
@@ -37,15 +30,12 @@ export interface EnhancedWebhookPayload {
   contactId?: string;
 }
 
-// Flattened webhook result for HighLevel compatibility
-interface WebhookResult {
+export interface EnhancedWebhookResult {
   success: boolean;
   message: string;
-  // Direct credential fields at root level
   username?: string;
   password?: string;
   m3u_url?: string;
-  // Customer information
   name?: string;
   email?: string;
   device_type?: string;
@@ -56,7 +46,6 @@ interface WebhookResult {
   credits_used?: number;
   accounts_renewed?: number;
   trial_expires_at?: string;
-  // Connection credentials (up to 3 connections)
   username_1?: string;
   password_1?: string;
   m3u_url_1?: string;
@@ -66,864 +55,83 @@ interface WebhookResult {
   username_3?: string;
   password_3?: string;
   m3u_url_3?: string;
-  // Clean credentials array for multiple connections
   credentials?: Array<{
     username: string;
     password: string;
     m3u_url?: string;
   }>;
-  // Raw data dump for debugging
   raw_api_response?: any;
   errors?: string[];
 }
 
-// Fixed credential extraction function
-function extractAndFlattenCredentials(data: any): {
-  flattenedFields: any;
-  credentialsArray: Array<{ username: string; password: string; m3u_url?: string }>;
-  primaryCredentials: { username?: string; password?: string; m3u_url?: string };
-} {
-  console.log('🔍 RAW API RESPONSE DUMP:', JSON.stringify(data, null, 2));
-  
-  const flattenedFields: any = {};
-  const credentialsArray: Array<{ username: string; password: string; m3u_url?: string }> = [];
-  let primaryCredentials: { username?: string; password?: string; m3u_url?: string } = {};
-  
-  if (!data) {
-    console.log('❌ No data provided for credential extraction');
-    return { flattenedFields, credentialsArray, primaryCredentials };
-  }
-  
-  let customers: any[] = [];
-  
-  // Extract customers from different response formats
-  if (data.customers && Array.isArray(data.customers)) {
-    customers = data.customers;
-    console.log('✅ Found customers array with', customers.length, 'customers');
-  } else if (data.customer) {
-    customers = [data.customer];
-    console.log('✅ Found single customer object');
-  } else if (data.username || data.password || data.m3u_url) {
-    customers = [data];
-    console.log('✅ Data appears to be a customer object');
-  }
-  
-  console.log('📊 Processing customers for credential extraction:', customers.length);
-  
-  // Process each customer to extract credentials
-  customers.forEach((customer, index) => {
-    console.log(`🔐 Processing customer ${index + 1}:`, {
-      id: customer.id,
-      name: customer.name,
-      hasCredentials: !!customer.credentials,
-      hasDirectUsername: !!customer.username,
-      hasConnectionList: !!customer.connection_list
-    });
-    
-    let username: string | undefined;
-    let password: string | undefined;
-    let m3u_url: string | undefined;
-    
-    // Extract credentials from nested credentials object first
-    if (customer.credentials && typeof customer.credentials === 'object') {
-      console.log(`📋 Found nested credentials object for customer ${index + 1}:`, customer.credentials);
-      username = customer.credentials.username;
-      password = customer.credentials.password;
-      m3u_url = customer.credentials.m3uUrl || customer.credentials.m3u_url;
-    } 
-    // Then try direct username/password on customer object
-    else if (customer.username && customer.password) {
-      console.log(`📋 Found direct credentials for customer ${index + 1}`);
-      username = customer.username;
-      password = customer.password;
-      m3u_url = customer.m3u_url;
-    }
-    
-    if (username && password) {
-      const credentialSet = {
-        username,
-        password,
-        m3u_url: m3u_url || undefined
-      };
-      
-      // Add to credentials array
-      credentialsArray.push(credentialSet);
-      
-      // Set primary credentials (first valid set)
-      if (index === 0) {
-        primaryCredentials = credentialSet;
-      }
-      
-      // Add to flattened fields (up to 3 connections)
-      if (index < 3) {
-        const fieldNumber = index + 1;
-        flattenedFields[`username_${fieldNumber}`] = username;
-        flattenedFields[`password_${fieldNumber}`] = password;
-        if (m3u_url) {
-          flattenedFields[`m3u_url_${fieldNumber}`] = m3u_url;
-        }
-      }
-      
-      console.log(`✅ Extracted credentials for customer ${index + 1}:`, { username, password, hasM3u: !!m3u_url });
-    } else {
-      console.log(`❌ No valid credentials found for customer ${index + 1}`);
-    }
-  });
-  
-  flattenedFields.total_connections = credentialsArray.length;
-  
-  console.log('🎯 Final extraction results:', {
-    primaryCredentials,
-    credentialsCount: credentialsArray.length,
-    flattenedFieldsCount: Object.keys(flattenedFields).length
-  });
-  
-  return { flattenedFields, credentialsArray, primaryCredentials };
+interface ResellerDataResult {
+  success: boolean;
+  message: string;
+  data?: {
+    resellerId: string;
+    credits: number;
+    name: string;
+    provider: string;
+  };
+  errors?: string[];
 }
 
-// Enhanced helper function to flatten customer credentials with comprehensive debugging
-function flattenCustomerCredentials(customers: any[]): any {
-  console.log('🔐 flattenCustomerCredentials - Input customers:', JSON.stringify(customers, null, 2));
-  
-  const flattened: any = {};
-  
-  if (!customers || customers.length === 0) {
-    console.log('⚠️ No customers provided to flatten');
-    return flattened;
-  }
-  
-  // Handle consolidated customer with connection_list (new format)
-  if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
-    console.log('🔄 Processing consolidated customer with connection_list');
-    const customer = customers[0];
-    const connectionList = customer.connection_list;
-    
-    console.log('📊 Connection list details:', {
-      length: connectionList.length,
-      firstConnection: connectionList[0],
-      totalConnections: customer.total_connections
-    });
-    
-    connectionList.slice(0, 3).forEach((connection: any, index: number) => {
-      const fieldNumber = index + 1;
-      console.log(`🔐 Processing connection ${fieldNumber}:`, connection);
-      
-      if (connection.username) {
-        flattened[`username_${fieldNumber}`] = connection.username;
-      }
-      if (connection.password) {
-        flattened[`password_${fieldNumber}`] = connection.password;
-      }
-      if (connection.m3u_url) {
-        flattened[`m3u_url_${fieldNumber}`] = connection.m3u_url;
-      }
-    });
-    
-    flattened.total_connections = customer.total_connections || connectionList.length;
-  } else {
-    // Handle individual customer records
-    console.log('🔄 Processing individual customer records');
-    
-    customers.slice(0, 3).forEach((customer, index) => {
-      const fieldNumber = index + 1;
-      console.log(`🔐 Processing customer ${fieldNumber}:`, {
-        id: customer.id,
-        username: customer.username,
-        password: customer.password,
-        m3u_url: customer.m3u_url
-      });
-      
-      if (customer.username) {
-        flattened[`username_${fieldNumber}`] = customer.username;
-      }
-      if (customer.password) {
-        flattened[`password_${fieldNumber}`] = customer.password;
-      }
-      if (customer.m3u_url) {
-        flattened[`m3u_url_${fieldNumber}`] = customer.m3u_url;
-      }
-    });
-    
-    flattened.total_connections = customers.length;
-  }
-  
-  console.log('✅ Flattened credentials result:', flattened);
-  return flattened;
-}
-
-// New function to extract customer credentials from different response formats
-function extractCustomerCredentials(data: any): any[] {
-  console.log('🔍 Extracting customer credentials from data:', JSON.stringify(data, null, 2));
-  
-  if (!data) {
-    console.log('⚠️ No data provided for credential extraction');
-    return [];
-  }
-  
-  // Check if data.customers exists and has content
-  if (data.customers && Array.isArray(data.customers) && data.customers.length > 0) {
-    console.log('✅ Found customers array with', data.customers.length, 'customers');
-    return data.customers;
-  }
-  
-  // Check if there's a single customer object
-  if (data.customer) {
-    console.log('✅ Found single customer object');
-    return [data.customer];
-  }
-  
-  // Check if the data itself looks like a customer
-  if (data.username || data.password || data.m3u_url) {
-    console.log('✅ Data appears to be a customer object');
-    return [data];
-  }
-  
-  console.log('⚠️ No valid customer data found in response');
-  return [];
-}
-
-// Enhanced credit calculation for multi-connection accounts
-function calculateCreditsRequired(connections: number, durationMonths: number): number {
-  return connections * durationMonths;
-}
-
-// Get reseller by API key with enhanced validation
-async function getResellerByApiKey(apiKey: string): Promise<{
-  resellerId: string;
-  credits: number;
-  name: string;
-  provider: string;
-} | null> {
+// Enhanced consolidation function for post-creation cleanup
+async function consolidateCustomerIfNeeded(
+  resellerId: string, 
+  customerName: string, 
+  customerEmail: string
+): Promise<{ success: boolean; consolidatedId?: string }> {
   try {
-    console.log('🔍 Looking up reseller by API key');
+    console.log('🔄 Checking for consolidation opportunities...');
     
-    const { data: apiKeyData, error: apiKeyError } = await supabase
-      .from('reseller_api_keys')
-      .select(`
-        reseller_id,
-        is_active,
-        usage_count,
-        profiles!inner(credits, name, provider)
-      `)
-      .eq('api_key', apiKey)
-      .eq('is_active', true)
-      .single();
-
-    if (apiKeyError || !apiKeyData) {
-      console.error('❌ Invalid or inactive API key:', apiKey);
-      return null;
-    }
-
-    // Update API key usage
-    await supabase
-      .from('reseller_api_keys')
-      .update({ 
-        usage_count: apiKeyData.usage_count + 1,
-        last_used_at: new Date().toISOString()
-      })
-      .eq('api_key', apiKey);
-
-    return {
-      resellerId: apiKeyData.reseller_id,
-      credits: apiKeyData.profiles.credits,
-      name: apiKeyData.profiles.name,
-      provider: apiKeyData.profiles.provider || '8k'
-    };
-  } catch (error) {
-    console.error('💥 Error looking up reseller:', error);
-    return null;
-  }
-}
-
-// Enhanced trial account creation with improved credential extraction
-async function createTrialAccount(
-  payload: EnhancedWebhookPayload,
-  resellerId: string,
-  resellerName: string,
-  provider: string
-): Promise<WebhookResult> {
-  try {
-    console.log('🆓 Creating consolidated trial account');
-    
-    const trialDurationHours = payload.trial_duration_hours || 24;
-    const connections = payload.connections || 1;
-    
-    // Calculate trial expiration
-    const startDate = new Date();
-    const expirationDate = new Date();
-    expirationDate.setHours(expirationDate.getHours() + trialDurationHours);
-    
-    const customerName = payload.customer?.name || payload.customerName || '';
-    const customerEmail = payload.customer?.email || payload.customerEmail || '';
-    const deviceType = payload.customer?.device_type || payload.deviceType || 'Smart TV';
-    
-    console.log(`🔄 Creating consolidated trial account with ${connections} connections for ${customerName}`);
-    
-    // Call the create-iptv-user function for trial accounts with serviceCall parameter
-    const { data, error } = await supabase.functions.invoke('create-iptv-user', {
-      body: {
-        resellerId: resellerId,
-        serviceCall: true, // Enable service call mode to bypass JWT authentication
-        customerData: {
-          name: customerName,
-          email: customerEmail,
-          macAddress: payload.customer?.mac || payload.macAddress || null,
-          deviceType: deviceType,
-          packageId: payload.customer?.package_id || payload.packageId || 'trial',
-          planDuration: 1, // Trial duration in months (will be overridden by hours)
-          connections: connections,
-          maxConnections: connections,
-          startDate: startDate.toISOString().split('T')[0],
-          expirationDate: expirationDate.toISOString().split('T')[0],
-          accountType: 'm3u',
-          status: 'active',
-          isDeactivated: false,
-          isTrial: true,
-          trialDurationHours: trialDurationHours
-        }
-      }
-    });
-
-    if (error || !data?.success) {
-      console.error('❌ Failed to create trial account:', error || data);
-      return {
-        success: false,
-        message: 'Failed to create trial IPTV account',
-        raw_api_response: data,
-        errors: [error?.message || 'Unknown error']
-      };
-    }
-
-    console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
-
-    // Extract and validate credentials
-    const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
-    
-    // Validate credentials exist before continuing
-    if (!primaryCredentials.username || !primaryCredentials.password) {
-      console.error('❌ CRITICAL: No valid credentials found in API response');
-      return {
-        success: false,
-        message: 'Failed to extract valid credentials from trial account creation',
-        raw_api_response: data,
-        errors: ['missing_credentials']
-      };
-    }
-
-    console.log('✅ Trial credentials validated successfully');
-    
-    // Send credentials via HighLevel if contact ID provided
-    if (payload.contact_id && credentialsArray.length > 0) {
-      await syncCredentialsToHighLevel(
-        payload.contact_id,
-        customerName,
-        customerEmail,
-        credentialsArray,
-        resellerId,
-        deviceType
-      );
-    }
-
-    return {
-      success: true,
-      message: `Consolidated trial account created successfully with ${connections} connection${connections > 1 ? 's' : ''} for ${trialDurationHours} hours`,
-      // Primary credentials at root level
-      username: primaryCredentials.username,
-      password: primaryCredentials.password,
-      m3u_url: primaryCredentials.m3u_url,
-      // Standard fields
-      name: customerName,
-      email: customerEmail,
-      device_type: deviceType,
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: expirationDate.toISOString().split('T')[0],
-      account_type: 'trial',
-      trial_expires_at: expirationDate.toISOString(),
-      // Flattened credentials for HighLevel
-      ...flattenedFields,
-      // Clean credentials array
-      credentials: credentialsArray,
-      // Raw response for debugging
-      raw_api_response: data
-    };
-  } catch (error) {
-    console.error('💥 Error creating trial account:', error);
-    return {
-      success: false,
-      message: 'Internal error creating trial account',
-      errors: [error.message]
-    };
-  }
-}
-
-// Enhanced multi-connection account creation with improved credential extraction
-async function createMultiConnectionAccount(
-  payload: EnhancedWebhookPayload,
-  resellerId: string,
-  resellerData: any
-): Promise<WebhookResult> {
-  try {
-    console.log('➕ Creating consolidated multi-connection account');
-    
-    const connections = payload.connections || 1;
-    const planDuration = payload.customer?.plan_duration_months || payload.planDuration || 1;
-    const creditsRequired = calculateCreditsRequired(connections, planDuration);
-    
-    console.log(`💰 Credits required: ${creditsRequired}, Available: ${resellerData.credits}`);
-    
-    // Check credits
-    if (resellerData.credits < creditsRequired) {
-      return {
-        success: false,
-        message: `Insufficient credits. Required: ${creditsRequired}, Available: ${resellerData.credits}`,
-        errors: ['insufficient_credits']
-      };
-    }
-    
-    const customerName = payload.customer?.name || payload.customerName || '';
-    const customerEmail = payload.customer?.email || payload.customerEmail || '';
-    const macAddress = payload.customer?.mac || payload.macAddress;
-    const deviceType = payload.customer?.device_type || payload.deviceType || 'Smart TV';
-    
-    // Validate required fields
-    if (!customerName || !customerEmail) {
-      return {
-        success: false,
-        message: 'Missing required customer information (name and email)',
-        errors: ['missing_customer_data']
-      };
-    }
-    
-    // For multi-connection M3U accounts, MAC address is optional
-    // For single MAG accounts, MAC address is required
-    const accountType = macAddress && connections === 1 ? 'mag' : 'm3u';
-    
-    console.log(`🎯 Creating consolidated ${accountType} account with ${connections} connections`);
-    
-    // Calculate dates
-    const startDate = new Date();
-    const expirationDate = new Date();
-    expirationDate.setMonth(expirationDate.getMonth() + planDuration);
-    
-    // Call create-iptv-user function with serviceCall parameter
-    const { data, error } = await supabase.functions.invoke('create-iptv-user', {
-      body: {
-        resellerId: resellerId,
-        serviceCall: true, // Enable service call mode to bypass JWT authentication
-        customerData: {
-          name: customerName,
-          email: customerEmail,
-          macAddress: macAddress,
-          deviceType: deviceType,
-          packageId: payload.customer?.package_id || payload.packageId || 'default',
-          planDuration: planDuration,
-          connections: connections,
-          maxConnections: connections,
-          startDate: startDate.toISOString().split('T')[0],
-          expirationDate: expirationDate.toISOString().split('T')[0],
-          accountType: accountType,
-          status: 'active',
-          isDeactivated: false
-        }
-      }
-    });
-
-    if (error || !data?.success) {
-      console.error('❌ Failed to create IPTV account:', error || data);
-      return {
-        success: false,
-        message: 'Failed to create IPTV account',
-        raw_api_response: data,
-        errors: [error?.message || 'Unknown error']
-      };
-    }
-
-    console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
-
-    // Extract and validate credentials
-    const { flattenedFields, credentialsArray, primaryCredentials } = extractAndFlattenCredentials(data);
-    
-    // Validate credentials exist before continuing
-    if (!primaryCredentials.username || !primaryCredentials.password) {
-      console.error('❌ CRITICAL: No valid credentials found in API response');
-      return {
-        success: false,
-        message: 'Failed to extract valid credentials from account creation',
-        raw_api_response: data,
-        errors: ['missing_credentials']
-      };
-    }
-
-    console.log('✅ Account credentials validated successfully');
-
-    // Send credentials via HighLevel if contact ID provided
-    if (payload.contact_id && credentialsArray.length > 0) {
-      await syncCredentialsToHighLevel(
-        payload.contact_id,
-        customerName,
-        customerEmail,
-        credentialsArray,
-        resellerId,
-        deviceType
-      );
-    }
-
-    return {
-      success: true,
-      message: `Consolidated account created successfully with ${connections} connection${connections > 1 ? 's' : ''}`,
-      // Primary credentials at root level
-      username: primaryCredentials.username,
-      password: primaryCredentials.password,
-      m3u_url: primaryCredentials.m3u_url,
-      // Standard fields
-      name: customerName,
-      email: customerEmail,
-      device_type: deviceType,
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: expirationDate.toISOString().split('T')[0],
-      account_type: accountType,
-      credits_used: creditsRequired,
-      // Flattened credentials for HighLevel
-      ...flattenedFields,
-      // Clean credentials array
-      credentials: credentialsArray,
-      // Raw response for debugging
-      raw_api_response: data
-    };
-  } catch (error) {
-    console.error('💥 Error creating multi-connection account:', error);
-    return {
-      success: false,
-      message: 'Internal error creating account',
-      errors: [error.message]
-    };
-  }
-}
-
-async function renewCustomerGroup(
-  payload: EnhancedWebhookPayload,
-  resellerId: string,
-  resellerData: any
-): Promise<WebhookResult> {
-  try {
-    console.log('🔄 Processing group renewal');
-    
-    const customerName = payload.customer?.name || payload.customerName || '';
-    const customerEmail = payload.customer?.email || payload.customerEmail || '';
-    const planDuration = payload.customer?.plan_duration_months || payload.planDuration || 1;
-    
-    if (!customerName || !customerEmail) {
-      return {
-        success: false,
-        message: 'Missing required customer information for renewal',
-        errors: ['missing_customer_data']
-      };
-    }
-    
-    // Find existing customer group
+    // Find customers with the same name and email
     const { data: existingCustomers, error: findError } = await supabase
       .from('customers')
       .select('*')
       .eq('reseller_id', resellerId)
       .eq('name', customerName)
-      .eq('email', customerEmail)
-      .in('status', ['active', 'expired', 'expiring_soon'])
-      .limit(1);
-
-    if (findError || !existingCustomers || existingCustomers.length === 0) {
-      return {
-        success: false,
-        message: `No customer found with name "${customerName}" and email "${customerEmail}"`,
-        errors: ['customer_not_found']
+      .eq('email', customerEmail);
+    
+    if (findError || !existingCustomers || existingCustomers.length <= 1) {
+      console.log('No consolidation needed');
+      return { success: true };
+    }
+    
+    // Use customer_group from first customer or create one
+    const firstCustomer = existingCustomers[0];
+    const customerGroup = firstCustomer.customer_group || `${customerName.toLowerCase().replace(/\s+/g, '_')}_${resellerId}`;
+    
+    // Call the database function to consolidate customer connections
+    const { data, error } = await supabase.rpc('consolidate_customer_connections', {
+      customer_group_name: customerGroup,
+      reseller_id_param: resellerId
+    });
+    
+    if (error) {
+      console.error('❌ Consolidation error:', error);
+      return { success: false };
+    }
+    
+    // Handle the response properly - data should be an array
+    const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
+    
+    if (result) {
+      console.log('✅ Customer records consolidated:', result);
+      return { 
+        success: true, 
+        consolidatedId: result.consolidated_customer_id 
       };
     }
-
-    const primaryCustomer = existingCustomers[0];
     
-    // Use the renew-customer-group function for group renewal
-    const { data: renewalResult, error: renewalError } = await supabase.functions.invoke('renew-customer-group', {
-      body: {
-        customerId: primaryCustomer.id,
-        planDuration: planDuration,
-        resellerId: resellerId
-      }
-    });
-
-    if (renewalError || !renewalResult?.success) {
-      console.error('❌ Failed to renew customer group:', renewalError || renewalResult);
-      return {
-        success: false,
-        message: renewalResult?.message || 'Failed to renew customer group',
-        errors: [renewalError?.message || 'renewal_failed']
-      };
-    }
-
-    // Send renewal confirmation via HighLevel if contact ID provided
-    if (payload.contact_id) {
-      await sendRenewalConfirmationToHighLevel(
-        payload.contact_id,
-        customerName,
-        renewalResult.accountsRenewed,
-        planDuration,
-        resellerId
-      );
-    }
-
-    // Calculate new end date
-    const currentExpiry = new Date(primaryCustomer.expiration_date);
-    const newExpiry = new Date(currentExpiry);
-    newExpiry.setMonth(newExpiry.getMonth() + planDuration);
-
-    return {
-      success: true,
-      message: `Customer group renewed successfully. ${renewalResult.accountsRenewed} accounts renewed for ${planDuration} months`,
-      name: customerName,
-      email: customerEmail,
-      device_type: primaryCustomer.device_type || 'Smart TV',
-      start_date: primaryCustomer.start_date,
-      end_date: newExpiry.toISOString().split('T')[0],
-      account_type: primaryCustomer.mac_address ? 'mag' : 'm3u',
-      accounts_renewed: renewalResult.accountsRenewed,
-      credits_used: renewalResult.creditsUsed
-    };
+    return { success: true };
   } catch (error) {
-    console.error('💥 Error renewing customer group:', error);
-    return {
-      success: false,
-      message: 'Internal error during renewal',
-      errors: [error.message]
-    };
+    console.error('💥 Error during consolidation:', error);
+    return { success: false };
   }
 }
 
-// Enhanced function to sync consolidated credentials to HighLevel
-async function syncCredentialsToHighLevel(
-  contactId: string,
-  customerName: string,
-  customerEmail: string,
-  customers: any[],
-  resellerId: string,
-  deviceType?: string
-): Promise<void> {
-  try {
-    console.log(`📨 Syncing consolidated credentials to HighLevel contact: ${contactId}`);
-    console.log(`📊 Customers to sync:`, JSON.stringify(customers, null, 2));
-    
-    // First, create/update the contact with customer info and device type
-    const { data: createContactResult, error: createContactError } = await supabase.functions.invoke('create-highlevel-contact', {
-      body: {
-        customerName,
-        customerEmail,
-        resellerId,
-        deviceType,
-        planDuration: customers[0]?.plan_duration || 1
-      }
-    });
-
-    if (createContactError || !createContactResult?.success) {
-      console.error('❌ Failed to create/update HighLevel contact:', createContactError || createContactResult);
-      return;
-    }
-
-    // Prepare credentials for syncing - handle both consolidated and individual records
-    const credentialsToSync: any = {};
-    
-    // If we have a consolidated customer with connection_list
-    if (customers.length === 1 && customers[0].connection_list && Array.isArray(customers[0].connection_list)) {
-      console.log('🔄 Syncing consolidated customer with connection_list');
-      const connectionList = customers[0].connection_list;
-      connectionList.slice(0, 3).forEach((connection: any, index: number) => {
-        const fieldNumber = index + 1;
-        
-        if (connection.username) {
-          credentialsToSync[`iptv_username_${fieldNumber}`] = connection.username;
-        }
-        
-        if (connection.password) {
-          credentialsToSync[`iptv_password_${fieldNumber}`] = connection.password;
-        }
-        
-        if (connection.m3u_url) {
-          credentialsToSync[`iptv_m3u_url_${fieldNumber}`] = connection.m3u_url;
-        }
-      });
-    } else {
-      // Handle individual customer records
-      console.log('🔄 Syncing individual customer records');
-      customers.slice(0, 3).forEach((customer, index) => {
-        const fieldNumber = index + 1;
-        
-        if (customer.username) {
-          credentialsToSync[`iptv_username_${fieldNumber}`] = customer.username;
-        }
-        
-        if (customer.password) {
-          credentialsToSync[`iptv_password_${fieldNumber}`] = customer.password;
-        }
-        
-        if (customer.m3u_url) {
-          credentialsToSync[`iptv_m3u_url_${fieldNumber}`] = customer.m3u_url;
-        }
-      });
-    }
-
-    console.log('🔐 Consolidated credentials to sync:', Object.keys(credentialsToSync));
-    console.log('🔐 Credential values:', credentialsToSync);
-
-    // Update the HighLevel contact with all credentials
-    const { data: updateResult, error: updateError } = await supabase.functions.invoke('update-highlevel-contact-credentials', {
-      body: {
-        contactId,
-        resellerId,
-        iptvCredentials: credentialsToSync
-      }
-    });
-
-    if (updateError || !updateResult?.success) {
-      console.error('❌ Failed to update HighLevel contact credentials:', updateError || updateResult);
-      return;
-    }
-
-    console.log('✅ Successfully synced consolidated credentials to HighLevel');
-
-    // Send credentials via SMS/message as well
-    await sendCredentialsMessage(contactId, customerName, customers, resellerId);
-    
-  } catch (error) {
-    console.error('💥 Error syncing consolidated credentials to HighLevel:', error);
-  }
-}
-
-// Send consolidated credentials message to HighLevel
-async function sendCredentialsMessage(
-  contactId: string,
-  customerName: string,
-  customers: any[],
-  resellerId: string
-): Promise<void> {
-  try {
-    console.log(`📱 Sending consolidated credentials message to HighLevel contact: ${contactId}`);
-    
-    // Get reseller's HighLevel credentials
-    const { data: hlSettings, error: hlError } = await supabase
-      .from('reseller_highlevel_settings')
-      .select('location_api_key, location_id')
-      .eq('reseller_id', resellerId)
-      .eq('is_active', true)
-      .single();
-
-    if (hlError || !hlSettings) {
-      console.log('⚠️ No HighLevel settings found for reseller:', resellerId);
-      return;
-    }
-
-    // Format credentials message for consolidated structure
-    let credentialsMessage = `🎬 Your IPTV Account Details:\n\n`;
-    
-    // Handle consolidated customer with connection_list
-    if (customers.length === 1 && customers[0].connection_list) {
-      const connectionList = customers[0].connection_list;
-      const totalConnections = customers[0].total_connections || connectionList.length;
-      
-      credentialsMessage += `📊 Total Connections: ${totalConnections}\n\n`;
-      
-      connectionList.forEach((connection: any, index: number) => {
-        if (connectionList.length > 1) {
-          credentialsMessage += `Connection ${index + 1}:\n`;
-        }
-        credentialsMessage += `👤 Username: ${connection.username}\n`;
-        credentialsMessage += `🔑 Password: ${connection.password}\n`;
-        if (connection.m3u_url) {
-          credentialsMessage += `📺 M3U URL: ${connection.m3u_url}\n`;
-        }
-        if (connectionList.length > 1) {
-          credentialsMessage += `\n`;
-        }
-      });
-    } else {
-      // Handle individual customer records
-      customers.forEach((customer, index) => {
-        if (customers.length > 1) {
-          credentialsMessage += `Connection ${index + 1}:\n`;
-        }
-        credentialsMessage += `👤 Username: ${customer.username}\n`;
-        credentialsMessage += `🔑 Password: ${customer.password}\n`;
-        if (customer.m3u_url) {
-          credentialsMessage += `📺 M3U URL: ${customer.m3u_url}\n`;
-        }
-        if (customers.length > 1) {
-          credentialsMessage += `\n`;
-        }
-      });
-    }
-    
-    credentialsMessage += `\nThank you for your business!`;
-    
-    const { data, error } = await supabase.functions.invoke('send-highlevel-message', {
-      body: {
-        contactId: contactId,
-        customerName: customerName,
-        message: credentialsMessage,
-        resellerId: resellerId,
-        messageType: 'SMS',
-        apiKey: hlSettings.location_api_key,
-        locationId: hlSettings.location_id
-      }
-    });
-
-    if (error || !data?.success) {
-      console.error('❌ Failed to send HighLevel message:', error || data);
-    } else {
-      console.log('✅ HighLevel consolidated credentials message sent successfully');
-    }
-  } catch (error) {
-    console.error('💥 Error sending HighLevel consolidated credentials message:', error);
-  }
-}
-
-// Send renewal confirmation to HighLevel
-async function sendRenewalConfirmationToHighLevel(
-  contactId: string,
-  customerName: string,
-  accountsRenewed: number,
-  months: number,
-  resellerId: string
-): Promise<void> {
-  try {
-    console.log('📨 Sending renewal confirmation to HighLevel');
-    
-    const { data: hlSettings, error: hlError } = await supabase
-      .from('reseller_highlevel_settings')
-      .select('location_api_key, location_id')
-      .eq('reseller_id', resellerId)
-      .eq('is_active', true)
-      .single();
-
-    if (hlError || !hlSettings) {
-      console.log('⚠️ No HighLevel settings found for reseller:', resellerId);
-      return;
-    }
-
-    const message = `🔄 Account Renewal Confirmation\n\nHi ${customerName}!\n\nYour IPTV subscription has been successfully renewed:\n\n📊 Accounts Renewed: ${accountsRenewed}\n📅 Duration: ${months} month${months > 1 ? 's' : ''}\n\nYour service will continue without interruption. Thank you for your business!`;
-    
-    await supabase.functions.invoke('send-highlevel-message', {
-      body: {
-        contactId: contactId,
-        customerName: customerName,
-        message: message,
-        resellerId: resellerId,
-        messageType: 'SMS',
-        apiKey: hlSettings.location_api_key,
-        locationId: hlSettings.location_id
-      }
-    });
-  } catch (error) {
-    console.error('💥 Error sending renewal confirmation:', error);
-  }
-}
-
-// Main enhanced webhook processor
-export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<WebhookResult> => {
+export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
     console.log('🚀 Processing enhanced webhook payload with consolidation:', JSON.stringify(payload, null, 2));
     
