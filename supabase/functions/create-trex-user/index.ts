@@ -264,8 +264,17 @@ serve(async (req) => {
         const finalUsername = apiResult.username || username;
         const finalPassword = apiResult.password || password;
 
-        // Generate M3U URL using the final credentials
-        const m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+        // Use M3U URL from API response if available, otherwise construct from base URL
+        let m3uUrl;
+        if (apiResult.url) {
+          // Use the URL provided by the Trex API response
+          m3uUrl = apiResult.url;
+          console.log(`🔗 Using M3U URL from API response: ${m3uUrl}`);
+        } else {
+          // Fallback to constructing URL from base URL if not provided in response
+          m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+          console.log(`🔧 Constructed M3U URL from base URL: ${m3uUrl}`);
+        }
 
         // Create customer record in database
         console.log(`💾 Creating Trex customer record for connection ${i}`);
