@@ -12,6 +12,19 @@ interface RenewRequest {
   planDuration: number;
 }
 
+// Helper function to map plan duration to subscription format (same as create-trex-user)
+function mapPlanDurationToSub(planDuration: number): string {
+  const mapping: { [key: number]: string } = {
+    1: '1',    // 1 month
+    3: '3',    // 3 months  
+    6: '6',    // 6 months
+    12: '12',  // 12 months
+    24: '99'   // 24 months -> lifetime
+  };
+  
+  return mapping[planDuration] || '1'; // Default to 1 month if not found
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -126,8 +139,12 @@ serve(async (req) => {
       );
     }
 
+    // Map plan duration to subscription format (to match create-trex-user behavior)
+    const subscriptionPeriod = mapPlanDurationToSub(planDuration);
+    
     // Call Trex panel to renew user using correct API parameters as per specification
     console.log(`📡 Calling Trex panel to renew customer: ${customer.username} for ${planDuration} months`);
+    console.log(`📅 Mapped subscription period: ${subscriptionPeriod} (from ${planDuration} months)`);
     
     const renewUrl = new URL(panelUrl);
     renewUrl.searchParams.append("api_key", trexApiKey);
@@ -135,7 +152,7 @@ serve(async (req) => {
     renewUrl.searchParams.append("type", "m3u");
     renewUrl.searchParams.append("username", customer.username);
     renewUrl.searchParams.append("password", customer.password);
-    renewUrl.searchParams.append("sub", planDuration.toString());
+    renewUrl.searchParams.append("sub", subscriptionPeriod);
 
     console.log(`🔗 Trex renewal API URL: ${renewUrl.toString().replace(trexApiKey, '[REDACTED]')}`);
     console.log(`👤 Renewing customer username: ${customer.username}`);
