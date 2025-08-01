@@ -43,7 +43,7 @@ export default function ResellerCustomers() {
     handleRenewCustomer,
     handleManageCrmContact,
     handleSyncToCrm
-  } = useCustomerOperations(user, cancelCustomer, deactivateCustomer, refreshData);
+  } = useCustomerOperations(user, cancelCustomer, deactivateCustomer, refreshData, setIsRenewCustomerOpen, setIsCrmManagerOpen);
 
   // Handle status filter change
   const handleStatusFilterChange = (filter: string) => {

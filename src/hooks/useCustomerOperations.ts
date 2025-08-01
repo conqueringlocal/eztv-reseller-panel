@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Customer } from '@/contexts/AppContext';
 
-export function useCustomerOperations(user: any, cancelCustomer: any, deactivateCustomer: any, refreshData: any) {
+export function useCustomerOperations(user: any, cancelCustomer: any, deactivateCustomer: any, refreshData: any, setIsRenewCustomerOpen?: (open: boolean) => void, setIsCrmManagerOpen?: (open: boolean) => void) {
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
   const [selectedCustomerForCrm, setSelectedCustomerForCrm] = useState<Customer | null>(null);
 
@@ -46,7 +46,14 @@ export function useCustomerOperations(user: any, cancelCustomer: any, deactivate
 
   // Handle customer renew
   const handleRenewCustomer = (customer: Customer) => {
+    console.log('🔄 handleRenewCustomer called for customer:', customer.name);
     setCustomerToRenew(customer);
+    if (setIsRenewCustomerOpen) {
+      setIsRenewCustomerOpen(true);
+      console.log('✅ Dialog state set to open');
+    } else {
+      console.warn('⚠️ setIsRenewCustomerOpen not provided to useCustomerOperations');
+    }
   };
 
   // Handle CRM contact management
@@ -56,7 +63,14 @@ export function useCustomerOperations(user: any, cancelCustomer: any, deactivate
       return;
     }
     
+    console.log('🔧 handleManageCrmContact called for customer:', customer.name);
     setSelectedCustomerForCrm(customer);
+    if (setIsCrmManagerOpen) {
+      setIsCrmManagerOpen(true);
+      console.log('✅ CRM dialog state set to open');
+    } else {
+      console.warn('⚠️ setIsCrmManagerOpen not provided to useCustomerOperations');
+    }
   };
 
   // Handle sync to CRM
