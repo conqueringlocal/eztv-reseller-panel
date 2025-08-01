@@ -359,7 +359,7 @@ serve(async (req) => {
           connections_used: connectionsToCreate,
           customer_id: createdCustomers[0].id, // Use first customer ID as reference
           customer_name: customerData.name,
-          notes: `Created ${createdCustomers.length} Trex M3U accounts with 1 connection each (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''}) - Group: ${customerGroupId}`
+          notes: `${customerData.name} | ${reseller.name}`
         });
 
       if (logError) {
