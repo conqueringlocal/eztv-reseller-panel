@@ -141,15 +141,15 @@ serve(async (req) => {
     }
 
     // Determine the provider to use
-    let providerToUse = '8k'; // Default provider
+    let providerToUse = 'trex'; // Default provider
     
     if (parent_reseller_id) {
       // For sub-resellers, inherit provider from parent
-      providerToUse = profile.provider || '8k';
+      providerToUse = profile.provider || 'trex';
       console.log('Sub-reseller will inherit provider from parent:', providerToUse);
     } else {
       // For direct resellers created by admin, use default or allow override
-      providerToUse = '8k'; // Could be made configurable in the future
+      providerToUse = 'trex'; // Could be made configurable in the future
       console.log('Direct reseller will use default provider:', providerToUse);
     }
 

@@ -15,7 +15,6 @@ export function ProviderSelect({ value, onChange, disabled = false }: ProviderSe
         <SelectValue placeholder="Select IPTV provider" />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="8k">8K Provider</SelectItem>
         <SelectItem value="trex">Trex Provider</SelectItem>
       </SelectContent>
     </Select>

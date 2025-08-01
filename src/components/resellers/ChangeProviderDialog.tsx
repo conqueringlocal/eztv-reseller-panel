@@ -40,12 +40,12 @@ export const ChangeProviderDialog: React.FC<ChangeProviderDialogProps> = ({
 }) => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<string>(reseller.provider || '8k');
+  const [selectedProvider, setSelectedProvider] = useState<string>(reseller.provider || 'trex');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (selectedProvider === (reseller.provider || '8k')) {
+    if (selectedProvider === (reseller.provider || 'trex')) {
       toast({
         title: "No Change",
         description: "The selected provider is the same as the current provider",
@@ -116,7 +116,7 @@ export const ChangeProviderDialog: React.FC<ChangeProviderDialogProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
             <p className="text-sm font-medium text-blue-900">
-              Current Provider: <span className="font-bold">{formatProvider(reseller.provider || '8k')}</span>
+              Current Provider: <span className="font-bold">{formatProvider(reseller.provider || 'trex')}</span>
             </p>
             <p className="text-xs text-blue-700 mt-1">
               Changing the provider will affect all future operations for this reseller.
@@ -130,7 +130,6 @@ export const ChangeProviderDialog: React.FC<ChangeProviderDialogProps> = ({
                 <SelectValue placeholder="Select a provider" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="8k">8K</SelectItem>
                 <SelectItem value="trex">Trex</SelectItem>
               </SelectContent>
             </Select>
@@ -147,7 +146,7 @@ export const ChangeProviderDialog: React.FC<ChangeProviderDialogProps> = ({
             </Button>
             <Button 
               type="submit" 
-              disabled={isLoading || selectedProvider === (reseller.provider || '8k')}
+              disabled={isLoading || selectedProvider === (reseller.provider || 'trex')}
             >
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Change Provider

@@ -22,9 +22,9 @@ const addResellerSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   credits: z.number().min(0, 'Credits must be a positive number').default(0),
-  provider: z.enum(['8k', 'trex'], {
+  provider: z.enum(['trex'], {
     required_error: 'Please select a provider',
-  }),
+  }).default('trex'),
 });
 
 type AddResellerFormData = z.infer<typeof addResellerSchema>;
@@ -43,7 +43,7 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
       email: '',
       password: '',
       credits: 0,
-      provider: '8k',
+      provider: 'trex',
     },
   });
 
