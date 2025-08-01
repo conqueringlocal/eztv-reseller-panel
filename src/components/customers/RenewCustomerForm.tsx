@@ -439,6 +439,23 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
               !authCheckPassed ||
               (currentReseller && currentReseller.credits < (renewalCostInfo?.creditsRequired || 0))
             }
+            onClick={() => {
+              console.log('🔄 Renew button clicked with state:', {
+                isRenewing,
+                isLoadingCost,
+                renewalCostInfo,
+                isAuthenticated,
+                authCheckPassed,
+                currentResellerCredits: currentReseller?.credits,
+                creditsRequired: renewalCostInfo?.creditsRequired,
+                isDisabled: isRenewing ||
+                  isLoadingCost || 
+                  !renewalCostInfo ||
+                  !isAuthenticated ||
+                  !authCheckPassed ||
+                  (currentReseller && currentReseller.credits < (renewalCostInfo?.creditsRequired || 0))
+              });
+            }}
           >
             {isRenewing ? 'Renewing...' :
              isLoadingCost ? 'Calculating...' : 
