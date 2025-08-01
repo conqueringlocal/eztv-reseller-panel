@@ -153,14 +153,37 @@ export function CustomerTable({
       }
 
       if (deleteResult.error) {
-        throw deleteResult.error;
+        console.error('Database deletion error:', deleteResult.error);
+        
+        // Check for specific error types
+        if (deleteResult.error.code === '42501') {
+          throw new Error('You do not have permission to delete this customer. Please contact your administrator.');
+        } else if (deleteResult.error.code === 'PGRST116') {
+          throw new Error('Customer not found or already deleted.');
+        } else {
+          throw new Error(`Database error: ${deleteResult.error.message}`);
+        }
       }
 
+
       toast.success(`Customer ${getCustomerDisplayName(customer)} has been deleted successfully`);
+      
+      // Only refresh if deletion was successful
       onRefresh();
     } catch (error: any) {
       console.error('Error deleting customer:', error);
-      toast.error('Failed to delete customer: ' + error.message);
+      
+      // Provide user-friendly error messages
+      const errorMessage = error.message || 'An unexpected error occurred while deleting the customer.';
+      toast.error(`Failed to delete customer: ${errorMessage}`);
+      
+      // Log additional context for debugging
+      console.error('Customer deletion context:', {
+        customerId: customer.id,
+        customerName: getCustomerDisplayName(customer),
+        isConsolidated: isConsolidatedCustomer(customer),
+        userRole: user?.role
+      });
     } finally {
       setIsDeleting(null);
     }
