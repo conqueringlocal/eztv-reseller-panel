@@ -37,8 +37,12 @@ serve(async (req) => {
     // Get the authorization header - we need to preserve this for forwarding
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.error('❌ No authorization header provided');
       return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
+        JSON.stringify({ 
+          error: 'Authentication required. Please ensure you are logged in.',
+          code: 'MISSING_AUTH_HEADER'
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -48,12 +52,25 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
     
     if (authError || !user) {
-      console.error('Auth error:', authError);
+      console.error('❌ Auth verification failed:', {
+        error: authError?.message,
+        hasToken: !!token,
+        tokenLength: token?.length
+      });
+      
       return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
+        JSON.stringify({ 
+          error: authError?.message?.includes('expired') 
+            ? 'Your session has expired. Please log in again.'
+            : 'Invalid authentication token. Please log in again.',
+          code: 'INVALID_TOKEN',
+          details: authError?.message
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`✅ User authenticated: ${user.email} (ID: ${user.id})`);
 
     const { customerId, planDuration }: RenewGroupRequest = await req.json();
 
@@ -85,11 +102,19 @@ serve(async (req) => {
 
     // Check if user has permission to renew this customer
     if (primaryCustomer.reseller_id !== user.id) {
+      console.error(`❌ Authorization failed: User ${user.id} (${user.email}) attempted to renew customer ${customerId} owned by ${primaryCustomer.reseller_id}`);
+      
       return new Response(
-        JSON.stringify({ error: 'Unauthorized to renew this customer' }),
+        JSON.stringify({ 
+          error: 'You do not have permission to renew this customer subscription.',
+          code: 'UNAUTHORIZED_CUSTOMER',
+          details: `Customer belongs to a different reseller`
+        }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`✅ Authorization passed: User ${user.email} can renew customer ${primaryCustomer.name}`);
 
     // Get all customers in the same group
     const { data: groupCustomers, error: groupError } = await supabaseClient
@@ -130,13 +155,16 @@ serve(async (req) => {
       console.log(`❌ Insufficient credits. Required: ${creditsRequired}, Available: ${reseller.credits}`);
       return new Response(
         JSON.stringify({ 
-          error: 'Insufficient credits', 
+          error: `Insufficient credits. You need ${creditsRequired} credits but only have ${reseller.credits}.`,
+          code: 'INSUFFICIENT_CREDITS',
           required: creditsRequired, 
           available: reseller.credits 
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`✅ Credit check passed: ${reseller.credits} credits available, ${creditsRequired} required`);
 
     // Separate customers by type (MAG vs M3U)
     const magCustomers = groupCustomers.filter(c => c.mac_address && !c.username);
@@ -297,8 +325,29 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('💥 Unexpected error in renew-customer-group function:', error);
+    
+    // Provide more specific error messages based on error type
+    let errorMessage = 'An unexpected error occurred while processing the renewal.';
+    let errorCode = 'INTERNAL_ERROR';
+    
+    if (error.message?.includes('network') || error.message?.includes('fetch')) {
+      errorMessage = 'Network connectivity issue. Please try again.';
+      errorCode = 'NETWORK_ERROR';
+    } else if (error.message?.includes('timeout')) {
+      errorMessage = 'Request timed out. Please try again.';
+      errorCode = 'TIMEOUT_ERROR';
+    } else if (error.message?.includes('database') || error.message?.includes('sql')) {
+      errorMessage = 'Database error. Please contact support if this persists.';
+      errorCode = 'DATABASE_ERROR';
+    }
+    
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: error.message }),
+      JSON.stringify({ 
+        error: errorMessage,
+        code: errorCode,
+        details: error.message,
+        timestamp: new Date().toISOString()
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
