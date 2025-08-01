@@ -90,29 +90,8 @@ serve(async (req) => {
       );
     }
 
-    // Get reseller credits
-    const { data: reseller, error: resellerError } = await supabaseClient
-      .from('profiles')
-      .select('credits')
-      .eq('id', user.id)
-      .single();
-
-    if (resellerError || !reseller) {
-      console.error('Reseller not found:', resellerError);
-      return new Response(
-        JSON.stringify({ error: 'Reseller not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check if reseller has enough credits (MAG uses 1 credit per month, no connection multiplier)
-    if (reseller.credits < planDuration) {
-      console.log(`❌ Insufficient credits. Required: ${planDuration}, Available: ${reseller.credits}`);
-      return new Response(
-        JSON.stringify({ error: 'Insufficient credits', required: planDuration, available: reseller.credits }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Note: Credit checking and deduction is now handled by renew-customer-group function
+    // This function only handles the IPTV API call and database update
 
     // Get IPTV panel credentials from Supabase secrets
     const iptvApiKey = Deno.env.get('IPTV_API_KEY');
@@ -181,33 +160,7 @@ serve(async (req) => {
       );
     }
 
-    // Deduct credits from reseller (MAG uses 1 credit per month)
-    const { error: creditError } = await supabaseClient
-      .from('profiles')
-      .update({ credits: reseller.credits - planDuration })
-      .eq('id', user.id);
-
-    if (creditError) {
-      console.error('Failed to deduct credits:', creditError);
-      // Note: Customer was already renewed, this is a warning
-    }
-
-    // Log the credit usage
-    const { error: logError } = await supabaseClient
-      .from('credit_logs')
-      .insert({
-        reseller_id: user.id,
-        action: 'account_creation', // Using existing enum value for renewal
-        credits_used: planDuration,
-        customer_name: customer.name,
-        customer_id: customerId,
-        notes: `MAG subscription renewed for ${planDuration} ${planDuration === 1 ? 'month' : 'months'}`
-      });
-
-    if (logError) {
-      console.error('Failed to log credit usage:', logError);
-      // Non-critical error, continue
-    }
+    // Note: Credit deduction and logging is now handled by renew-customer-group function
 
     console.log(`✅ Successfully renewed MAG customer ${customer.name} (${customer.mac_address}) for ${planDuration} months`);
 
