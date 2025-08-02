@@ -52,6 +52,9 @@ serve(async (req) => {
       provider: customer.provider, 
       deviceType: customer.device_type,
       username: customer.username,
+      password: customer.password ? '[REDACTED]' : null,
+      passwordLength: customer.password ? customer.password.length : 0,
+      passwordType: typeof customer.password,
       macAddress: customer.mac_address 
     });
 
@@ -86,7 +89,20 @@ serve(async (req) => {
     let apiUrl: string;
     let deviceCategory: string;
     
-    if (customer.username && customer.password) {
+    // Clean and validate credentials
+    const hasValidUsername = customer.username && customer.username.trim().length > 0;
+    const hasValidPassword = customer.password && customer.password.trim().length > 0;
+    const hasValidMac = customer.mac_address && customer.mac_address.trim().length > 0;
+
+    console.log('Credential validation:', {
+      hasValidUsername,
+      hasValidPassword,
+      hasValidMac,
+      usernameValue: customer.username,
+      passwordExists: !!customer.password
+    });
+
+    if (hasValidUsername && hasValidPassword) {
       // For M3U-based devices (any device type that uses username/password)
       deviceCategory = 'M3U-based';
       const m3uUrl = `${panelUrl}/get.php?username=${customer.username}&password=${customer.password}&type=m3u_plus`;

@@ -20,6 +20,7 @@ interface SyncResult {
   updates?: any;
   panelData?: any;
   error?: string;
+  debugInfo?: any;
 }
 
 export function SyncDeviceDialog({ customer, open, onOpenChange, onSuccess }: SyncDeviceDialogProps) {
@@ -51,13 +52,29 @@ export function SyncDeviceDialog({ customer, open, onOpenChange, onSuccess }: Sy
       onSuccess?.();
     } catch (error: any) {
       console.error('Sync error:', error);
+      
+      // Parse error response for better user feedback
+      let errorMessage = 'Unknown error occurred';
+      let debugInfo = null;
+      
+      if (error.message) {
+        try {
+          const errorData = JSON.parse(error.message);
+          errorMessage = errorData.error || error.message;
+          debugInfo = errorData.availableCredentials || errorData.deviceType;
+        } catch {
+          errorMessage = error.message;
+        }
+      }
+      
       const syncResult: SyncResult = {
         success: false,
         message: 'Sync failed',
-        error: error.message || 'Unknown error occurred'
+        error: errorMessage,
+        debugInfo
       };
       setResult(syncResult);
-      toast.error(`Sync failed: ${error.message}`);
+      toast.error(`Sync failed: ${errorMessage}`);
     } finally {
       setSyncing(false);
     }
@@ -158,7 +175,14 @@ export function SyncDeviceDialog({ customer, open, onOpenChange, onSuccess }: Sy
               )}
 
               {result.error && (
-                <p className="text-sm text-red-700 mt-1">{result.error}</p>
+                <div className="mt-2">
+                  <p className="text-sm text-red-700">{result.error}</p>
+                  {result.debugInfo && (
+                    <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
+                      <strong>Debug info:</strong> {JSON.stringify(result.debugInfo, null, 2)}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
