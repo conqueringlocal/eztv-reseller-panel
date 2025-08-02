@@ -66,10 +66,15 @@ export function SyncDeviceDialog({ customer, open, onOpenChange, onSuccess }: Sy
   const deviceType = getFieldValue(customer, 'device_type', 'deviceType');
   const provider = getFieldValue(customer, 'provider', 'provider');
   const hasUsername = !!getFieldValue(customer, 'username', 'username');
+  const hasPassword = !!getFieldValue(customer, 'password', 'password');
   const hasMacAddress = !!getFieldValue(customer, 'mac_address', 'macAddress');
 
-  const canSync = (deviceType === 'M3U' && hasUsername) || 
-                  ((deviceType === 'MAC' || deviceType === 'MAG') && hasMacAddress);
+  // Device can sync if it has either username/password credentials OR MAC address
+  const canSync = (hasUsername && hasPassword) || hasMacAddress;
+  
+  // Determine device category for display purposes
+  const deviceCategory = (hasUsername && hasPassword) ? 'M3U-based' : 
+                        hasMacAddress ? 'MAC-based' : 'Unknown';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -96,12 +101,14 @@ export function SyncDeviceDialog({ customer, open, onOpenChange, onSuccess }: Sy
               <span>{provider || 'Default'}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Has Username:</span>
-              <span>{hasUsername ? '✓' : '✗'}</span>
+              <span className="text-muted-foreground">Sync Category:</span>
+              <Badge variant={deviceCategory === 'Unknown' ? 'destructive' : 'secondary'}>
+                {deviceCategory}
+              </Badge>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Has MAC Address:</span>
-              <span>{hasMacAddress ? '✓' : '✗'}</span>
+              <span className="text-muted-foreground">Has Credentials:</span>
+              <span>{hasUsername && hasPassword ? '✓ Username/Password' : ''}{hasMacAddress ? '✓ MAC Address' : ''}{!canSync ? '✗ None' : ''}</span>
             </div>
           </div>
 
@@ -109,9 +116,7 @@ export function SyncDeviceDialog({ customer, open, onOpenChange, onSuccess }: Sy
           {!canSync && (
             <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <p className="text-sm text-yellow-800">
-                Cannot sync: Missing required information for {deviceType} device type.
-                {deviceType === 'M3U' && !hasUsername && ' Username is required.'}
-                {(deviceType === 'MAC' || deviceType === 'MAG') && !hasMacAddress && ' MAC address is required.'}
+                Cannot sync: Device requires either username/password credentials or MAC address to sync with the panel.
               </p>
             </div>
           )}

@@ -82,19 +82,38 @@ serve(async (req) => {
       );
     }
 
-    // Determine API call parameters based on device type
+    // Determine API call parameters based on available credentials
     let apiUrl: string;
-    if (customer.device_type === 'M3U' && customer.username) {
-      // For M3U devices, use username to construct M3U URL
+    let deviceCategory: string;
+    
+    if (customer.username && customer.password) {
+      // For M3U-based devices (any device type that uses username/password)
+      deviceCategory = 'M3U-based';
       const m3uUrl = `${panelUrl}/get.php?username=${customer.username}&password=${customer.password}&type=m3u_plus`;
       apiUrl = `${panelUrl}/api/device?token=${apiKey}&info=${encodeURIComponent(m3uUrl)}`;
-    } else if ((customer.device_type === 'MAC' || customer.device_type === 'MAG') && customer.mac_address) {
-      // For MAC/MAG devices, use MAC address
+      console.log('Using M3U-based sync for device type:', customer.device_type);
+    } else if (customer.mac_address) {
+      // For MAC/MAG devices (any device type that uses MAC address)
+      deviceCategory = 'MAC-based';
       apiUrl = `${panelUrl}/api/device?token=${apiKey}&info=${customer.mac_address}`;
+      console.log('Using MAC-based sync for device type:', customer.device_type);
     } else {
-      console.error('Insufficient device info:', { deviceType: customer.device_type, hasUsername: !!customer.username, hasMac: !!customer.mac_address });
+      console.error('Insufficient device credentials for sync:', { 
+        deviceType: customer.device_type, 
+        hasUsername: !!customer.username, 
+        hasPassword: !!customer.password,
+        hasMac: !!customer.mac_address 
+      });
       return new Response(
-        JSON.stringify({ error: 'Insufficient device information for sync' }),
+        JSON.stringify({ 
+          error: 'Device sync requires either username/password credentials or MAC address',
+          deviceType: customer.device_type,
+          availableCredentials: {
+            hasUsername: !!customer.username,
+            hasPassword: !!customer.password,
+            hasMacAddress: !!customer.mac_address
+          }
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
