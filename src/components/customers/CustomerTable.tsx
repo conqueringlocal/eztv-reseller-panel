@@ -3,10 +3,11 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Edit, Trash2, RotateCcw, Eye, Users } from 'lucide-react';
+import { Edit, Trash2, RotateCcw, Eye, Users, RefreshCw } from 'lucide-react';
 import { EditCustomerForm } from './EditCustomerForm';
 import { RenewCustomerForm } from './RenewCustomerForm';
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
+import { SyncDeviceDialog } from './SyncDeviceDialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -56,6 +57,7 @@ export function CustomerTable({
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
   const [viewingCredentials, setViewingCredentials] = useState<any>(null);
+  const [syncingCustomer, setSyncingCustomer] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   // Check if current user is admin
@@ -327,6 +329,16 @@ export function CustomerTable({
                     <RotateCcw size={14} />
                     Renew
                   </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSyncingCustomer(customer)}
+                    className="flex items-center gap-1"
+                  >
+                    <RefreshCw size={14} />
+                    Sync Panel
+                  </Button>
                   
                   <Button
                     variant="destructive"
@@ -383,6 +395,15 @@ export function CustomerTable({
         <CustomerCredentialsDialog
           customer={viewingCredentials}
           onClose={() => setViewingCredentials(null)}
+        />
+      )}
+
+      {syncingCustomer && (
+        <SyncDeviceDialog
+          customer={syncingCustomer}
+          open={true}
+          onOpenChange={(open) => !open && setSyncingCustomer(null)}
+          onSuccess={onRefresh}
         />
       )}
     </>
