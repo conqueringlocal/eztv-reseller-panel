@@ -141,7 +141,7 @@ serve(async (req) => {
 
     console.log('API response:', data);
 
-    if (!response.ok || data.status !== 'success') {
+    if (!response.ok || data.status !== 'true') {
       console.error('API error:', data);
       return new Response(
         JSON.stringify({ error: 'Failed to fetch device info from panel' }),
@@ -149,7 +149,7 @@ serve(async (req) => {
       );
     }
 
-    const { expire, url } = data.data;
+    const { expire, url } = data;
 
     // Update customer data in database
     const updates: any = {};
@@ -162,7 +162,7 @@ serve(async (req) => {
 
     if (Object.keys(updates).length === 0) {
       return new Response(
-        JSON.stringify({ message: 'No updates needed', data: data.data }),
+        JSON.stringify({ message: 'No updates needed', data: data }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -186,7 +186,7 @@ serve(async (req) => {
       JSON.stringify({ 
         message: 'Device info synced successfully', 
         updates,
-        panelData: data.data 
+        panelData: data 
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
