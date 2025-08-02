@@ -330,15 +330,17 @@ export function CustomerTable({
                     Renew
                   </Button>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setSyncingCustomer(customer)}
-                    className="flex items-center gap-1"
-                  >
-                    <RefreshCw size={14} />
-                    Sync Panel
-                  </Button>
+                  {isAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSyncingCustomer(customer)}
+                      className="flex items-center gap-1"
+                    >
+                      <RefreshCw size={14} />
+                      Sync Panel
+                    </Button>
+                  )}
                   
                   <Button
                     variant="destructive"
