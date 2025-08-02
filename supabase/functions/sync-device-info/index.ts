@@ -105,13 +105,12 @@ serve(async (req) => {
     if (hasValidUsername && hasValidPassword) {
       // For M3U-based devices (any device type that uses username/password)
       deviceCategory = 'M3U-based';
-      const m3uUrl = `${panelUrl}/get.php?username=${customer.username}&password=${customer.password}&type=m3u_plus`;
-      apiUrl = `${panelUrl}/api/device?token=${apiKey}&info=${encodeURIComponent(m3uUrl)}`;
+      apiUrl = `${panelUrl}?action=device_info&username=${customer.username}&password=${customer.password}&api_key=${apiKey}`;
       console.log('Using M3U-based sync for device type:', customer.device_type);
-    } else if (customer.mac_address) {
+    } else if (hasValidMac) {
       // For MAC/MAG devices (any device type that uses MAC address)
       deviceCategory = 'MAC-based';
-      apiUrl = `${panelUrl}/api/device?token=${apiKey}&info=${customer.mac_address}`;
+      apiUrl = `${panelUrl}?action=device_info&mac=${customer.mac_address}&api_key=${apiKey}`;
       console.log('Using MAC-based sync for device type:', customer.device_type);
     } else {
       console.error('Insufficient device credentials for sync:', { 
