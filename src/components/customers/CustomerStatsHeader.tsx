@@ -31,9 +31,11 @@ export function CustomerStatsHeader({
     return expirationDate > today && expirationDate <= sevenDaysFromNow;
   }).length;
   
-  const expiredCount = customers.filter(c => 
-    c.status === 'expired' && !c.isDeactivated && !c.cancelledAt
-  ).length;
+  const expiredCount = customers.filter(c => {
+    if (c.isDeactivated || c.cancelledAt) return false;
+    const expirationDate = new Date(c.expirationDate);
+    return expirationDate < today;
+  }).length;
   
   const deactivatedCount = customers.filter(c => c.isDeactivated).length;
   const cancelledCount = customers.filter(c => c.cancelledAt || c.status === 'cancelled').length;
