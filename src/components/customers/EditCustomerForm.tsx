@@ -44,7 +44,7 @@ interface EditCustomerFormProps {
 export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps) {
   const { updateCustomer } = useApp();
   const { user } = useAuth();
-  const { packages } = useIptvPackages(customer.provider);
+  const { packages } = useIptvPackages(customer.provider, false);
   
   const isAdmin = user?.role === 'admin';
   
