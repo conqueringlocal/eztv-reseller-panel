@@ -25,9 +25,20 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Check for provider override in request body
+    let requestBody = null;
+    try {
+      const bodyText = await req.text();
+      if (bodyText) {
+        requestBody = JSON.parse(bodyText);
+      }
+    } catch (e) {
+      // Body is empty or not JSON, continue with default behavior
+    }
+
     // Get the authorization header to identify the reseller
     const authHeader = req.headers.get('Authorization');
-    let provider = '8k'; // Default provider
+    let userProvider = '8k'; // Default provider
     
     if (authHeader) {
       try {
@@ -43,7 +54,7 @@ serve(async (req) => {
             .single();
           
           if (profile?.provider) {
-            provider = profile.provider;
+            userProvider = profile.provider;
           }
         }
       } catch (error) {
@@ -51,26 +62,28 @@ serve(async (req) => {
       }
     }
 
-    console.log(`🔍 Loading packages for provider: ${provider}`);
+    // Use provider override if provided, otherwise use user's provider
+    const effectiveProvider = requestBody?.providerOverride || userProvider;
+    console.log(`🔍 Loading packages for provider: ${effectiveProvider}`, requestBody?.providerOverride ? '(overridden)' : '(from user)');
 
-    // Get API credentials based on provider
+    // Get API credentials based on effective provider
     let API_KEY: string | undefined;
     let PANEL_URL: string | undefined;
 
-    if (provider === 'trex') {
+    if (effectiveProvider === 'trex') {
       API_KEY = Deno.env.get('TREX_API_KEY');
       PANEL_URL = Deno.env.get('TREX_PANEL_URL');
     } else {
-      API_KEY = Deno.env.get('IPTV_API_KEY');
-      PANEL_URL = Deno.env.get('IPTV_PANEL_URL');
+      API_KEY = Deno.env.get('8K_API_KEY') || Deno.env.get('IPTV_API_KEY');
+      PANEL_URL = Deno.env.get('8K_PANEL_URL') || Deno.env.get('IPTV_PANEL_URL');
     }
     
     if (!API_KEY) {
-      console.error(`${provider.toUpperCase()} API key not configured`);
+      console.error(`${effectiveProvider.toUpperCase()} API key not configured`);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: `${provider.toUpperCase()} API key not configured`
+          error: `${effectiveProvider.toUpperCase()} API key not configured`
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -80,11 +93,11 @@ serve(async (req) => {
     }
 
     if (!PANEL_URL) {
-      console.error(`${provider.toUpperCase()} Panel URL not configured`);
+      console.error(`${effectiveProvider.toUpperCase()} Panel URL not configured`);
       return new Response(
         JSON.stringify({ 
           success: false, 
-          error: `${provider.toUpperCase()} Panel URL not configured`
+          error: `${effectiveProvider.toUpperCase()} Panel URL not configured`
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -93,22 +106,22 @@ serve(async (req) => {
       )
     }
 
-    console.log(`Fetching packages from ${provider.toUpperCase()} provider:`, PANEL_URL)
+    console.log(`Fetching packages from ${effectiveProvider.toUpperCase()} provider:`, PANEL_URL)
 
     let packages: PackageInfo[] = [];
     let lastError = '';
     let successfulEndpoint = '';
 
     // Provider-specific API actions
-    const actions = provider === 'trex' ? ['bouquet', 'packages'] : ['bouquet', 'packages', 'categories'];
+    const actions = effectiveProvider === 'trex' ? ['bouquet', 'packages'] : ['bouquet', 'packages', 'categories'];
 
     for (const action of actions) {
       try {
-        console.log(`Trying ${provider} action: ${action}`)
+        console.log(`Trying ${effectiveProvider} action: ${action}`)
         
         let apiUrl: URL;
         
-        if (provider === 'trex') {
+        if (effectiveProvider === 'trex') {
           // Trex uses a different API structure
           apiUrl = new URL(PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '') + '/api/api.php');
           apiUrl.searchParams.append('action', action);
@@ -120,7 +133,7 @@ serve(async (req) => {
           apiUrl.searchParams.append('api_key', API_KEY);
         }
         
-        console.log(`🔗 ${provider.toUpperCase()} API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
+        console.log(`🔗 ${effectiveProvider.toUpperCase()} API URL: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
         
         const response = await fetch(apiUrl.toString(), {
           method: 'GET',
@@ -133,8 +146,8 @@ serve(async (req) => {
         });
         
         const responseText = await response.text();
-        console.log(`📡 ${provider.toUpperCase()} Response Status: ${response.status}`);
-        console.log(`📡 ${provider.toUpperCase()} Response preview: ${responseText.substring(0, 200)}...`);
+        console.log(`📡 ${effectiveProvider.toUpperCase()} Response Status: ${response.status}`);
+        console.log(`📡 ${effectiveProvider.toUpperCase()} Response preview: ${responseText.substring(0, 200)}...`);
 
         if (!response.ok) {
           lastError = `HTTP ${response.status}: ${response.statusText}`;
@@ -227,7 +240,7 @@ serve(async (req) => {
         if (extractedPackages.length > 0) {
           packages = extractedPackages;
           successfulEndpoint = `${action} action`;
-          console.log(`✅ SUCCESS: Found ${packages.length} packages using ${successfulEndpoint} for ${provider}`);
+          console.log(`✅ SUCCESS: Found ${packages.length} packages using ${successfulEndpoint} for ${effectiveProvider}`);
           break;
         } else {
           lastError = `No packages found in ${action} response`;
@@ -243,12 +256,12 @@ serve(async (req) => {
 
     // If no packages found from any action, provide provider-specific default packages
     if (packages.length === 0) {
-      console.log(`❌ No packages found from any ${provider.toUpperCase()} API action.`);
+      console.log(`❌ No packages found from any ${effectiveProvider.toUpperCase()} API action.`);
       console.log(`Last error: ${lastError}`);
       console.log(`Panel URL used: ${PANEL_URL}`);
-      console.log(`Using default ${provider} package options`);
+      console.log(`Using default ${effectiveProvider} package options`);
       
-      if (provider === 'trex') {
+      if (effectiveProvider === 'trex') {
         packages = [
           { id: '14826', name: 'Trex Premium Package', description: 'Premium IPTV channels with HD quality' },
           { id: '14827', name: 'Trex Sports Package', description: 'Sports channels and live events' },
@@ -267,23 +280,23 @@ serve(async (req) => {
       }
     }
 
-    console.log(`📦 Returning ${packages.length} packages for ${provider.toUpperCase()}`);
+    console.log(`📦 Returning ${packages.length} packages for ${effectiveProvider.toUpperCase()}`);
     console.log(`Source: ${successfulEndpoint || 'default'}`);
     
     return new Response(
       JSON.stringify({ 
         success: true, 
         packages: packages,
-        message: `Found ${packages.length} available packages for ${provider.toUpperCase()}`,
+        message: `Found ${packages.length} available packages for ${effectiveProvider.toUpperCase()}`,
         source: packages.length === 5 && !successfulEndpoint ? 'default' : 'api',
-        provider: provider,
+        provider: effectiveProvider,
         endpoint_used: successfulEndpoint || 'none',
         panel_url: PANEL_URL,
         debug_info: {
           total_actions_tried: actions.length,
           last_error: lastError,
           auth_format: 'api_key',
-          provider_used: provider
+          provider_used: effectiveProvider
         }
       }),
       { 

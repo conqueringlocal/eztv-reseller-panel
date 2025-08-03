@@ -26,7 +26,7 @@ interface PackageResponse {
   error?: string;
 }
 
-export const useIptvPackages = () => {
+export const useIptvPackages = (providerOverride?: string) => {
   const { user } = useAuth();
   const [packages, setPackages] = useState<IptvPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,6 +37,9 @@ export const useIptvPackages = () => {
   
   // Use ref to track if we're already fetching to prevent concurrent requests
   const isFetchingRef = useRef(false);
+  
+  // Determine which provider to use
+  const effectiveProvider = providerOverride || user?.provider;
   
   // Memoize the fetchPackages function to prevent unnecessary re-renders
   const fetchPackages = useCallback(async () => {
@@ -51,9 +54,11 @@ export const useIptvPackages = () => {
     setError(null);
     
     try {
-      console.log('🚀 Fetching IPTV packages...');
+      console.log('🚀 Fetching IPTV packages...', providerOverride ? `for provider: ${providerOverride}` : '');
       
-      const { data, error } = await supabase.functions.invoke('get-iptv-packages');
+      const { data, error } = await supabase.functions.invoke('get-iptv-packages', {
+        body: providerOverride ? { providerOverride } : undefined
+      });
       
       console.log('📡 Raw response data:', data);
       console.log('📡 Raw response error:', error);
@@ -75,7 +80,7 @@ export const useIptvPackages = () => {
         setError(errorMsg);
         
         // Enhanced error messaging with provider context
-        const currentProvider = response?.debug_info?.provider_used || user?.provider || '8k';
+        const currentProvider = response?.debug_info?.provider_used || effectiveProvider || '8k';
         if (errorMsg.includes('API key')) {
           toast.error(`🔑 Configuration Issue: ${currentProvider.toUpperCase()} API key not found. Please check your Supabase secrets.`);
         } else if (errorMsg.includes('Panel URL')) {
@@ -90,7 +95,7 @@ export const useIptvPackages = () => {
       
       setPackages(response.packages || []);
       setSource(response.source || 'api');
-      setProvider(response.provider || user?.provider || '8k');
+      setProvider(response.provider || effectiveProvider || '8k');
       setDebugInfo(response.debug_info || null);
       
       const packageCount = response.packages?.length || 0;
@@ -129,16 +134,16 @@ export const useIptvPackages = () => {
       setIsLoading(false);
       isFetchingRef.current = false;
     }
-  }, [user?.provider]); // Only depend on user.provider, not the entire user object
+  }, [effectiveProvider]); // Depend on the effective provider (override or user provider)
 
   // Use specific user properties as dependencies instead of the entire user object
   useEffect(() => {
-    // Only fetch if we have a user and haven't fetched yet
-    if (user?.id && packages.length === 0 && !isFetchingRef.current) {
-      console.log('🔄 Initializing IPTV packages fetch for user:', user.id, 'provider:', user.provider);
+    // Only fetch if we have a user and haven't fetched yet (or provider override changed)
+    if (user?.id && (packages.length === 0 || providerOverride) && !isFetchingRef.current) {
+      console.log('🔄 Initializing IPTV packages fetch for user:', user.id, 'provider:', effectiveProvider);
       fetchPackages();
     }
-  }, [user?.id, user?.provider, fetchPackages]); // Depend on specific user properties
+  }, [user?.id, effectiveProvider, fetchPackages, providerOverride]); // Depend on effective provider and override
 
   return {
     packages,
