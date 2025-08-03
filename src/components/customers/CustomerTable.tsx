@@ -20,7 +20,7 @@ import {
   processCustomersForDisplay
 } from '@/utils/customerConsolidation';
 import { formatDateSafely, getDaysUntilExpirationSafely } from '@/lib/utils';
-import { useIptvPackages } from '@/hooks/useIptvPackages';
+import { useAllIptvPackages } from '@/hooks/useAllIptvPackages';
 import {
   Dialog,
   DialogContent,
@@ -55,7 +55,7 @@ export function CustomerTable({
   onStatusFilterChange
 }: CustomerTableProps) {
   const { user } = useAuth();
-  const { packages } = useIptvPackages();
+  const { getPackageName } = useAllIptvPackages();
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
   const [viewingCredentials, setViewingCredentials] = useState<any>(null);
@@ -226,8 +226,8 @@ export function CustomerTable({
           
           let packageName = 'Default';
           if (packageId) {
-            // Use the actual package name if package_id exists and is found
-            packageName = packages.find(pkg => pkg.id === packageId)?.name || `Package: ${packageId}`;
+            // Use the getPackageName function which looks up across all providers
+            packageName = getPackageName(packageId);
           } else if (customerGroupId) {
             // For legacy customers with only customer_group_id, show "Legacy Package"
             packageName = 'Legacy Package';
