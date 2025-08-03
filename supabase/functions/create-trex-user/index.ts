@@ -188,6 +188,7 @@ serve(async (req) => {
         apiUrl.searchParams.append('sub', subscriptionPeriod);
         apiUrl.searchParams.append('pack', customerData.packageId);
         apiUrl.searchParams.append('api_key', API_KEY);
+        apiUrl.searchParams.append('note', `Customer: ${customerData.name} | Reseller: ${reseller.name || 'Unknown Reseller'}`);
         
         console.log(`🔗 Trex Create API URL for connection ${i}: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
 

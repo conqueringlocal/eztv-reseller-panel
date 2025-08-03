@@ -22,6 +22,8 @@ import {
 } from '@/components/ui/select';
 import { useApp } from '@/contexts/AppContext';
 import { Customer } from '@/contexts/AppContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
 
 // Form schema with validation
@@ -29,6 +31,7 @@ const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
   deviceType: z.string().min(1, { message: 'Please select a device type.' }),
+  packageId: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -40,6 +43,10 @@ interface EditCustomerFormProps {
 
 export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps) {
   const { updateCustomer } = useApp();
+  const { user } = useAuth();
+  const { packages } = useIptvPackages();
+  
+  const isAdmin = user?.role === 'admin';
   
   // Initialize form with customer values
   const form = useForm<FormData>({
@@ -48,6 +55,7 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
       name: customer.name,
       email: customer.email,
       deviceType: customer.deviceType,
+      packageId: customer.package_id || customer.packageId || '',
     },
   });
 
@@ -55,12 +63,17 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
   const onSubmit = async (data: FormData) => {
     try {
       // Map camelCase form fields to snake_case database columns
-      const updateData = {
+      const updateData: any = {
         name: data.name,
         email: data.email,
         device_type: data.deviceType, // Map deviceType to device_type
         mac_address: customer.macAddress || '', // Keep existing mac_address
       };
+      
+      // Only include package_id if user is admin and packageId is provided
+      if (isAdmin && data.packageId) {
+        updateData.package_id = data.packageId;
+      }
       
       const success = await updateCustomer(customer.id, updateData);
       
@@ -133,6 +146,34 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
             </FormItem>
           )}
         />
+        
+        {isAdmin && (
+          <FormField
+            control={form.control}
+            name="packageId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Package (Admin Only)</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a package (optional)" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="">No Package</SelectItem>
+                    {packages.map((pkg) => (
+                      <SelectItem key={pkg.id} value={pkg.id}>
+                        {pkg.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
         
         <div className="flex justify-end space-x-2">
           <Button type="submit">Save Changes</Button>

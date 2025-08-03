@@ -222,7 +222,16 @@ export function CustomerTable({
           const planDuration = getFieldValue(customer, 'plan_duration', 'planDuration');
           const deviceType = getFieldValue(customer, 'device_type', 'deviceType');
           const packageId = getFieldValue(customer, 'package_id', 'packageId') || getFieldValue(customer, 'packageId', 'packageId');
-          const packageName = packageId ? packages.find(pkg => pkg.id === packageId)?.name || `Package: ${packageId}` : 'Default';
+          const customerGroupId = getFieldValue(customer, 'customer_group_id', 'customerGroupId');
+          
+          let packageName = 'Default';
+          if (packageId) {
+            // Use the actual package name if package_id exists and is found
+            packageName = packages.find(pkg => pkg.id === packageId)?.name || `Package: ${packageId}`;
+          } else if (customerGroupId) {
+            // For legacy customers with only customer_group_id, show "Legacy Package"
+            packageName = 'Legacy Package';
+          }
           
           const daysUntilExpiration = getDaysUntilExpirationSafely(expirationDate);
           const totalConnections = getTotalConnections(customer);
