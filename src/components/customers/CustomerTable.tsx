@@ -221,8 +221,8 @@ export function CustomerTable({
           const startDate = getFieldValue(customer, 'start_date', 'startDate');
           const planDuration = getFieldValue(customer, 'plan_duration', 'planDuration');
           const deviceType = getFieldValue(customer, 'device_type', 'deviceType');
-          const packageId = getFieldValue(customer, 'customer_group_id', 'packageId');
-          const packageName = packageId ? packages.find(pkg => pkg.id === packageId)?.name || packageId : 'Default';
+          const packageId = getFieldValue(customer, 'package_id', 'packageId') || getFieldValue(customer, 'packageId', 'packageId');
+          const packageName = packageId ? packages.find(pkg => pkg.id === packageId)?.name || `Package: ${packageId}` : 'Default';
           
           const daysUntilExpiration = getDaysUntilExpirationSafely(expirationDate);
           const totalConnections = getTotalConnections(customer);

@@ -288,6 +288,7 @@ serve(async (req) => {
             password: finalPassword,
             mac_address: customerData.macAddress || null,
             device_type: customerData.deviceType,
+            package_id: customerData.packageId,
             plan_duration: customerData.planDuration,
             max_connections: 1, // Each account has 1 connection
             current_connections: 0,

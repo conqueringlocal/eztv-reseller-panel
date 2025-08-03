@@ -31,7 +31,7 @@ export function ConsolidationManager({
   } = useConsolidation(resellerId, onConsolidationComplete);
   
   if (customersNeedingConsolidation.length === 0) {
-    return <ConsolidationSuccess />;
+    return null;
   }
   
   return (

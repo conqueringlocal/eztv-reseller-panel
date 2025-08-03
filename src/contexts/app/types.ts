@@ -12,6 +12,7 @@ export interface Customer {
   macAddress?: string | null;
   deviceType: string;
   packageId: string;
+  package_id?: string | null;
   planDuration: number;
   maxConnections: number;
   currentConnections: number;

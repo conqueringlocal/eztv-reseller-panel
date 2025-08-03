@@ -87,6 +87,7 @@ export type Database = {
           mac_address: string | null
           max_connections: number | null
           name: string
+          package_id: string | null
           password: string | null
           plan_duration: number
           provider: string | null
@@ -118,6 +119,7 @@ export type Database = {
           mac_address?: string | null
           max_connections?: number | null
           name: string
+          package_id?: string | null
           password?: string | null
           plan_duration: number
           provider?: string | null
@@ -149,6 +151,7 @@ export type Database = {
           mac_address?: string | null
           max_connections?: number | null
           name?: string
+          package_id?: string | null
           password?: string | null
           plan_duration?: number
           provider?: string | null
