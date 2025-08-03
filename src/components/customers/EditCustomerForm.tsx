@@ -55,7 +55,7 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
       name: customer.name,
       email: customer.email,
       deviceType: customer.deviceType,
-      packageId: customer.package_id || customer.packageId || '',
+      packageId: customer.package_id || customer.packageId || 'none',
     },
   });
 
@@ -71,8 +71,10 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
       };
       
       // Only include package_id if user is admin and packageId is provided
-      if (isAdmin && data.packageId) {
+      if (isAdmin && data.packageId && data.packageId !== 'none') {
         updateData.package_id = data.packageId;
+      } else if (isAdmin && data.packageId === 'none') {
+        updateData.package_id = null;
       }
       
       const success = await updateCustomer(customer.id, updateData);
@@ -161,7 +163,7 @@ export function EditCustomerForm({ customer, onSuccess }: EditCustomerFormProps)
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="">No Package</SelectItem>
+                    <SelectItem value="none">No Package</SelectItem>
                     {packages.map((pkg) => (
                       <SelectItem key={pkg.id} value={pkg.id}>
                         {pkg.name}
