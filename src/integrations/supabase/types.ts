@@ -394,6 +394,27 @@ export type Database = {
         }
         Relationships: []
       }
+      security_dashboard_metrics: {
+        Row: {
+          description: string
+          last_updated: string | null
+          metric_name: string
+          metric_value: string
+        }
+        Insert: {
+          description: string
+          last_updated?: string | null
+          metric_name: string
+          metric_value: string
+        }
+        Update: {
+          description?: string
+          last_updated?: string | null
+          metric_name?: string
+          metric_value?: string
+        }
+        Relationships: []
+      }
       sso_audit_logs: {
         Row: {
           action: string
@@ -587,6 +608,10 @@ export type Database = {
           p_success?: boolean
           p_details?: Json
         }
+        Returns: undefined
+      }
+      refresh_security_dashboard: {
+        Args: Record<PropertyKey, never>
         Returns: undefined
       }
       renew_customer_group: {

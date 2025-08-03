@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Calendar, Shield, AlertTriangle, CheckCircle, Search, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { SecurityDashboard } from './SecurityDashboard';
 
 interface SecurityAuditLog {
   id: string;
@@ -114,16 +115,19 @@ export const SecurityAuditLogs: React.FC = () => {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Shield className="h-5 w-5" />
-          Security Audit Logs
-        </CardTitle>
-        <CardDescription>
-          Monitor security events and authentication attempts across the platform
-        </CardDescription>
-      </CardHeader>
+    <div className="space-y-6">
+      <SecurityDashboard />
+      
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            Security Audit Logs
+          </CardTitle>
+          <CardDescription>
+            Monitor security events and authentication attempts across the platform
+          </CardDescription>
+        </CardHeader>
       <CardContent>
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="flex-1">
@@ -254,8 +258,9 @@ export const SecurityAuditLogs: React.FC = () => {
           <div className="mt-4 text-sm text-muted-foreground">
             Showing {logs.length} recent security events
           </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 };

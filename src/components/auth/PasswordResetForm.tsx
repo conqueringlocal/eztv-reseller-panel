@@ -3,10 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { Mail, ArrowLeft, Loader2 } from 'lucide-react';
+import { Mail, Loader2 } from 'lucide-react';
 import { useSecurityAudit } from '@/hooks/useSecurityAudit';
 import { useRateLimit } from '@/hooks/useRateLimit';
 
@@ -68,96 +67,91 @@ export const PasswordResetForm: React.FC<PasswordResetFormProps> = ({ onBack }) 
 
   if (isSuccess) {
     return (
-      <Card className="w-full max-w-md mx-auto">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 w-12 h-12 bg-success/10 rounded-full flex items-center justify-center">
-            <Mail className="h-6 w-6 text-success" />
+      <div className="space-y-4 p-6">
+        <div className="text-center">
+          <div className="mx-auto mb-4 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+            <Mail className="h-6 w-6 text-green-600" />
           </div>
-          <CardTitle>Check Your Email</CardTitle>
-          <CardDescription>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Check Your Email</h3>
+          <p className="text-sm text-gray-600 mb-4">
             We've sent a password reset link to {email}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Alert>
-            <AlertDescription>
-              If you don't see the email in your inbox, please check your spam folder. 
-              The link will expire in 24 hours for security purposes.
-            </AlertDescription>
-          </Alert>
-          <Button 
-            onClick={onBack} 
-            variant="outline" 
-            className="w-full mt-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Login
-          </Button>
-        </CardContent>
-      </Card>
+          </p>
+        </div>
+        
+        <Alert>
+          <AlertDescription>
+            If you don't see the email in your inbox, please check your spam folder. 
+            The link will expire in 24 hours for security purposes.
+          </AlertDescription>
+        </Alert>
+        
+        <Button onClick={onBack} className="w-full">
+          Back to Login
+        </Button>
+      </div>
     );
   }
 
+  const remainingTime = Math.ceil(getRemainingTime() / 60);
+
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader className="text-center">
-        <CardTitle>Reset Your Password</CardTitle>
-        <CardDescription>
+    <div className="space-y-4 p-6">
+      <div className="text-center mb-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Reset Your Password</h3>
+        <p className="text-sm text-gray-600">
           Enter your email address and we'll send you a link to reset your password
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email Address</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="Enter your email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isLoading || isBlocked}
-              required
-            />
-          </div>
+        </p>
+      </div>
+      
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="email">Email Address</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="Enter your email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={isLoading || isBlocked}
+            required
+          />
+        </div>
 
-          {isBlocked && (
-            <Alert variant="destructive">
-              <AlertDescription>
-                Too many reset attempts. Please wait {Math.ceil(getRemainingTime() / 60)} minutes before trying again.
-              </AlertDescription>
-            </Alert>
-          )}
+        {isBlocked && (
+          <Alert variant="destructive">
+            <AlertDescription>
+              Too many reset attempts. Please wait {remainingTime} minutes before trying again.
+            </AlertDescription>
+          </Alert>
+        )}
 
-          <div className="space-y-2">
-            <Button 
-              type="submit" 
-              className="w-full" 
-              disabled={isLoading || isBlocked}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Sending Reset Link...
-                </>
-              ) : (
-                'Send Reset Link'
-              )}
-            </Button>
-            
-            <Button 
-              type="button"
-              variant="outline" 
-              className="w-full" 
-              onClick={onBack}
-              disabled={isLoading}
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Login
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        <div className="space-y-2">
+          <Button 
+            type="submit" 
+            className="w-full" 
+            disabled={isLoading || isBlocked}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Sending Reset Link...
+              </>
+            ) : (
+              'Send Reset Link'
+            )}
+          </Button>
+          
+          <Button 
+            type="button"
+            variant="outline" 
+            className="w-full" 
+            onClick={onBack}
+            disabled={isLoading}
+          >
+            Back to Login
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 };
