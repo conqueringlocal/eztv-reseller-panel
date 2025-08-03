@@ -32,6 +32,8 @@ export interface Customer {
   connectionSequence?: number | null;
   m3uUrl?: string | null;
   isTrial?: boolean;
+  connection_list?: any[];
+  total_connections?: number;
 }
 
 export interface CreditLog {

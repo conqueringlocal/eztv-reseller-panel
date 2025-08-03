@@ -34,5 +34,7 @@ export const convertDbCustomerToCustomer = (dbCustomer: any): Customer => {
     connectionSequence: dbCustomer.connection_sequence,
     m3uUrl: dbCustomer.m3u_url,
     isTrial: dbCustomer.is_trial || false,
+    connection_list: dbCustomer.connection_list,
+    total_connections: dbCustomer.total_connections,
   };
 };
