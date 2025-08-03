@@ -8,7 +8,7 @@ import { CustomerStatsHeader } from '@/components/customers/CustomerStatsHeader'
 import { CustomerActions } from '@/components/customers/CustomerActions';
 import { CustomerDialogsManager } from '@/components/customers/CustomerDialogsManager';
 import { ConsolidationManager } from '@/components/customers/ConsolidationManager';
-import { CustomerConsolidationDebug } from '@/components/customers/CustomerConsolidationDebug';
+
 import { useCustomerOperations } from '@/hooks/useCustomerOperations';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users } from 'lucide-react';
@@ -85,10 +85,6 @@ export default function ResellerCustomers() {
         onConsolidationComplete={refreshData}
       />
 
-      {/* Debug component for development */}
-      {process.env.NODE_ENV === 'development' && (
-        <CustomerConsolidationDebug customers={resellerCustomers} />
-      )}
       
       <CustomerStatsHeader
         customers={resellerCustomers}

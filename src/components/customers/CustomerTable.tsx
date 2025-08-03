@@ -20,6 +20,7 @@ import {
   processCustomersForDisplay
 } from '@/utils/customerConsolidation';
 import { formatDateSafely, getDaysUntilExpirationSafely } from '@/lib/utils';
+import { useIptvPackages } from '@/hooks/useIptvPackages';
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,7 @@ export function CustomerTable({
   onStatusFilterChange
 }: CustomerTableProps) {
   const { user } = useAuth();
+  const { packages } = useIptvPackages();
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
   const [viewingCredentials, setViewingCredentials] = useState<any>(null);
@@ -219,6 +221,8 @@ export function CustomerTable({
           const startDate = getFieldValue(customer, 'start_date', 'startDate');
           const planDuration = getFieldValue(customer, 'plan_duration', 'planDuration');
           const deviceType = getFieldValue(customer, 'device_type', 'deviceType');
+          const packageId = getFieldValue(customer, 'customer_group_id', 'packageId');
+          const packageName = packageId ? packages.find(pkg => pkg.id === packageId)?.name || packageId : 'Default';
           
           const daysUntilExpiration = getDaysUntilExpirationSafely(expirationDate);
           const totalConnections = getTotalConnections(customer);
@@ -235,12 +239,7 @@ export function CustomerTable({
                         <Users size={12} />
                         {getConnectionSummary(customer)}
                       </Badge>
-                    )}
-                    {isConsolidatedCustomer(customer) && (
-                      <Badge variant="outline" className="text-xs">
-                        Consolidated
-                      </Badge>
-                    )}
+                     )}
                   </div>
                   <Badge className={getStatusColor(customer.status)}>
                     {customer.status}
@@ -250,7 +249,11 @@ export function CustomerTable({
               </CardHeader>
               
               <CardContent>
-                <div className={`grid gap-4 mb-4 ${isAdmin ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-3'}`}>
+                <div className={`grid gap-4 mb-4 ${isAdmin ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4'}`}>
+                  <div>
+                    <p className="text-sm font-medium text-gray-500">Package</p>
+                    <p className="text-sm">{packageName}</p>
+                  </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500">Device Type</p>
                     <p className="text-sm">{deviceType || 'Not specified'}</p>
