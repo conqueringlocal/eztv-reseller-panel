@@ -251,6 +251,27 @@ serve(async (req) => {
       if (logError) {
         console.error('Error logging credit transaction:', logError);
       }
+
+      // Consolidate connections if multiple were created
+      if (createdCustomers.length > 1) {
+        console.log(`🔄 Consolidating ${createdCustomers.length} MAG accounts into single record`);
+        
+        try {
+          const { data: consolidationResult, error: consolidationError } = await supabaseClient
+            .rpc('consolidate_customer_connections', {
+              customer_group_name: customerGroupId,
+              reseller_id_param: resellerId
+            });
+
+          if (consolidationError) {
+            console.error('Error consolidating connections:', consolidationError);
+          } else {
+            console.log('✅ Successfully consolidated MAG connections:', consolidationResult);
+          }
+        } catch (consolidationError) {
+          console.error('Error during consolidation:', consolidationError);
+        }
+      }
     }
 
     const totalCreated = createdCustomers.length;

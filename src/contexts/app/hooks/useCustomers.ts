@@ -49,6 +49,12 @@ export const useCustomers = (user: any, authLoading: boolean) => {
         console.log(`✅ Successfully fetched ${customerCount} customers`);
         const convertedCustomers = data.map(convertDbCustomerToCustomer);
         setCustomers(convertedCustomers);
+        
+        // Debug logging for consolidation status
+        if (process.env.NODE_ENV === 'development') {
+          const { logCustomerConsolidationStatus } = await import('@/utils/customerConsolidation/debugUtils');
+          logCustomerConsolidationStatus(convertedCustomers, user?.id || 'unknown');
+        }
       }
     } catch (error) {
       console.error('💥 Unexpected error fetching customers:', error);

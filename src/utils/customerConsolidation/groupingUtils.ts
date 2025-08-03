@@ -41,27 +41,41 @@ export function getCustomersNeedingConsolidation(customers: Customer[]): Custome
 // Process customers for display in the table
 export function processCustomersForDisplay(customers: Customer[]): Customer[] {
   const processedCustomers: Customer[] = [];
-  const processedGroups = new Set<string>();
+  const groupedCustomers = new Map<string, Customer[]>();
   
+  // First, group customers by customer_group and reseller
   customers.forEach(customer => {
-    // If this is a consolidated customer (has connectionDetails), add it directly
+    // If this is a consolidated customer (has connectionDetails array with multiple entries), add it directly
     if (customer.connectionDetails && Array.isArray(customer.connectionDetails) && customer.connectionDetails.length > 0) {
       processedCustomers.push(customer);
       return;
     }
     
-    // For non-consolidated customers, check if they're part of a group
+    // For non-consolidated customers, group them
     if (customer.customer_group) {
       const groupKey = `${customer.customer_group}_${customer.resellerId}`;
       
-      // If we haven't processed this group yet, add the first customer
-      if (!processedGroups.has(groupKey)) {
-        processedGroups.add(groupKey);
-        processedCustomers.push(customer);
+      if (!groupedCustomers.has(groupKey)) {
+        groupedCustomers.set(groupKey, []);
       }
+      groupedCustomers.get(groupKey)!.push(customer);
     } else {
-      // Single customer not part of a group
+      // Single customer not part of a group - add directly
       processedCustomers.push(customer);
+    }
+  });
+  
+  // For each group, if it has multiple entries but isn't consolidated, 
+  // show them as separate accounts (this is the bug fix)
+  groupedCustomers.forEach((groupCustomers, groupKey) => {
+    if (groupCustomers.length === 1) {
+      // Single customer in group
+      processedCustomers.push(groupCustomers[0]);
+    } else {
+      // Multiple customers in group - check if they should be consolidated
+      // For now, show them all (this allows Derek's accounts to show)
+      // The consolidation process will handle merging them later
+      processedCustomers.push(...groupCustomers);
     }
   });
   
