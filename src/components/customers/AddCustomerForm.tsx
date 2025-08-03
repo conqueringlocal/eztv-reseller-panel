@@ -24,7 +24,7 @@ import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 // Form schema with validation - updated to support multi-connection accounts
@@ -110,6 +110,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   };
 
   const [totalCreditsNeeded, setTotalCreditsNeeded] = React.useState(1);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     const updateCredits = async () => {
@@ -126,20 +127,26 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       return;
     }
     
-    // For admin, we'd need to select a reseller
-    // For simplicity in this demo, we'll use the first reseller ID for admin
-    const resellerId = user.role === 'admin' ? '2' : user.id;
+    if (isSubmitting) {
+      return; // Prevent multiple submissions
+    }
     
-    // Calculate start and expiration dates
-    const startDate = new Date().toISOString().split('T')[0];
-    const expirationDate = new Date();
-    expirationDate.setMonth(expirationDate.getMonth() + parseInt(data.planDuration));
-    const expirationDateString = expirationDate.toISOString().split('T')[0];
-    
-    // Generate username for the customer
-    const username = `${data.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
+    setIsSubmitting(true);
     
     try {
+      // For admin, we'd need to select a reseller
+      // For simplicity in this demo, we'll use the first reseller ID for admin
+      const resellerId = user.role === 'admin' ? '2' : user.id;
+      
+      // Calculate start and expiration dates
+      const startDate = new Date().toISOString().split('T')[0];
+      const expirationDate = new Date();
+      expirationDate.setMonth(expirationDate.getMonth() + parseInt(data.planDuration));
+      const expirationDateString = expirationDate.toISOString().split('T')[0];
+      
+      // Generate username for the customer
+      const username = `${data.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
+      
       const success = await addCustomer({
         resellerId,
         name: data.name,
@@ -169,6 +176,8 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     } catch (error) {
       toast.error(`An error occurred while adding the ${data.accountType.toUpperCase()} customer.`);
       console.error(error);
+    } finally {
+      setIsSubmitting(false);
     }
   };
   
@@ -450,10 +459,23 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
           </div>
           
           <div className="pt-2">
-            <Button type="submit" className="w-full">
-              Add {watchAccountType.toUpperCase()} Customer
-              {watchAccountType === 'm3u' && watchConnections > 1 && (
-                <span> ({watchConnections} Connections)</span>
+            <Button 
+              type="submit" 
+              className="w-full" 
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Creating {watchAccountType.toUpperCase()} Customer...
+                </>
+              ) : (
+                <>
+                  Add {watchAccountType.toUpperCase()} Customer
+                  {watchAccountType === 'm3u' && watchConnections > 1 && (
+                    <span> ({watchConnections} Connections)</span>
+                  )}
+                </>
               )}
             </Button>
           </div>
