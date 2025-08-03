@@ -65,7 +65,7 @@ interface AddCustomerFormProps {
 export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { user } = useAuth();
   const { addCustomer } = useApp();
-  const { packages, isLoading: packagesLoading, error: packagesError, source, debugInfo, refetch } = useIptvPackages();
+  const { packages, isLoading: packagesLoading, error: packagesError, source, debugInfo, refetch } = useIptvPackages(undefined, false);
   
   // Initialize form with default values
   const form = useForm<FormData>({

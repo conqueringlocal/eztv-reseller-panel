@@ -26,7 +26,7 @@ interface PackageResponse {
   error?: string;
 }
 
-export const useIptvPackages = (providerOverride?: string) => {
+export const useIptvPackages = (providerOverride?: string, showToasts: boolean = true) => {
   const { user } = useAuth();
   const [packages, setPackages] = useState<IptvPackage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,7 +67,9 @@ export const useIptvPackages = (providerOverride?: string) => {
         console.error('❌ Edge function invocation error:', error);
         const errorMsg = `Connection failed: ${error.message}`;
         setError(errorMsg);
-        toast.error(`🔌 ${errorMsg}`);
+        if (showToasts) {
+          toast.error(`🔌 ${errorMsg}`);
+        }
         return;
       }
       
@@ -80,15 +82,17 @@ export const useIptvPackages = (providerOverride?: string) => {
         setError(errorMsg);
         
         // Enhanced error messaging with provider context
-        const currentProvider = response?.debug_info?.provider_used || effectiveProvider || '8k';
-        if (errorMsg.includes('API key')) {
-          toast.error(`🔑 Configuration Issue: ${currentProvider.toUpperCase()} API key not found. Please check your Supabase secrets.`);
-        } else if (errorMsg.includes('Panel URL')) {
-          toast.error(`🔧 Configuration Issue: ${currentProvider.toUpperCase()} Panel URL not found. Please check your Supabase secrets.`);
-        } else if (errorMsg.includes('HTTP')) {
-          toast.error(`🌐 Connection Issue: ${errorMsg}. Check if your ${currentProvider.toUpperCase()} panel URL and credentials are correct.`);
-        } else {
-          toast.error(`⚠️ ${currentProvider.toUpperCase()} API Error: ${errorMsg}`);
+        if (showToasts) {
+          const currentProvider = response?.debug_info?.provider_used || effectiveProvider || '8k';
+          if (errorMsg.includes('API key')) {
+            toast.error(`🔑 Configuration Issue: ${currentProvider.toUpperCase()} API key not found. Please check your Supabase secrets.`);
+          } else if (errorMsg.includes('Panel URL')) {
+            toast.error(`🔧 Configuration Issue: ${currentProvider.toUpperCase()} Panel URL not found. Please check your Supabase secrets.`);
+          } else if (errorMsg.includes('HTTP')) {
+            toast.error(`🌐 Connection Issue: ${errorMsg}. Check if your ${currentProvider.toUpperCase()} panel URL and credentials are correct.`);
+          } else {
+            toast.error(`⚠️ ${currentProvider.toUpperCase()} API Error: ${errorMsg}`);
+          }
         }
         return;
       }
@@ -112,24 +116,30 @@ export const useIptvPackages = (providerOverride?: string) => {
           provider_used: response.debug_info?.provider_used
         });
         
-        toast.warning(`🔄 Result: Using fallback packages (${packageCount}) for ${response.provider?.toUpperCase() || 'Unknown'}. API connection needs troubleshooting.`, {
-          duration: 8000,
-        });
+        if (showToasts) {
+          toast.warning(`🔄 Result: Using fallback packages (${packageCount}) for ${response.provider?.toUpperCase() || 'Unknown'}. API connection needs troubleshooting.`, {
+            duration: 8000,
+          });
+        }
       } else {
         console.log(`🎉 SUCCESS: Connected to live ${response.provider?.toUpperCase() || 'Unknown'} IPTV API!`);
         console.log(`🔗 Active endpoint: ${response.endpoint_used}`);
         console.log(`🌐 Panel URL: ${response.panel_url}`);
         
-        toast.success(`🎯 Success! Connected to your ${response.provider?.toUpperCase() || 'Unknown'} panel and loaded ${packageCount} live packages.`, {
-          duration: 6000,
-        });
+        if (showToasts) {
+          toast.success(`🎯 Success! Connected to your ${response.provider?.toUpperCase() || 'Unknown'} panel and loaded ${packageCount} live packages.`, {
+            duration: 6000,
+          });
+        }
       }
       
     } catch (error) {
       console.error('💥 Unexpected error:', error);
       const errorMsg = 'Failed with unexpected error';
       setError(errorMsg);
-      toast.error(`💥 ${errorMsg}: ${error.message}`);
+      if (showToasts) {
+        toast.error(`💥 ${errorMsg}: ${error.message}`);
+      }
     } finally {
       setIsLoading(false);
       isFetchingRef.current = false;
