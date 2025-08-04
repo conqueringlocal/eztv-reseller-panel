@@ -19,18 +19,35 @@ Deno.serve(async (req) => {
 
     const url = new URL(req.url);
     
+    // Debug logging: log the full pathname first
+    console.log("[Funnel Router] Full pathname:", url.pathname);
+    console.log("[Funnel Router] Full URL:", url.href);
+    
     // Extract subdomain from pathname - simplified path parsing
     const subdomain = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
     const subdomainParts = subdomain.split('/');
     const actualSubdomain = subdomainParts[0];
     
+    // Debug logging before potential error
+    console.log("[Funnel Router] Parsed subdomain:", actualSubdomain);
+    console.log("[Funnel Router] Full subdomain string:", subdomain);
+    console.log("[Funnel Router] Subdomain parts:", subdomainParts);
+    
     // Error handling: return 400 if subdomain is missing
     if (!actualSubdomain || actualSubdomain.length === 0) {
-      console.log('[Funnel Router] Missing subdomain in path');
-      return new Response('Bad Request: Subdomain required in path', {
-        status: 400,
-        headers: corsHeaders
-      });
+      console.log("[Funnel Router] Invalid request. Parsed subdomain:", actualSubdomain);
+      return new Response(
+        JSON.stringify({
+          error: "Subdomain missing or invalid",
+          fullUrl: url.href,
+          pathname: url.pathname,
+          parsedSubdomain: actualSubdomain
+        }),
+        { 
+          status: 400, 
+          headers: { 'Content-Type': 'application/json', ...corsHeaders }
+        }
+      );
     }
     
     console.log(`[Funnel Router] Extracted subdomain: "${actualSubdomain}"`);
