@@ -9,3 +9,9 @@ verify_jwt = false
 
 [functions.webhook]
 verify_jwt = false
+
+[functions.funnel-router]
+verify_jwt = false
+
+[functions.capture-lead]
+verify_jwt = false

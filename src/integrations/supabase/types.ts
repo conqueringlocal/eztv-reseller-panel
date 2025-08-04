@@ -232,6 +232,62 @@ export type Database = {
         }
         Relationships: []
       }
+      funnel_leads: {
+        Row: {
+          additional_data: Json | null
+          created_at: string
+          email: string
+          funnel_id: string
+          id: string
+          ip_address: unknown | null
+          name: string
+          phone: string | null
+          updated_at: string
+          user_agent: string | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          additional_data?: Json | null
+          created_at?: string
+          email: string
+          funnel_id: string
+          id?: string
+          ip_address?: unknown | null
+          name: string
+          phone?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          additional_data?: Json | null
+          created_at?: string
+          email?: string
+          funnel_id?: string
+          id?: string
+          ip_address?: unknown | null
+          name?: string
+          phone?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnel_leads_funnel_id_fkey"
+            columns: ["funnel_id"]
+            isOneToOne: false
+            referencedRelation: "funnels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funnel_templates: {
         Row: {
           created_at: string
