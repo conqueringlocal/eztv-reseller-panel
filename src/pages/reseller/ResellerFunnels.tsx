@@ -46,14 +46,14 @@ export default function ResellerFunnels() {
   const handlePreview = (funnel: Funnel) => {
     const url = funnel.custom_domain 
       ? `https://${funnel.custom_domain}`
-      : `https://${funnel.subdomain}.streamlo.tv`;
+      : `https://funnels.streamlo.tv/${funnel.subdomain}`;
     window.open(url, '_blank');
   };
 
   const handleCopyLink = (funnel: Funnel) => {
     const url = funnel.custom_domain 
       ? `https://${funnel.custom_domain}`
-      : `https://${funnel.subdomain}.streamlo.tv`;
+      : `https://funnels.streamlo.tv/${funnel.subdomain}`;
     
     navigator.clipboard.writeText(url);
     toast({

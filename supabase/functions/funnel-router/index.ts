@@ -22,18 +22,18 @@ Deno.serve(async (req) => {
     
     console.log(`[Funnel Router] Request to host: ${host}, path: ${url.pathname}`);
 
-    // Extract subdomain (everything before the first dot)
-    const hostParts = host.split('.');
-    if (hostParts.length < 2) {
-      console.log('[Funnel Router] No subdomain detected');
-      return new Response('Invalid domain', { 
+    // Extract subdomain from path (e.g., /my-funnel or /my-funnel/)
+    const pathParts = url.pathname.split('/').filter(part => part.length > 0);
+    if (pathParts.length === 0) {
+      console.log('[Funnel Router] No subdomain in path');
+      return new Response('Invalid path - subdomain required', { 
         status: 400, 
         headers: corsHeaders 
       });
     }
 
-    const subdomain = hostParts[0];
-    console.log(`[Funnel Router] Extracted subdomain: ${subdomain}`);
+    const subdomain = pathParts[0];
+    console.log(`[Funnel Router] Extracted subdomain from path: ${subdomain}`);
 
     // Look up funnel by subdomain or custom domain
     const { data: funnel, error } = await supabase

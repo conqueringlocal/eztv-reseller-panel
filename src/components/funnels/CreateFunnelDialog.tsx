@@ -149,17 +149,18 @@ export const CreateFunnelDialog: React.FC<CreateFunnelDialogProps> = ({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="subdomain">Subdomain *</Label>
-                  <div className="flex items-center space-x-2">
+                  <Label htmlFor="subdomain">Path *</Label>
+                  <div className="flex items-center border rounded-md px-3 py-2">
+                    <span className="text-sm text-muted-foreground whitespace-nowrap">
+                      funnels.streamlo.tv/
+                    </span>
                     <Input
                       id="subdomain"
                       placeholder="my-iptv-offer"
                       value={subdomain}
                       onChange={(e) => setSubdomain(e.target.value)}
+                      className="border-0 p-0 focus-visible:ring-0"
                     />
-                    <span className="text-sm text-muted-foreground whitespace-nowrap">
-                      .streamlo.tv
-                    </span>
                   </div>
                 </div>
 
