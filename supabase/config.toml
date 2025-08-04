@@ -1,4 +1,3 @@
-
 project_id = "hddnqgggjjlildufirof"
 
 [functions.create-role-type]
@@ -18,4 +17,3 @@ verify_jwt = false
 
 [functions.domain-router]
 verify_jwt = false
-
