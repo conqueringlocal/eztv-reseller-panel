@@ -20,20 +20,27 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const host = req.headers.get('host') || '';
     
-    console.log(`[Funnel Router] Request to host: ${host}, path: ${url.pathname}`);
+    console.log(`[Funnel Router] Request to host: ${host}, path: ${url.pathname}, full URL: ${req.url}`);
 
-    // Extract subdomain from path (e.g., /my-funnel or /my-funnel/)
-    const pathParts = url.pathname.split('/').filter(part => part.length > 0);
-    if (pathParts.length === 0) {
-      console.log('[Funnel Router] No subdomain in path');
-      return new Response('Invalid path - subdomain required', { 
-        status: 400, 
+    // Extract subdomain from path, handling both /subdomain and /subdomain/ formats
+    let subdomain = '';
+    
+    // Remove leading slash and get the first path segment
+    const cleanPath = url.pathname.replace(/^\/+/, ''); // Remove leading slashes
+    const pathParts = cleanPath.split('/').filter(part => part.length > 0);
+    
+    console.log(`[Funnel Router] Clean path: "${cleanPath}", path parts:`, pathParts);
+    
+    if (pathParts.length === 0 || cleanPath === '') {
+      console.log('[Funnel Router] No subdomain in path - empty path or root');
+      return new Response('Funnel not found - subdomain required in path', { 
+        status: 404, 
         headers: corsHeaders 
       });
     }
 
-    const subdomain = pathParts[0];
-    console.log(`[Funnel Router] Extracted subdomain from path: ${subdomain}`);
+    subdomain = pathParts[0];
+    console.log(`[Funnel Router] Extracted subdomain from path: "${subdomain}"`);
 
     // Look up funnel by subdomain or custom domain
     const { data: funnel, error } = await supabase
