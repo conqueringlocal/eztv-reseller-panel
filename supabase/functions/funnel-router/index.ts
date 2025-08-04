@@ -5,6 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const htmlHeaders = {
+  ...corsHeaders,
+  'Content-Type': 'text/html; charset=utf-8',
+  'Cache-Control': 'no-cache, no-store, must-revalidate',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'SAMEORIGIN',
+};
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -84,6 +94,24 @@ Deno.serve(async (req) => {
       
       // Parse and inject into existing HTML structure
       let modifiedHtml = htmlContent;
+      
+      // Ensure proper meta tags and charset
+      if (!modifiedHtml.includes('<meta charset')) {
+        modifiedHtml = modifiedHtml.replace('<head>', '<head>\n    <meta charset="UTF-8">');
+      }
+      
+      if (!modifiedHtml.includes('viewport')) {
+        modifiedHtml = modifiedHtml.replace('</head>', '    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n</head>');
+      }
+      
+      // Add compatibility meta tags
+      const compatibilityMeta = `
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">`;
+      
+      if (!modifiedHtml.includes('X-UA-Compatible')) {
+        modifiedHtml = modifiedHtml.replace('</head>', `${compatibilityMeta}\n</head>`);
+      }
       
       // Inject CSS into head (before closing </head> tag)
       if (funnel.css_content) {
@@ -170,6 +198,8 @@ Deno.serve(async (req) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <title>${funnel.name}</title>
     <style>
         ${funnel.css_content || ''}
@@ -237,11 +267,11 @@ Deno.serve(async (req) => {
 </html>`;
     }
 
+    console.log(`[Funnel Router] Returning HTML response for funnel: ${funnel.name}, length: ${html.length} chars`);
+    console.log(`[Funnel Router] Response headers:`, htmlHeaders);
+    
     return new Response(html, {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/html',
-      },
+      headers: htmlHeaders,
     });
 
   } catch (error) {
