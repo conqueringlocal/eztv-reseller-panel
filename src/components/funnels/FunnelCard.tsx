@@ -33,7 +33,7 @@ export const FunnelCard: React.FC<FunnelCardProps> = ({
     if (funnel.custom_domain) {
       return `https://${funnel.custom_domain}`;
     }
-    return `https://funnels.streamlo.tv/${funnel.subdomain}`;
+    return `https://hddnqgggjjlildufirof.supabase.co/functions/v1/funnel-router/${funnel.subdomain}`;
   };
 
   return (
