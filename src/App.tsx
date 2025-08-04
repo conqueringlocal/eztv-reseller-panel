@@ -27,7 +27,6 @@ import ResellerCredits from "./pages/reseller/ResellerCredits";
 import ResellerSubResellers from "./pages/reseller/ResellerSubResellers";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
 import ResellerFunnels from "./pages/reseller/ResellerFunnels";
-import FunnelDisplay from "./pages/FunnelDisplay";
 import Webhook from "./pages/Webhook";
 
 const queryClient = new QueryClient();
@@ -51,9 +50,6 @@ function App() {
                   <Route path="/auth/token" element={<TokenAuth />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
                   <Route path="/api/webhook" element={<Webhook />} />
-                  
-                  {/* Public funnel display route */}
-                  <Route path="/funnel/:subdomain" element={<FunnelDisplay />} />
                   
                   {/* Protected admin routes */}
                   <Route

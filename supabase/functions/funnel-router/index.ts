@@ -32,40 +32,58 @@ Deno.serve(async (req) => {
     
     console.log(`[Funnel Router] Request to host: ${host}, path: ${url.pathname}, full URL: ${req.url}`);
 
-    // Extract subdomain from path
-    // When called via /functions/v1/funnel-router/subdomain, the path becomes /funnel-router/subdomain
-    // So we need to skip the function name (first segment) and get the actual subdomain (second segment)
+    // Determine if this is a custom domain request or edge function path request
     let subdomain = '';
+    let isCustomDomain = false;
     
-    // Remove leading slash and get path segments
-    const cleanPath = url.pathname.replace(/^\/+/, ''); // Remove leading slashes
-    const pathParts = cleanPath.split('/').filter(part => part.length > 0);
-    
-    console.log(`[Funnel Router] Clean path: "${cleanPath}", path parts:`, pathParts);
-    
-    // Path should be: [function-name, subdomain, ...optional-path]
-    // We need the second segment as the subdomain
-    if (pathParts.length < 2) {
-      console.log('[Funnel Router] No subdomain in path - need at least function-name/subdomain');
-      return new Response('Funnel not found - subdomain required in path', { 
-        status: 404, 
-        headers: corsHeaders 
-      });
+    // Check if this is a custom domain (funnels.streamlo.tv) or direct edge function call
+    if (host === 'funnels.streamlo.tv') {
+      // Custom domain: extract subdomain from path (e.g., /eztvtrial)
+      const pathSegments = url.pathname.split('/').filter(segment => segment.length > 0);
+      if (pathSegments.length === 0) {
+        return new Response('Funnel not found - subdomain required in path', { 
+          status: 404, 
+          headers: corsHeaders 
+        });
+      }
+      subdomain = pathSegments[0]; // First segment is the subdomain
+      isCustomDomain = true;
+      console.log(`[Funnel Router] Custom domain request for subdomain: "${subdomain}"`);
+    } else {
+      // Edge function call: extract from function path
+      const cleanPath = url.pathname.replace(/^\/+/, '');
+      const pathParts = cleanPath.split('/').filter(part => part.length > 0);
+      
+      console.log(`[Funnel Router] Edge function path: "${cleanPath}", parts:`, pathParts);
+      
+      if (pathParts.length < 2) {
+        return new Response('Funnel not found - subdomain required in path', { 
+          status: 404, 
+          headers: corsHeaders 
+        });
+      }
+      
+      subdomain = pathParts[1]; // Skip function name, get subdomain
+      console.log(`[Funnel Router] Edge function request for subdomain: "${subdomain}"`);
     }
 
-    subdomain = pathParts[1]; // Skip function name, get actual subdomain
-    console.log(`[Funnel Router] Extracted subdomain from path: "${subdomain}"`);
-
     // Look up funnel by subdomain or custom domain
-    const { data: funnel, error } = await supabase
+    let funnelQuery = supabase
       .from('funnels')
       .select(`
         *,
         template:funnel_templates(*)
       `)
-      .or(`subdomain.eq.${subdomain},custom_domain.eq.${host}`)
-      .eq('is_published', true)
-      .single();
+      .eq('is_published', true);
+
+    // If custom domain, also check the custom_domain field
+    if (isCustomDomain) {
+      funnelQuery = funnelQuery.or(`subdomain.eq.${subdomain},custom_domain.eq.${host}`);
+    } else {
+      funnelQuery = funnelQuery.eq('subdomain', subdomain);
+    }
+
+    const { data: funnel, error } = await funnelQuery.single();
 
     if (error || !funnel) {
       console.log(`[Funnel Router] Funnel not found for subdomain: ${subdomain}`, error);
