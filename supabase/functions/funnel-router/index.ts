@@ -271,7 +271,11 @@ Deno.serve(async (req) => {
     console.log(`[Funnel Router] Response headers:`, htmlHeaders);
     
     return new Response(html, {
-      headers: htmlHeaders,
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        ...corsHeaders,
+      },
     });
 
   } catch (error) {
