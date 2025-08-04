@@ -1,7 +1,11 @@
 project_id = "hddnqgggjjlildufirof"
 
-# Set domain-router as the main handler
+# Main domain handler for custom domains
 [functions._default]
+verify_jwt = false
+
+# Domain routing configuration
+[functions."_default"]
 verify_jwt = false
 
 [functions.create-role-type]

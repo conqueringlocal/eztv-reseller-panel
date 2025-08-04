@@ -17,8 +17,8 @@ Deno.serve(async (req) => {
     
     console.log(`[Default Router] Request from host: ${host}, path: ${url.pathname}`);
     
-    // Handle funnels.streamlo.tv requests
-    if (host === 'funnels.streamlo.tv') {
+    // Handle funnels.streamlo.tv requests or any custom domain routing
+    if (host === 'funnels.streamlo.tv' || host.includes('streamlo.tv') || url.pathname.startsWith('/_default/')) {
       console.log(`[Default Router] Routing funnels.streamlo.tv request`);
       
       const supabase = createClient(
@@ -26,8 +26,14 @@ Deno.serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
       
-      // Extract subdomain from path
-      const subdomain = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+      // Extract subdomain from path, handling both direct and _default routing
+      let subdomain = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+      
+      // Remove _default/ prefix if present (when called via edge function URL)
+      if (subdomain.startsWith('_default/')) {
+        subdomain = subdomain.replace('_default/', '');
+      }
+      
       const actualSubdomain = subdomain.split('/')[0];
       
       console.log(`[Default Router] Extracted subdomain: "${actualSubdomain}"`);
