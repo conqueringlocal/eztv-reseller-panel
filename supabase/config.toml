@@ -1,15 +1,16 @@
 project_id = "hddnqgggjjlildufirof"
 
+# Route all unmatched paths to catch-all function
+[[routes]]
+path = "/*"
+function = "catch-all"
+
 # Catch-all function for custom domain routing
 [functions.catch-all]
 verify_jwt = false
 
 # Default handler for custom domains
 [functions._default]
-verify_jwt = false
-
-# Explicit function routing
-[functions."_default"]
 verify_jwt = false
 
 [functions.create-role-type]
