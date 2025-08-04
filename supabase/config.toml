@@ -15,3 +15,7 @@ verify_jwt = false
 
 [functions.capture-lead]
 verify_jwt = false
+
+[functions.domain-router]
+verify_jwt = false
+
