@@ -72,8 +72,99 @@ Deno.serve(async (req) => {
     const utmMedium = url.searchParams.get('utm_medium') || '';
     const utmCampaign = url.searchParams.get('utm_campaign') || '';
 
-    // Build the complete HTML with injected analytics and form handling
-    const html = `
+    // Check if the funnel content is a complete HTML document
+    const htmlContent = funnel.html_content || '';
+    const isCompleteDocument = htmlContent.trim().toLowerCase().startsWith('<!doctype html') || 
+                              htmlContent.trim().toLowerCase().startsWith('<html');
+
+    let html;
+    
+    if (isCompleteDocument) {
+      console.log(`[Funnel Router] Injecting scripts into complete HTML document for funnel: ${funnel.name}`);
+      
+      // Parse and inject into existing HTML structure
+      let modifiedHtml = htmlContent;
+      
+      // Inject CSS into head (before closing </head> tag)
+      if (funnel.css_content) {
+        const cssToInject = `
+    <style>
+        ${funnel.css_content}
+    </style>`;
+        modifiedHtml = modifiedHtml.replace('</head>', `${cssToInject}\n</head>`);
+      }
+      
+      // Update title if head exists but no title
+      if (!modifiedHtml.includes('<title>')) {
+        modifiedHtml = modifiedHtml.replace('</head>', `    <title>${funnel.name}</title>\n</head>`);
+      }
+      
+      // Inject tracking and form scripts before closing </body> tag
+      const scriptsToInject = `
+    <script>
+        // UTM tracking
+        const urlParams = new URLSearchParams(window.location.search);
+        const utmData = {
+            utm_source: urlParams.get('utm_source') || '${utmSource}',
+            utm_medium: urlParams.get('utm_medium') || '${utmMedium}',
+            utm_campaign: urlParams.get('utm_campaign') || '${utmCampaign}'
+        };
+
+        // Form submission handler
+        document.addEventListener('DOMContentLoaded', function() {
+            const forms = document.querySelectorAll('form');
+            forms.forEach(form => {
+                form.addEventListener('submit', async function(e) {
+                    e.preventDefault();
+                    
+                    const formData = new FormData(form);
+                    const leadData = {
+                        funnel_id: '${funnel.id}',
+                        name: formData.get('name') || '',
+                        email: formData.get('email') || '',
+                        phone: formData.get('phone') || '',
+                        utm_source: utmData.utm_source,
+                        utm_medium: utmData.utm_medium,
+                        utm_campaign: utmData.utm_campaign,
+                        additional_data: {}
+                    };
+
+                    try {
+                        const response = await fetch('https://hddnqgggjjlildufirof.supabase.co/functions/v1/capture-lead', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify(leadData)
+                        });
+
+                        if (response.ok) {
+                            // Show success message or redirect
+                            alert('Thank you! Your information has been submitted.');
+                            form.reset();
+                        } else {
+                            throw new Error('Submission failed');
+                        }
+                    } catch (error) {
+                        console.error('Form submission error:', error);
+                        alert('Something went wrong. Please try again.');
+                    }
+                });
+            });
+        });
+
+        // Custom JS from template
+        ${funnel.js_content || ''}
+    </script>`;
+      
+      modifiedHtml = modifiedHtml.replace('</body>', `${scriptsToInject}\n</body>`);
+      html = modifiedHtml;
+      
+    } else {
+      console.log(`[Funnel Router] Wrapping HTML fragment for funnel: ${funnel.name}`);
+      
+      // Build the complete HTML with injected analytics and form handling (original behavior)
+      html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -144,6 +235,7 @@ Deno.serve(async (req) => {
     </script>
 </body>
 </html>`;
+    }
 
     return new Response(html, {
       headers: {
