@@ -1,5 +1,9 @@
 project_id = "hddnqgggjjlildufirof"
 
+# Set domain-router as the main handler
+[functions._default]
+verify_jwt = false
+
 [functions.create-role-type]
 verify_jwt = false
 
