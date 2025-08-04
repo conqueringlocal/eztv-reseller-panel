@@ -18,7 +18,8 @@ import {
   Settings, 
   Database,
   FileText,
-  UserPlus
+  UserPlus,
+  Zap
 } from 'lucide-react';
 
 export function AppSidebar() {
@@ -78,6 +79,13 @@ export function AppSidebar() {
         title: canPurchaseCredits ? 'Credits' : 'Credits (View Only)',
         path: '/reseller/credits',
         icon: <CreditCard className="w-5 h-5" />,
+      });
+
+      // Add Funnel Builder menu item
+      resellerItems.push({
+        title: 'Funnel Builder',
+        path: '/reseller/funnels',
+        icon: <Zap className="w-5 h-5" />,
       });
 
       // Add Sub-Resellers menu for level 1 resellers

@@ -232,6 +232,119 @@ export type Database = {
         }
         Relationships: []
       }
+      funnel_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          css_content: string | null
+          description: string | null
+          form_fields: Json | null
+          html_content: string
+          id: string
+          integrations: Json | null
+          is_active: boolean
+          js_content: string | null
+          name: string
+          preview_image_url: string | null
+          template_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          css_content?: string | null
+          description?: string | null
+          form_fields?: Json | null
+          html_content: string
+          id?: string
+          integrations?: Json | null
+          is_active?: boolean
+          js_content?: string | null
+          name: string
+          preview_image_url?: string | null
+          template_type: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          css_content?: string | null
+          description?: string | null
+          form_fields?: Json | null
+          html_content?: string
+          id?: string
+          integrations?: Json | null
+          is_active?: boolean
+          js_content?: string | null
+          name?: string
+          preview_image_url?: string | null
+          template_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      funnels: {
+        Row: {
+          analytics: Json | null
+          created_at: string
+          css_content: string | null
+          custom_domain: string | null
+          form_fields: Json | null
+          html_content: string
+          id: string
+          integrations: Json | null
+          is_published: boolean
+          js_content: string | null
+          name: string
+          reseller_id: string
+          subdomain: string
+          template_id: string
+          updated_at: string
+        }
+        Insert: {
+          analytics?: Json | null
+          created_at?: string
+          css_content?: string | null
+          custom_domain?: string | null
+          form_fields?: Json | null
+          html_content: string
+          id?: string
+          integrations?: Json | null
+          is_published?: boolean
+          js_content?: string | null
+          name: string
+          reseller_id: string
+          subdomain: string
+          template_id: string
+          updated_at?: string
+        }
+        Update: {
+          analytics?: Json | null
+          created_at?: string
+          css_content?: string | null
+          custom_domain?: string | null
+          form_fields?: Json | null
+          html_content?: string
+          id?: string
+          integrations?: Json | null
+          is_published?: boolean
+          js_content?: string | null
+          name?: string
+          reseller_id?: string
+          subdomain?: string
+          template_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funnels_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "funnel_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string

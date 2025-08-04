@@ -26,6 +26,7 @@ import ResellerCustomers from "./pages/reseller/ResellerCustomers";
 import ResellerCredits from "./pages/reseller/ResellerCredits";
 import ResellerSubResellers from "./pages/reseller/ResellerSubResellers";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
+import ResellerFunnels from "./pages/reseller/ResellerFunnels";
 import Webhook from "./pages/Webhook";
 
 const queryClient = new QueryClient();
@@ -129,6 +130,12 @@ function App() {
                   <Route path="/reseller/settings" element={
                     <ProtectedRoute allowedRoles={['reseller']}>
                       <ResellerSettings />
+                    </ProtectedRoute>
+                  } />
+                  
+                  <Route path="/reseller/funnels" element={
+                    <ProtectedRoute allowedRoles={['reseller']}>
+                      <ResellerFunnels />
                     </ProtectedRoute>
                   } />
                   
