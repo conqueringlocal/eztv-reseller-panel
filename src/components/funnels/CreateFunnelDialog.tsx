@@ -158,7 +158,7 @@ export const CreateFunnelDialog: React.FC<CreateFunnelDialogProps> = ({
                       onChange={(e) => setSubdomain(e.target.value)}
                     />
                     <span className="text-sm text-muted-foreground whitespace-nowrap">
-                      .eztvclub.com
+                      .streamlo.tv
                     </span>
                   </div>
                 </div>
