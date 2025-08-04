@@ -268,12 +268,15 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[Funnel Router] Returning HTML response for funnel: ${funnel.name}, length: ${html.length} chars`);
-    console.log(`[Funnel Router] Response headers:`, htmlHeaders);
+    console.log(`[Funnel Router] HTML starts with: ${html.substring(0, 100)}...`);
+    console.log(`[Funnel Router] Is complete document: ${isCompleteDocument}`);
     
     return new Response(html, {
       status: 200,
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Content-Type-Options': 'nosniff',
         ...corsHeaders,
       },
     });
