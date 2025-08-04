@@ -14,11 +14,12 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const host = req.headers.get('host') || '';
+    const pathname = url.pathname;
     
-    console.log(`[Default Router] Request from host: ${host}, path: ${url.pathname}`);
+    console.log(`[Default Router] Request from host: ${host}, path: ${pathname}, full URL: ${url.href}`);
     
-    // Handle funnels.streamlo.tv requests or any custom domain routing
-    if (host === 'funnels.streamlo.tv' || host.includes('streamlo.tv') || url.pathname.startsWith('/_default/')) {
+    // Handle ALL requests to custom domain funnels.streamlo.tv
+    if (host === 'funnels.streamlo.tv' || host.includes('streamlo.tv')) {
       console.log(`[Default Router] Routing funnels.streamlo.tv request`);
       
       const supabase = createClient(
