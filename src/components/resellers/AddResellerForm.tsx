@@ -6,11 +6,13 @@ import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import { ProviderSelect } from '@/components/customers/ProviderSelect';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -25,6 +27,18 @@ const addResellerSchema = z.object({
   provider: z.enum(['trex'], {
     required_error: 'Please select a provider',
   }).default('trex'),
+  useAdminApi: z.boolean().default(true),
+  apiKey: z.string().optional(),
+  panelUrl: z.string().optional(),
+}).refine((data) => {
+  // If not using admin API, require apiKey and panelUrl
+  if (!data.useAdminApi) {
+    return data.apiKey && data.apiKey.length > 0 && data.panelUrl && data.panelUrl.length > 0;
+  }
+  return true;
+}, {
+  message: "API Key and Panel URL are required when not using admin API",
+  path: ["apiKey"],
 });
 
 type AddResellerFormData = z.infer<typeof addResellerSchema>;
@@ -44,6 +58,9 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
       password: '',
       credits: 0,
       provider: 'trex',
+      useAdminApi: true,
+      apiKey: '',
+      panelUrl: '',
     },
   });
 
@@ -70,6 +87,9 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
           password: data.password,
           credits: data.credits,
           provider: data.provider,
+          use_admin_api: data.useAdminApi,
+          api_key: data.useAdminApi ? null : data.apiKey,
+          panel_url: data.useAdminApi ? null : data.panelUrl,
         },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -190,6 +210,72 @@ export function AddResellerForm({ onSuccess }: AddResellerFormProps) {
             </FormItem>
           )}
         />
+
+        <FormField
+          control={form.control}
+          name="useAdminApi"
+          render={({ field }) => (
+            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <FormLabel className="text-base">Use Admin API Key</FormLabel>
+                <FormDescription>
+                  When enabled, this reseller will use the admin's API keys for customer operations.
+                </FormDescription>
+              </div>
+              <FormControl>
+                <Switch
+                  checked={field.value}
+                  onCheckedChange={field.onChange}
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        {!form.watch("useAdminApi") && (
+          <>
+            <FormField
+              control={form.control}
+              name="apiKey"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Reseller API Key</FormLabel>
+                  <FormControl>
+                    <Input 
+                      type="password"
+                      placeholder="Enter reseller's API key"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    The reseller's own API key for their IPTV provider panel
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="panelUrl"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Panel URL</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="https://panel.example.com/api/api.php"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    The full API URL for the reseller's IPTV provider panel
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
 
         <div className="flex justify-end space-x-2">
           <Button 

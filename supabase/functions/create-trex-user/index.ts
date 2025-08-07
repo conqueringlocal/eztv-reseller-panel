@@ -85,10 +85,10 @@ serve(async (req) => {
       console.log('🔐 Bypassing JWT authentication for service call');
     }
 
-    // Get reseller's profile to check credits
+    // Get reseller's profile to check credits and API configuration
     const { data: reseller, error: resellerError } = await supabaseClient
       .from('profiles')
-      .select('credits, provider, name')
+      .select('credits, provider, name, use_admin_api, api_key, panel_url')
       .eq('id', resellerId)
       .single();
 
@@ -131,13 +131,18 @@ serve(async (req) => {
       );
     }
 
-    // Get API credentials from environment
-    const API_KEY = Deno.env.get('TREX_API_KEY');
-    const PANEL_URL = Deno.env.get('TREX_PANEL_URL');
+    // Determine which API credentials to use based on reseller configuration
+    let API_KEY: string;
+    let PANEL_URL: string;
 
-    if (!API_KEY) {
-      console.error('Trex API key not configured in secrets');
-      return new Response(
+    if (reseller.use_admin_api) {
+      // Use admin API keys
+      API_KEY = Deno.env.get('TREX_API_KEY')!;
+      PANEL_URL = Deno.env.get('TREX_PANEL_URL')!;
+      
+      if (!API_KEY || !PANEL_URL) {
+        console.error('Admin Trex API configuration not found');
+        return new Response(
         JSON.stringify({ error: 'Trex API key not configured. Please contact administrator.' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

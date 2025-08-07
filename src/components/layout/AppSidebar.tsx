@@ -81,12 +81,7 @@ export function AppSidebar() {
         icon: <CreditCard className="w-5 h-5" />,
       });
 
-      // Add Funnel Builder menu item
-      resellerItems.push({
-        title: 'Funnel Builder',
-        path: '/reseller/funnels',
-        icon: <Zap className="w-5 h-5" />,
-      });
+      // Funnel feature is hidden from resellers
 
       // Add Sub-Resellers menu for level 1 resellers
       if (resellerLevel === 1) {

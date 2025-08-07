@@ -133,11 +133,7 @@ function App() {
                     </ProtectedRoute>
                   } />
                   
-                  <Route path="/reseller/funnels" element={
-                    <ProtectedRoute allowedRoles={['reseller']}>
-                      <ResellerFunnels />
-                    </ProtectedRoute>
-                  } />
+                   {/* Funnel feature hidden from resellers */}
                   
                   {/* Catch-all for 404 */}
                   <Route path="*" element={<NotFound />} />

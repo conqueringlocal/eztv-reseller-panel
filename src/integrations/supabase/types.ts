@@ -403,37 +403,46 @@ export type Database = {
       }
       profiles: {
         Row: {
+          api_key: string | null
           created_at: string
           credits: number
           email: string
           id: string
           name: string
+          panel_url: string | null
           parent_reseller_id: string | null
           provider: string | null
           reseller_level: number | null
           role: Database["public"]["Enums"]["user_role"]
+          use_admin_api: boolean | null
         }
         Insert: {
+          api_key?: string | null
           created_at?: string
           credits?: number
           email: string
           id: string
           name: string
+          panel_url?: string | null
           parent_reseller_id?: string | null
           provider?: string | null
           reseller_level?: number | null
           role?: Database["public"]["Enums"]["user_role"]
+          use_admin_api?: boolean | null
         }
         Update: {
+          api_key?: string | null
           created_at?: string
           credits?: number
           email?: string
           id?: string
           name?: string
+          panel_url?: string | null
           parent_reseller_id?: string | null
           provider?: string | null
           reseller_level?: number | null
           role?: Database["public"]["Enums"]["user_role"]
+          use_admin_api?: boolean | null
         }
         Relationships: [
           {

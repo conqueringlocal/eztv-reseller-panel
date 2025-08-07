@@ -18,7 +18,7 @@ export const useResellers = (user: any, authLoading: boolean) => {
       
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, use_admin_api, api_key, panel_url')
         .eq('role', 'reseller')
         .order('name');
 

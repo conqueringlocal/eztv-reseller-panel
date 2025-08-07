@@ -57,6 +57,9 @@ export interface Reseller {
   provider?: string;
   logoUrl?: string;
   accentColor?: string;
+  use_admin_api?: boolean;
+  api_key?: string;
+  panel_url?: string;
 }
 
 export interface AppContextType {
