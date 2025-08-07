@@ -143,17 +143,26 @@ serve(async (req) => {
       if (!API_KEY || !PANEL_URL) {
         console.error('Admin Trex API configuration not found');
         return new Response(
-        JSON.stringify({ error: 'Trex API key not configured. Please contact administrator.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!PANEL_URL) {
-      console.error('Trex Panel URL not configured in secrets');
-      return new Response(
-        JSON.stringify({ error: 'Trex Panel URL not configured. Please contact administrator.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+          JSON.stringify({ error: 'Admin Trex API configuration not found' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log('🔑 Using admin API keys for Trex operations');
+    } else {
+      // Use reseller's own API keys
+      API_KEY = reseller.api_key;
+      PANEL_URL = reseller.panel_url;
+      
+      if (!API_KEY || !PANEL_URL) {
+        console.error('Reseller Trex API configuration not found');
+        return new Response(
+          JSON.stringify({ error: 'Reseller API configuration not found. Please configure your API keys.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log('🔑 Using reseller API keys for Trex operations');
     }
 
     // Generate a unique customer group ID
