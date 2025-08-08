@@ -119,6 +119,50 @@ serve(async (req) => {
 
     console.log(`💰 Credits required: ${creditsRequired}, Available: ${reseller.credits}`);
 
+    // Idempotency guard: Check for recent account creation attempts to prevent duplicates
+    if (!serviceCall) {
+      try {
+        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const { data: existingLogs, error: existingLogsError } = await supabaseClient
+          .from('credit_logs')
+          .select('id, date')
+          .eq('reseller_id', resellerId)
+          .eq('customer_name', customerData.name)
+          .eq('action', 'account_creation')
+          .eq('credits_used', creditsRequired)
+          .gte('date', tenMinutesAgo)
+          .order('date', { ascending: false })
+          .limit(1);
+
+        if (existingLogsError) {
+          console.warn('⚠️ Idempotency check failed (continuing):', existingLogsError.message);
+        } else if (existingLogs && existingLogs.length > 0) {
+          console.log('🛑 Duplicate account creation detected via recent credit log. Skipping reprocessing.');
+          const tempCustomerGroupId = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
+          return new Response(
+            JSON.stringify({
+              success: true,
+              message: 'Account creation already processed recently; skipping duplicate.',
+              alreadyProcessed: true,
+              customers: [],
+              failedConnections: [],
+              summary: {
+                totalRequested: connectionsToCreate,
+                totalCreated: 0,
+                totalFailed: 0,
+                customerGroup: tempCustomerGroupId
+              },
+              provider: 'trex',
+              creditsUsed: 0
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } catch (idemError) {
+        console.warn('⚠️ Idempotency guard encountered an error, proceeding anyway:', idemError);
+      }
+    }
+
     // Check if reseller has enough credits
     if (reseller.credits < creditsRequired) {
       console.error(`❌ Insufficient credits: ${reseller.credits} available, ${creditsRequired} required`);

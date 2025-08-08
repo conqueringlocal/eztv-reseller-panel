@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppContext } from '@/contexts/AppContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -161,11 +162,18 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
         </div>
 
         <div className="flex justify-end space-x-2">
-          <Button type="button" variant="outline" onClick={() => form.reset()}>
+          <Button type="button" variant="outline" onClick={() => form.reset()} disabled={isLoading}>
             Reset
           </Button>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? 'Creating Trial...' : `Create 24-Hour EZTV Trial`}
+          <Button type="submit" disabled={isLoading || !form.formState.isValid}>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Creating Trial...
+              </>
+            ) : (
+              `Create 24-Hour EZTV Trial`
+            )}
           </Button>
         </div>
       </form>

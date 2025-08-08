@@ -462,7 +462,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             <Button 
               type="submit" 
               className="w-full" 
-              disabled={isSubmitting}
+              disabled={isSubmitting || !form.formState.isValid}
             >
               {isSubmitting ? (
                 <>
@@ -471,9 +471,9 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
                 </>
               ) : (
                 <>
-                  Add {watchAccountType.toUpperCase()} Customer
+                  Add {watchAccountType.toUpperCase()} Customer ({totalCreditsNeeded} credits)
                   {watchAccountType === 'm3u' && watchConnections > 1 && (
-                    <span> ({watchConnections} Connections)</span>
+                    <span> • {watchConnections} Connections</span>
                   )}
                 </>
               )}
