@@ -27,7 +27,7 @@ export function getTotalConnections(customer: any): number {
     return totalConnections;
   }
   
-  if (connectionList && Array.isArray(connectionList)) {
+  if (connectionList && Array.isArray(connectionList) && connectionList.length > 0) {
     return connectionList.length;
   }
   
