@@ -58,6 +58,7 @@ export type Database = {
           id: string
           notes: string | null
           reseller_id: string
+          revenue_amount: number | null
         }
         Insert: {
           action: Database["public"]["Enums"]["credit_action"]
@@ -69,6 +70,7 @@ export type Database = {
           id?: string
           notes?: string | null
           reseller_id: string
+          revenue_amount?: number | null
         }
         Update: {
           action?: Database["public"]["Enums"]["credit_action"]
@@ -80,6 +82,7 @@ export type Database = {
           id?: string
           notes?: string | null
           reseller_id?: string
+          revenue_amount?: number | null
         }
         Relationships: [
           {
@@ -400,6 +403,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      monthly_revenue_summary: {
+        Row: {
+          average_sale_amount: number
+          created_at: string
+          credit_sales_count: number
+          id: string
+          month_year: string
+          total_revenue: number
+          updated_at: string
+        }
+        Insert: {
+          average_sale_amount?: number
+          created_at?: string
+          credit_sales_count?: number
+          id?: string
+          month_year: string
+          total_revenue?: number
+          updated_at?: string
+        }
+        Update: {
+          average_sale_amount?: number
+          created_at?: string
+          credit_sales_count?: number
+          id?: string
+          month_year?: string
+          total_revenue?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -724,6 +757,16 @@ export type Database = {
       calculate_credits_required: {
         Args: { connections?: number; duration_months?: number }
         Returns: number
+      }
+      calculate_mrr_projections: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          current_month_revenue: number
+          projected_mrr: number
+          growth_rate: number
+          avg_sale_amount: number
+          total_sales_count: number
+        }[]
       }
       calculate_renewal_credits_required: {
         Args: { customer_id_param: string; duration_months: number }

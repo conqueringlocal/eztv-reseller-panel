@@ -47,6 +47,7 @@ export interface CreditLog {
   connections_used?: number;
   notes?: string;
   customer_name?: string;
+  revenue_amount?: number;
 }
 
 export interface Reseller {

@@ -1,22 +1,33 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
+import { RevenueChart } from '@/components/dashboard/RevenueChart';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useMrrData } from '@/hooks/useMrrData';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, DollarSign, Activity, TrendingUp, AlertCircle } from 'lucide-react';
+import { Users, DollarSign, Activity, TrendingUp, AlertCircle, Calculator, Percent } from 'lucide-react';
 import { EmptyState } from '@/components/dashboard/EmptyState';
 
 export default function AdminDashboard() {
   const { customers, resellers, creditLogs, isLoading: appLoading } = useApp();
   const { isLoading: authLoading } = useAuth();
+  const { mrrData, historicalData, isLoading: mrrLoading, fetchMrrData } = useMrrData();
+
+  // Fetch MRR data when component mounts
+  useEffect(() => {
+    if (!authLoading && !appLoading) {
+      fetchMrrData();
+    }
+  }, [authLoading, appLoading, fetchMrrData]);
 
   console.log('📊 AdminDashboard: Loading states -', {
     appLoading,
     authLoading,
     customersCount: customers.length,
-    resellersCount: resellers.length
+    resellersCount: resellers.length,
+    mrrLoading
   });
 
   // Show loading state while auth or app data is loading
@@ -34,6 +45,12 @@ export default function AdminDashboard() {
   const totalCustomers = customers.length;
   const totalResellers = resellers.length;
   const totalCreditsDistributed = resellers.reduce((sum, reseller) => sum + reseller.credits, 0);
+  
+  // MRR-related calculations
+  const currentMonthRevenue = mrrData?.current_month_revenue || 0;
+  const projectedMrr = mrrData?.projected_mrr || 0;
+  const growthRate = mrrData?.growth_rate || 0;
+  const avgSaleAmount = mrrData?.avg_sale_amount || 0;
   
   // Calculate recent activity (last 30 days)
   const thirtyDaysAgo = new Date();
@@ -68,26 +85,66 @@ export default function AdminDashboard() {
           title="Total Customers"
           value={totalCustomers}
           icon={<Users className="h-5 w-5" />}
-          className="border-blue-200 bg-blue-50"
+          className="bg-card border-border"
         />
         <StatCard
           title="Total Resellers"
           value={totalResellers}
           icon={<TrendingUp className="h-5 w-5" />}
-          className="border-green-200 bg-green-50"
+          className="bg-card border-border"
         />
         <StatCard
           title="Credits Distributed"
           value={totalCreditsDistributed}
           icon={<DollarSign className="h-5 w-5" />}
-          className="border-yellow-200 bg-yellow-50"
+          className="bg-card border-border"
         />
         <StatCard
           title="Recent Activity"
           value={recentActivity}
           icon={<Activity className="h-5 w-5" />}
-          className="border-purple-200 bg-purple-50"
+          className="bg-card border-border"
         />
+      </div>
+
+      {/* MRR Dashboard Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+        <StatCard
+          title="Current Month Revenue"
+          value={`$${currentMonthRevenue.toFixed(2)}`}
+          icon={<DollarSign className="h-5 w-5" />}
+          className="bg-card border-border"
+          description="Revenue from credit sales this month"
+        />
+        <StatCard
+          title="Projected MRR"
+          value={`$${projectedMrr.toFixed(2)}`}
+          icon={<Calculator className="h-5 w-5" />}
+          className="bg-card border-border"
+          description="3-month average projection"
+          trend={growthRate > 0 ? 'up' : growthRate < 0 ? 'down' : 'neutral'}
+          trendValue={growthRate !== 0 ? `${growthRate.toFixed(1)}%` : undefined}
+        />
+        <StatCard
+          title="Average Sale Amount"
+          value={`$${avgSaleAmount.toFixed(2)}`}
+          icon={<TrendingUp className="h-5 w-5" />}
+          className="bg-card border-border"
+          description="Average revenue per credit sale"
+        />
+        <StatCard
+          title="Growth Rate"
+          value={`${growthRate.toFixed(1)}%`}
+          icon={<Percent className="h-5 w-5" />}
+          className="bg-card border-border"
+          description="Month-over-month growth"
+          trend={growthRate > 0 ? 'up' : growthRate < 0 ? 'down' : 'neutral'}
+        />
+      </div>
+
+      {/* Revenue Charts */}
+      <div className="mb-6">
+        <RevenueChart historicalData={historicalData} isLoading={mrrLoading} />
       </div>
 
       <Card>
