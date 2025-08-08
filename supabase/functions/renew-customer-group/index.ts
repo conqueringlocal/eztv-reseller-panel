@@ -150,6 +150,38 @@ serve(async (req) => {
 
     const creditsRequired = groupCustomers.length * planDuration;
 
+    // Idempotency guard: if a matching group renewal was logged very recently, return success without reprocessing
+    try {
+      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const { data: existingLogs, error: existingLogsError } = await supabaseClient
+        .from('credit_logs')
+        .select('id, date')
+        .eq('reseller_id', user.id)
+        .eq('customer_id', customerId)
+        .eq('action', 'account_creation')
+        .eq('credits_used', creditsRequired)
+        .gte('date', tenMinutesAgo)
+        .ilike('notes', 'Group renewal for%');
+
+      if (existingLogsError) {
+        console.warn('⚠️ Idempotency check failed (continuing):', existingLogsError.message);
+      } else if (existingLogs && existingLogs.length > 0) {
+        console.log('🛑 Duplicate renewal detected via recent credit log. Skipping reprocessing.');
+        return new Response(
+          JSON.stringify({
+            success: true,
+            message: 'Renewal already processed recently; skipping duplicate.',
+            alreadyProcessed: true,
+            accountsRenewed: 0,
+            creditsUsed: 0,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } catch (idemError) {
+      console.warn('⚠️ Idempotency guard encountered an error, proceeding anyway:', idemError);
+    }
+
     // Check if reseller has enough credits
     if (reseller.credits < creditsRequired) {
       console.log(`❌ Insufficient credits. Required: ${creditsRequired}, Available: ${reseller.credits}`);
