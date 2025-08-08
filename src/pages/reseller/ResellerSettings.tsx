@@ -7,7 +7,8 @@ import { useApp } from '@/contexts/AppContext';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { AccountUpdateForm } from '@/components/reseller/AccountUpdateForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { FileText, Upload, Users, Link } from 'lucide-react';
+import { FileText, Upload, Users, Link, KeyRound } from 'lucide-react';
+import { ResellerApiCredentialsForm } from '@/components/reseller/ResellerApiCredentialsForm';
 
 export default function ResellerSettings() {
   const { user } = useAuth();
@@ -175,6 +176,13 @@ export default function ResellerSettings() {
             </div>
           </CardContent>
         </Card>
+
+        <DashboardCard
+          title="Streaming API Credentials"
+          description="Manage your IPTV provider API key and panel URL"
+        >
+          {user?.id && <ResellerApiCredentialsForm userId={user.id} />}
+        </DashboardCard>
 
         <DashboardCard
           title="Account Management"

@@ -6,6 +6,7 @@ import { AppSidebar } from './AppSidebar';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
+import { ResellerApiSetupDialog } from '@/components/reseller/ResellerApiSetupDialog';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -111,6 +112,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           </header>
 
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gray-50">
+            <ResellerApiSetupDialog />
             {children}
           </main>
         </div>
