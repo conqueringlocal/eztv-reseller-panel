@@ -148,13 +148,12 @@ serve(async (req) => {
         console.log(`📡 Calling IPTV panel to create MAG user ${i} for MAC: ${uniqueMac}`);
         
         const createUrl = new URL(panelUrl);
-        createUrl.searchParams.append("api_key", iptvApiKey);
-        createUrl.searchParams.append("action", "create");
+        createUrl.searchParams.append("action", "new");
         createUrl.searchParams.append("type", "mag");
         createUrl.searchParams.append("mac", uniqueMac);
-        createUrl.searchParams.append("bouquet", customerData.packageId);
-        createUrl.searchParams.append("mag_expire", expiryTimestamp.toString());
-        createUrl.searchParams.append("is_trial", "0");
+        createUrl.searchParams.append("sub", customerData.planDuration.toString());
+        createUrl.searchParams.append("pack", customerData.packageId);
+        createUrl.searchParams.append("api_key", iptvApiKey);
 
         console.log(`🔗 MAG Creation API URL for connection ${i}: ${createUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
 
