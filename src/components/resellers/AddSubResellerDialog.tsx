@@ -145,9 +145,6 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       // Reset form and close dialog
       setFormData({ name: '', email: '', password: '', credits: 100 });
       onOpenChange(false);
-      
-      // Refresh the page to show the new sub-reseller
-      window.location.reload();
     } catch (error) {
       console.error('Unexpected error:', error);
       toast({
