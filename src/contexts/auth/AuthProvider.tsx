@@ -104,7 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authSubscription.data.subscription.unsubscribe();
       }
     };
-  }, [stableFetchUserProfile, isInitialized]);
+  }, [stableFetchUserProfile]);
 
   const logout = async () => {
     try {
