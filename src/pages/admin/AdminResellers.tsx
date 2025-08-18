@@ -32,7 +32,6 @@ export default function AdminResellers() {
   const [selectedResellerId, setSelectedResellerId] = useState<string | null>(null);
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [isAddResellerModalOpen, setIsAddResellerModalOpen] = useState(false);
-  const [creditActionType, setCreditActionType] = useState<'add' | 'remove'>('add');
   
   // Filter resellers based on search
   const filteredResellers = resellers.filter(
@@ -57,9 +56,8 @@ export default function AdminResellers() {
   };
 
   // Handle manage credits click
-  const handleManageCredits = (resellerId: string, actionType: 'add' | 'remove' = 'add') => {
+  const handleManageCredits = (resellerId: string) => {
     setSelectedResellerId(resellerId);
-    setCreditActionType(actionType);
     setIsCreditModalOpen(true);
   };
 
@@ -162,18 +160,9 @@ export default function AdminResellers() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleManageCredits(reseller.id, 'add')}
-                            className="text-green-600 border-green-600 hover:bg-green-50"
+                            onClick={() => handleManageCredits(reseller.id)}
                           >
-                            Add Credits
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleManageCredits(reseller.id, 'remove')}
-                            className="text-red-600 border-red-600 hover:bg-red-50"
-                          >
-                            Remove Credits
+                            Manage Credits
                           </Button>
                           <Button
                             size="sm"
@@ -210,20 +199,14 @@ export default function AdminResellers() {
         <Dialog open={isCreditModalOpen} onOpenChange={setIsCreditModalOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>
-                {creditActionType === 'add' ? 'Add Credits' : 'Remove Credits'}
-              </DialogTitle>
+              <DialogTitle>Manage Credits</DialogTitle>
               <DialogDescription>
-                {creditActionType === 'add' 
-                  ? 'Add credits to this reseller\'s account.' 
-                  : 'Remove credits from this reseller\'s account. Current balance: ' + 
-                    (selectedResellerId ? resellers.find(r => r.id === selectedResellerId)?.credits || 0 : 0)
-                }
+                Add or remove credits from this reseller's account.
               </DialogDescription>
             </DialogHeader>
             <CreditManageForm 
               resellerId={selectedResellerId} 
-              type={creditActionType}
+              type="add"
               onSuccess={() => {
                 setIsCreditModalOpen(false);
                 setSelectedResellerId(null);
