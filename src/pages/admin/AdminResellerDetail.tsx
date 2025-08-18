@@ -20,6 +20,7 @@ export default function AdminResellerDetail() {
   const navigate = useNavigate();
   const { resellers, customers, creditLogs, addCredits, removeCredits, refreshData } = useApp();
   const [showCreditForm, setShowCreditForm] = useState(false);
+  const [creditActionType, setCreditActionType] = useState<'add' | 'remove'>('add');
 
   const reseller = resellers.find(r => r.id === id);
   const resellerCustomers = customers.filter(c => c.resellerId === id);
@@ -176,18 +177,49 @@ export default function AdminResellerDetail() {
             <div className="flex justify-between items-center">
               <div>
                 <CardTitle>Manage Credits</CardTitle>
-                <CardDescription>Add or remove credits from this reseller</CardDescription>
+                <CardDescription>
+                  {creditActionType === 'add' 
+                    ? 'Add credits to this reseller\'s account' 
+                    : `Remove credits from this reseller's account (Current: ${totalCredits})`
+                  }
+                </CardDescription>
               </div>
-              <Button onClick={() => setShowCreditForm(!showCreditForm)}>
-                {showCreditForm ? 'Hide Form' : 'Show Form'}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant={creditActionType === 'add' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setCreditActionType('add');
+                    setShowCreditForm(true);
+                  }}
+                  className={creditActionType === 'add' ? 'bg-green-600 hover:bg-green-700' : 'text-green-600 border-green-600 hover:bg-green-50'}
+                >
+                  Add Credits
+                </Button>
+                <Button
+                  variant={creditActionType === 'remove' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => {
+                    setCreditActionType('remove');
+                    setShowCreditForm(true);
+                  }}
+                  className={creditActionType === 'remove' ? 'bg-red-600 hover:bg-red-700' : 'text-red-600 border-red-600 hover:bg-red-50'}
+                >
+                  Remove Credits
+                </Button>
+                {showCreditForm && (
+                  <Button variant="ghost" size="sm" onClick={() => setShowCreditForm(false)}>
+                    Hide Form
+                  </Button>
+                )}
+              </div>
             </div>
           </CardHeader>
           {showCreditForm && (
             <CardContent>
               <CreditManageForm 
                 resellerId={id!} 
-                type="add" 
+                type={creditActionType} 
                 onSuccess={() => setShowCreditForm(false)} 
               />
             </CardContent>
