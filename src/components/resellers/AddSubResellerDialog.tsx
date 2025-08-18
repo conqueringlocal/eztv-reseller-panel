@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -29,6 +29,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [availableCredits, setAvailableCredits] = useState<number>(0);
   const [loadingCredits, setLoadingCredits] = useState(false);
+  const loadingRef = useRef(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -36,16 +37,10 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
     credits: 100,
   });
 
-  // Fetch available credits when dialog opens
-  useEffect(() => {
-    if (open && user) {
-      fetchAvailableCredits();
-    }
-  }, [open, user]);
-
-  const fetchAvailableCredits = async () => {
-    if (!user) return;
+  const fetchAvailableCredits = useCallback(async () => {
+    if (!user || !open || loadingRef.current) return;
     
+    loadingRef.current = true;
     setLoadingCredits(true);
     try {
       const { data, error } = await supabase
@@ -68,8 +63,24 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       console.error('Unexpected error fetching credits:', error);
     } finally {
       setLoadingCredits(false);
+      loadingRef.current = false;
     }
-  };
+  }, [user?.id, open, toast]);
+
+  // Fetch available credits when dialog opens
+  useEffect(() => {
+    if (open && user && !loadingRef.current) {
+      fetchAvailableCredits();
+    }
+  }, [open, user?.id, fetchAvailableCredits]);
+
+  // Reset loading state when dialog closes
+  useEffect(() => {
+    if (!open) {
+      loadingRef.current = false;
+      setLoadingCredits(false);
+    }
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

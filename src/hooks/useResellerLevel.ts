@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -15,14 +15,19 @@ export function useResellerLevel() {
   const [resellerPath, setResellerPath] = useState<ResellerHierarchy[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
     const checkResellerLevel = async () => {
-      if (!user) {
-        setCanPurchaseCredits(false);
-        setIsLoading(false);
+      if (!user || loadingRef.current) {
+        if (!user) {
+          setCanPurchaseCredits(false);
+          setIsLoading(false);
+        }
         return;
       }
+
+      loadingRef.current = true;
 
       // Admin users can always purchase credits
       if (user.role === 'admin') {
@@ -75,11 +80,12 @@ export function useResellerLevel() {
         setResellerPath([]);
       } finally {
         setIsLoading(false);
+        loadingRef.current = false;
       }
     };
 
     checkResellerLevel();
-  }, [user]);
+  }, [user?.id]);
 
   return {
     canPurchaseCredits,
