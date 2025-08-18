@@ -30,6 +30,7 @@ export default function AdminResellers() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [selectedResellerId, setSelectedResellerId] = useState<string | null>(null);
+  const [creditAction, setCreditAction] = useState<'add' | 'remove'>('add');
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [isAddResellerModalOpen, setIsAddResellerModalOpen] = useState(false);
   
@@ -56,8 +57,9 @@ export default function AdminResellers() {
   };
 
   // Handle manage credits click
-  const handleManageCredits = (resellerId: string) => {
+  const handleManageCredits = (resellerId: string, action: 'add' | 'remove') => {
     setSelectedResellerId(resellerId);
+    setCreditAction(action);
     setIsCreditModalOpen(true);
   };
 
@@ -157,13 +159,24 @@ export default function AdminResellers() {
                       </TableCell>
                       <TableCell>
                         <div className="space-x-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleManageCredits(reseller.id)}
-                          >
-                            Manage Credits
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleManageCredits(reseller.id, 'add')}
+                              className="text-green-600 border-green-200 hover:bg-green-50"
+                            >
+                              Add Credits
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleManageCredits(reseller.id, 'remove')}
+                              className="text-red-600 border-red-200 hover:bg-red-50"
+                            >
+                              Remove Credits
+                            </Button>
+                          </div>
                           <Button
                             size="sm"
                             onClick={() => navigate(`/admin/resellers/${reseller.id}`)}
@@ -199,14 +212,19 @@ export default function AdminResellers() {
         <Dialog open={isCreditModalOpen} onOpenChange={setIsCreditModalOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Manage Credits</DialogTitle>
+              <DialogTitle>
+                {creditAction === 'add' ? 'Add Credits' : 'Remove Credits'}
+              </DialogTitle>
               <DialogDescription>
-                Add or remove credits from this reseller's account.
+                {creditAction === 'add' 
+                  ? 'Add credits to this reseller\'s account.'
+                  : 'Remove credits from this reseller\'s account.'
+                }
               </DialogDescription>
             </DialogHeader>
             <CreditManageForm 
-              resellerId={selectedResellerId} 
-              type="add"
+              resellerId={selectedResellerId!} 
+              type={creditAction}
               onSuccess={() => {
                 setIsCreditModalOpen(false);
                 setSelectedResellerId(null);

@@ -179,17 +179,30 @@ export default function AdminResellerDetail() {
                 <CardDescription>Add or remove credits from this reseller</CardDescription>
               </div>
               <Button onClick={() => setShowCreditForm(!showCreditForm)}>
-                {showCreditForm ? 'Hide Form' : 'Show Form'}
+                {showCreditForm ? 'Hide Forms' : 'Show Forms'}
               </Button>
             </div>
           </CardHeader>
           {showCreditForm && (
             <CardContent>
-              <CreditManageForm 
-                resellerId={id!} 
-                type="add" 
-                onSuccess={() => setShowCreditForm(false)} 
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-green-700">Add Credits</h3>
+                  <CreditManageForm 
+                    resellerId={id!} 
+                    type="add" 
+                    onSuccess={() => setShowCreditForm(false)} 
+                  />
+                </div>
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium text-red-700">Remove Credits</h3>
+                  <CreditManageForm 
+                    resellerId={id!} 
+                    type="remove" 
+                    onSuccess={() => setShowCreditForm(false)} 
+                  />
+                </div>
+              </div>
             </CardContent>
           )}
         </Card>
