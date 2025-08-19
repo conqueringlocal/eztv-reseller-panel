@@ -204,6 +204,27 @@ export default function ResellerSportsUpdates() {
     }
   };
 
+  // Function to sort channel info by channel number
+  const sortChannelInfo = (channelInfo: Array<{game: string; time: string; channel: string}>) => {
+    return [...channelInfo].sort((a, b) => {
+      // Extract numbers from channel names for sorting
+      const getChannelNumber = (channel: string) => {
+        const match = channel.match(/(\d+)/);
+        return match ? parseInt(match[1], 10) : 0;
+      };
+      
+      const aNum = getChannelNumber(a.channel);
+      const bNum = getChannelNumber(b.channel);
+      
+      // Sort by channel number, but keep US | channels at the end
+      if (a.channel.startsWith('US |') && !b.channel.startsWith('US |')) return 1;
+      if (!a.channel.startsWith('US |') && b.channel.startsWith('US |')) return -1;
+      if (a.channel.startsWith('US |') && b.channel.startsWith('US |')) return 0;
+      
+      return aNum - bNum;
+    });
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -323,7 +344,7 @@ export default function ResellerSportsUpdates() {
                     
                     <CardContent>
                       <div className="space-y-3">
-                        {update.channel_info.filter(info => info.game || !info.channel?.startsWith('US |')).map((info, index) => (
+                        {sortChannelInfo(update.channel_info).filter(info => info.game || !info.channel?.startsWith('US |')).map((info, index) => (
                           <div 
                             key={index}
                             className="flex items-center justify-between p-3 bg-accent/50 rounded-lg"
