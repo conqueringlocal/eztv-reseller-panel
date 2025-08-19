@@ -23,6 +23,22 @@ interface TelegramUpdate {
       username?: string;
     };
   };
+  channel_post?: {
+    message_id: number;
+    date: number;
+    text?: string;
+    caption?: string;
+    chat: {
+      id: number;
+      type: string;
+    };
+    sender_chat?: {
+      id: number;
+      title: string;
+      username?: string;
+      type: string;
+    };
+  };
 }
 
 interface ParsedSportsUpdate {
@@ -99,13 +115,23 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
 }
 
 async function processUpdate(update: TelegramUpdate) {
-  if (!update.message || !update.message.text) {
-    console.log('No text message found in update');
+  // Handle both regular messages and channel posts
+  let messageText: string | undefined;
+  let messageId: string;
+  
+  if (update.message?.text) {
+    messageText = update.message.text;
+    messageId = update.message.message_id.toString();
+  } else if (update.channel_post?.text) {
+    messageText = update.channel_post.text;
+    messageId = update.channel_post.message_id.toString();
+  } else if (update.channel_post?.caption) {
+    messageText = update.channel_post.caption;
+    messageId = update.channel_post.message_id.toString();
+  } else {
+    console.log('No text content found in update');
     return;
   }
-
-  const messageText = update.message.text;
-  const messageId = update.message.message_id.toString();
   
   // Check if we've already processed this message
   const { data: existing } = await supabase
