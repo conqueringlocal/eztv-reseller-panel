@@ -71,8 +71,12 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'TENNIS';
   } else if (upperText.includes('UEFA')) {
     sport_category = 'UEFA';
+  } else if (upperText.includes('MLS') || upperText.includes('MAJOR LEAGUE SOCCER')) {
+    sport_category = 'MLS';
   } else if (upperText.includes('PARAMOUNT+') || upperText.includes('PARAMOUNT')) {
     sport_category = 'PARAMOUNT+';
+  } else if (upperText.includes('FLO COLLEGE') || upperText.includes('FLORACINGCOLLEGE')) {
+    sport_category = 'FLO COLLEGE';
   } else if (upperText.includes('FLO RACING') || upperText.includes('FLORACING')) {
     sport_category = 'FLO RACING';
   } else if (upperText.includes('UFC') || (upperText.includes('DANA WHITE') && upperText.includes('CONTENDER SERIES') && !upperText.includes('LIVE EVENT'))) {
@@ -81,8 +85,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'DIRTVISION';
   } else if (upperText.includes('PPV') || upperText.includes('PAY-PER-VIEW') || upperText.includes('LIVE EVENT') || upperText.includes('STAN EVENT')) {
     sport_category = 'PPV';
-  } else if (upperText.includes('SOCCER') || upperText.includes('FOOTBALL')) {
-    sport_category = 'SOCCER';
+  } else {
+    sport_category = 'PPV'; // Default fallback category
   }
 
   // Parse game information and channels

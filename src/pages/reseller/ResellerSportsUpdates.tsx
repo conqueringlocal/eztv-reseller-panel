@@ -28,7 +28,7 @@ export default function ResellerSportsUpdates() {
   const [activeTab, setActiveTab] = useState('ALL');
   const { toast } = useToast();
 
-  const sportCategories = ['ALL', 'MLB', 'MILB', 'NBA', 'WNBA', 'NFL', 'TENNIS', 'SOCCER', 'UEFA', 'UFC', 'PPV', 'PARAMOUNT+', 'DIRTVISION', 'RACING', 'FLO RACING', 'GENERAL'];
+  const sportCategories = ['ALL', 'MLB', 'MILB', 'NBA', 'WNBA', 'NFL', 'TENNIS', 'UEFA', 'MLS', 'UFC', 'PPV', 'PARAMOUNT+', 'DIRTVISION', 'FLO RACING', 'FLO COLLEGE'];
 
   const fetchUpdates = async () => {
     try {
@@ -179,15 +179,14 @@ export default function ResellerSportsUpdates() {
       'WNBA': 'bg-pink-500',
       'NFL': 'bg-green-500',
       'TENNIS': 'bg-yellow-500',
-      'SOCCER': 'bg-purple-500',
       'UEFA': 'bg-indigo-500',
+      'MLS': 'bg-emerald-500',
       'UFC': 'bg-red-600',
       'PPV': 'bg-red-500',
       'PARAMOUNT+': 'bg-blue-600',
       'DIRTVISION': 'bg-stone-600',
-      'RACING': 'bg-amber-500',
       'FLO RACING': 'bg-orange-500',
-      'GENERAL': 'bg-gray-500'
+      'FLO COLLEGE': 'bg-teal-500'
     };
     return colors[category] || 'bg-gray-500';
   };
