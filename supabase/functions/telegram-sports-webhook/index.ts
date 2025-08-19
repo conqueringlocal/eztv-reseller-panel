@@ -67,6 +67,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'NFL';
   } else if (upperText.includes('TENNIS')) {
     sport_category = 'TENNIS';
+  } else if (upperText.includes('UFC') || upperText.includes('DANA WHITE') || upperText.includes('CONTENDER SERIES')) {
+    sport_category = 'UFC';
   } else if (upperText.includes('DIRTVISION')) {
     sport_category = 'DIRTVISION';
   } else if (upperText.includes('PPV') || upperText.includes('PAY-PER-VIEW') || upperText.includes('LIVE EVENT') || upperText.includes('STAN EVENT')) {
