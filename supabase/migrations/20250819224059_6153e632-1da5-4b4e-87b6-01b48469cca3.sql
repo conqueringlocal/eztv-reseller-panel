@@ -1,0 +1,43 @@
+-- Fix the existing tennis record to properly parse individual tennis events
+UPDATE sports_ppv_updates 
+SET channel_info = '[
+  {"game": "US Open: Court 14 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 01"},
+  {"game": "US Open: Court 11 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 02"},
+  {"game": "US Open: Court 16 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 03"},
+  {"game": "US Open: Court 10 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 04"},
+  {"game": "US Open: Court 5 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 05"},
+  {"game": "US Open: Court 13 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 06"},
+  {"game": "US Open: Stadium 17 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 07"},
+  {"game": "US Open: Court 15 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 08"},
+  {"game": "US Open: Court 6 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 09"},
+  {"game": "US Open: 2025 US Open Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 10"},
+  {"game": "US Open: Court 4 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 11"},
+  {"game": "US Open: Court 8 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 12"},
+  {"game": "US Open: Arthur Ashe Mixed Doubles Championship (First & Second Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 13"},
+  {"game": "US Open: Louis Armstrong Stadium Mixed Doubles Championship (First & Second Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 14"},
+  {"game": "US Open: Court 9 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 15"},
+  {"game": "US Open: Court 7 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 16"},
+  {"game": "US Open: Court 12 Qualifying (First Round)", "time": "Aug 19 11:00 AM", "channel": "Tennis 17"},
+  {"game": "Zakharova, Anastasia vs Baptiste, Hailey", "time": "Aug 19 17:00 PM - WTA Cleveland", "channel": "Tennis 18"},
+  {"game": "Detiuc A, Skoch M vs Aoyama S, Wang Y", "time": "Aug 19 18:00 PM - WTA Cleveland", "channel": "Tennis 19"},
+  {"game": "Lys, Eva vs Kudermetova, Polina", "time": "Aug 19 18:10 PM - WTA Cleveland", "channel": "Tennis 20"},
+  {"game": "Sierra, Solana vs Jacquemot, Elsa", "time": "Aug 19 19:10 PM - WTA Cleveland", "channel": "Tennis 21"},
+  {"game": "Danilina A, Krunic A vs Zheng S, Zhu L", "time": "Aug 19 19:20 PM - WTA Cleveland", "channel": "Tennis 22"},
+  {"game": "Fucsovics, Marton vs Griekspoor, Tallon", "time": "Aug 19 20:00 PM - ATP Winston Salem", "channel": "Tennis 23"},
+  {"game": "Mcdonald, Mackenzie vs Darderi, Luciano", "time": "Aug 19 22:00 PM - ATP Winston Salem", "channel": "Tennis 24"},
+  {"game": "Rodriguez, Victoria vs Sramkova, Rebecca", "time": "Aug 19 23:00 PM - WTA Monterrey", "channel": "Tennis 25"},
+  {"game": "Gleason Q, Martins I vs Kichenok L, Perez E", "time": "Aug 19 23:30 PM - WTA Monterrey", "channel": "Tennis 26"},
+  {"game": "Tsitsipas, Stefanos vs Bu, Yunchaokete", "time": "Aug 20 00:30 AM - ATP Winston Salem", "channel": "Tennis 27"},
+  {"game": "Li, Ann vs Jovic, Iva", "time": "Aug 20 00:30 AM - WTA Cleveland", "channel": "Tennis 28"},
+  {"game": "Bucsa, Cristina vs Parks, Alycia", "time": "Aug 20 00:40 AM - WTA Monterrey", "channel": "Tennis 29"},
+  {"game": "Bondar A, Piter K vs Kalashnikova O, Niculescu M", "time": "Aug 20 01:00 AM - WTA Monterrey", "channel": "Tennis 30"},
+  {"game": "Pavlyuchenkova, Anastasia vs Ruzic, Antonia", "time": "Aug 20 01:00 AM - WTA Monterrey", "channel": "Tennis 31"},
+  {"game": "Sonego, Lorenzo vs Dostanic, Stefan", "time": "Aug 20 01:40 AM - ATP Winston Salem", "channel": "Tennis 32"},
+  {"game": "Lamens S, Schuurs D vs Bennett A, Frey A", "time": "Aug 20 01:40 AM - WTA Cleveland", "channel": "Tennis 33"},
+  {"game": "Jeanjean, Leolia vs Cocciaretto, Elisabetta", "time": "Aug 20 01:50 AM - WTA Monterrey", "channel": "Tennis 34"},
+  {"game": "Tomljanovic, Ajla vs Zarazua, Renata", "time": "Aug 20 03:30 AM - WTA Monterrey", "channel": "Tennis 35"},
+  {"game": "Noskova, Linda vs Sun, Lulu", "time": "Aug 20 04:40 AM - WTA Monterrey", "channel": "Tennis 36"},
+  {"game": "", "time": "", "channel": "US | TENNIS PPV"}
+]'::jsonb
+WHERE sport_category = 'TENNIS' 
+AND id = '0eaf701d-af91-413e-a465-2781ce9f8f3e';
