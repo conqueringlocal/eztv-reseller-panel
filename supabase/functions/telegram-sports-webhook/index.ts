@@ -59,6 +59,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
   
   if (upperText.includes('MLB') || upperText.includes('BASEBALL')) {
     sport_category = 'MLB';
+  } else if (upperText.includes('MILB') || upperText.includes('MINOR LEAGUE BASEBALL')) {
+    sport_category = 'MILB';
   } else if (upperText.includes('NBA') || upperText.includes('BASKETBALL')) {
     sport_category = 'NBA';
   } else if (upperText.includes('WNBA')) {
@@ -103,6 +105,30 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         game: teams.trim(),
         time: startTime.trim(),
         channel: channel.trim()
+      });
+      continue;
+    }
+    
+    // Parse MILB format: "MILB 1 | Team vs Team start:2025-08-19 19:20:00 stop:2025-08-20 02:33:20"
+    const milbMatch = line.match(/^(MILB\s+\d+)\s*\|\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    if (milbMatch) {
+      const [, channel, teams, startTime] = milbMatch;
+      channel_info.push({
+        game: teams.trim(),
+        time: startTime.trim(),
+        channel: channel.trim()
+      });
+      continue;
+    }
+    
+    // Parse Milb format: "Milb 01 :Team vs Team @ Aug 19 1:35 PM"
+    const milbAltMatch = line.match(/^Milb\s+(\d+)\s*:(.+?)\s+@\s+(.+)$/);
+    if (milbAltMatch) {
+      const [, gameNumber, matchup, dateTime] = milbAltMatch;
+      channel_info.push({
+        game: matchup.trim(),
+        time: dateTime.trim(),
+        channel: `Milb ${gameNumber}`
       });
       continue;
     }
