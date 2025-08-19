@@ -626,6 +626,42 @@ export type Database = {
         }
         Relationships: []
       }
+      sports_ppv_updates: {
+        Row: {
+          channel_info: Json | null
+          content: string
+          created_at: string
+          game_date: string
+          id: string
+          posted_to_highlevel: boolean | null
+          sport_category: string
+          telegram_message_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          channel_info?: Json | null
+          content: string
+          created_at?: string
+          game_date: string
+          id?: string
+          posted_to_highlevel?: boolean | null
+          sport_category: string
+          telegram_message_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          channel_info?: Json | null
+          content?: string
+          created_at?: string
+          game_date?: string
+          id?: string
+          posted_to_highlevel?: boolean | null
+          sport_category?: string
+          telegram_message_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       sso_audit_logs: {
         Row: {
           action: string

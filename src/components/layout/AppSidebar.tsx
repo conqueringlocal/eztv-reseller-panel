@@ -19,7 +19,8 @@ import {
   Database,
   FileText,
   UserPlus,
-  Zap
+  Zap,
+  Tv
 } from 'lucide-react';
 
 export function AppSidebar() {
@@ -71,6 +72,11 @@ export function AppSidebar() {
           title: 'Customers',
           path: '/reseller/customers',
           icon: <Users className="w-5 h-5" />,
+        },
+        {
+          title: 'Sports Updates',
+          path: '/reseller/sports-updates',
+          icon: <Tv className="w-5 h-5" />,
         },
       ];
 

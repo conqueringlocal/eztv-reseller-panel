@@ -23,6 +23,7 @@ import AdminLogs from "./pages/admin/AdminLogs";
 import AdminSettings from "./pages/admin/AdminSettings";
 import ResellerDashboard from "./pages/reseller/ResellerDashboard";
 import ResellerCustomers from "./pages/reseller/ResellerCustomers";
+import ResellerSportsUpdates from "./pages/reseller/ResellerSportsUpdates";
 import ResellerCredits from "./pages/reseller/ResellerCredits";
 import ResellerSubResellers from "./pages/reseller/ResellerSubResellers";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
@@ -111,6 +112,12 @@ function App() {
                   <Route path="/reseller/customers" element={
                     <ProtectedRoute allowedRoles={['reseller']}>
                       <ResellerCustomers />
+                    </ProtectedRoute>
+                  } />
+                  
+                  <Route path="/reseller/sports-updates" element={
+                    <ProtectedRoute allowedRoles={['reseller']}>
+                      <ResellerSportsUpdates />
                     </ProtectedRoute>
                   } />
                   
