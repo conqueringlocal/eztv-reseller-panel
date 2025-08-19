@@ -67,6 +67,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'NFL';
   } else if (upperText.includes('TENNIS')) {
     sport_category = 'TENNIS';
+  } else if (upperText.includes('PARAMOUNT+') || upperText.includes('PARAMOUNT')) {
+    sport_category = 'PARAMOUNT+';
   } else if (upperText.includes('UFC') || (upperText.includes('DANA WHITE') && upperText.includes('CONTENDER SERIES') && !upperText.includes('LIVE EVENT'))) {
     sport_category = 'UFC';
   } else if (upperText.includes('DIRTVISION')) {
@@ -121,6 +123,18 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         game: eventName.trim(),
         time: dateTime.trim(),
         channel: `Tennis ${gameNumber}`
+      });
+      continue;
+    }
+    
+    // Parse Paramount+ format: "Paramount+ 01 :English Football League: Luton Town vs Wigan Athletic @ Aug 19 2:35 PM"
+    const paramountMatch = line.match(/^Paramount\+\s+(\d+)\s*:(.+?)\s+@\s+(.+)$/);
+    if (paramountMatch) {
+      const [, gameNumber, eventName, dateTime] = paramountMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: dateTime.trim(),
+        channel: `Paramount+ ${gameNumber}`
       });
       continue;
     }

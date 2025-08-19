@@ -28,7 +28,7 @@ export default function ResellerSportsUpdates() {
   const [activeTab, setActiveTab] = useState('ALL');
   const { toast } = useToast();
 
-  const sportCategories = ['ALL', 'MLB', 'NBA', 'WNBA', 'NFL', 'TENNIS', 'SOCCER', 'UFC', 'PPV', 'DIRTVISION', 'RACING', 'GENERAL'];
+  const sportCategories = ['ALL', 'MLB', 'NBA', 'WNBA', 'NFL', 'TENNIS', 'SOCCER', 'UFC', 'PPV', 'PARAMOUNT+', 'DIRTVISION', 'RACING', 'GENERAL'];
 
   const fetchUpdates = async () => {
     try {
@@ -160,6 +160,7 @@ export default function ResellerSportsUpdates() {
       'SOCCER': 'bg-purple-500',
       'UFC': 'bg-red-600',
       'PPV': 'bg-red-500',
+      'PARAMOUNT+': 'bg-blue-600',
       'DIRTVISION': 'bg-stone-600',
       'RACING': 'bg-amber-500',
       'GENERAL': 'bg-gray-500'
