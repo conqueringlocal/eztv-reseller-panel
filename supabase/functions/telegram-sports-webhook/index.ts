@@ -78,12 +78,36 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     
-    // Skip header lines and empty lines
-    if (!line || line.includes('Updates') || line.includes('----') || line.length < 10) {
+    // Skip empty lines and footers
+    if (!line || line.includes('Enjoy.') || line.length < 5) {
       continue;
     }
     
-    // Look for patterns like "Team vs Team - Time - Channel XXX"
+    // Parse MLB format: "MLB 1 | Brewers x Cubs start:2025-08-19 19:20:00 stop:2025-08-20 02:33:20"
+    const mlbMatch = line.match(/^(MLB\s+\d+)\s*\|\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    if (mlbMatch) {
+      const [, channel, teams, startTime] = mlbMatch;
+      channel_info.push({
+        game: teams.trim(),
+        time: startTime.trim(),
+        channel: channel.trim()
+      });
+      continue;
+    }
+    
+    // Parse channel list format: "US| MLB PPV" or "CA| PRIME PPV ᴿᴬᵂ"
+    const channelMatch = line.match(/^([A-Z]{2})\|\s*(.+)$/);
+    if (channelMatch) {
+      const [, region, channelName] = channelMatch;
+      channel_info.push({
+        game: '',
+        time: '',
+        channel: `${region} | ${channelName.trim()}`
+      });
+      continue;
+    }
+    
+    // Generic fallback for other sport formats with patterns like "Team vs Team - Time - Channel"
     const gamePattern = /(.+?)\s*-\s*(\d{1,2}:\d{2}\s*[APap][Mm].*?)\s*-\s*.*(Channel\s*\d+|Ch\s*\d+)/i;
     const match = line.match(gamePattern);
     
@@ -94,19 +118,6 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         time: time.trim(),
         channel: channel.trim()
       });
-    } else {
-      // Alternative pattern for different formats
-      const altPattern = /(.+?)\s+(\d{1,2}:\d{2}\s*[APap][Mm].*?)\s+(Channel\s*\d+|Ch\s*\d+)/i;
-      const altMatch = line.match(altPattern);
-      
-      if (altMatch) {
-        const [, game, time, channel] = altMatch;
-        channel_info.push({
-          game: game.trim(),
-          time: time.trim(),
-          channel: channel.trim()
-        });
-      }
     }
   }
 
