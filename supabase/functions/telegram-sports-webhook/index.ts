@@ -69,6 +69,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'TENNIS';
   } else if (upperText.includes('PARAMOUNT+') || upperText.includes('PARAMOUNT')) {
     sport_category = 'PARAMOUNT+';
+  } else if (upperText.includes('FLO RACING') || upperText.includes('FLORACING')) {
+    sport_category = 'FLO RACING';
   } else if (upperText.includes('UFC') || (upperText.includes('DANA WHITE') && upperText.includes('CONTENDER SERIES') && !upperText.includes('LIVE EVENT'))) {
     sport_category = 'UFC';
   } else if (upperText.includes('DIRTVISION')) {
@@ -135,6 +137,18 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         game: eventName.trim(),
         time: dateTime.trim(),
         channel: `Paramount+ ${gameNumber}`
+      });
+      continue;
+    }
+    
+    // Parse Flo Racing format: "Flo Racing 01 :PBR RidePass @ Aug 19 5:00 PM"
+    const floRacingMatch = line.match(/^Flo Racing\s+(\d+)\s*:(.+?)\s+@\s+(.+)$/);
+    if (floRacingMatch) {
+      const [, gameNumber, eventName, dateTime] = floRacingMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: dateTime.trim(),
+        channel: `Flo Racing ${gameNumber}`
       });
       continue;
     }
