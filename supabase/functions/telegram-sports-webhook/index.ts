@@ -100,13 +100,13 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     }
     
     // Parse WNBA format: "WNBA 1 Minnesota Lynx @ New York Liberty start:2025-08-20 00:00:00 stop:2025-08-20 02:00:00"
-    const wnbaMatch = line.match(/^(WNBA\s+\d+)\s+(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    const wnbaMatch = line.match(/^WNBA\s+(\d+)\s+(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
     if (wnbaMatch) {
-      const [, channel, teams, startTime] = wnbaMatch;
+      const [, gameNumber, teams, startTime] = wnbaMatch;
       channel_info.push({
         game: teams.trim(),
         time: startTime.trim(),
-        channel: channel.trim()
+        channel: `WNBA ${gameNumber}`
       });
       continue;
     }
