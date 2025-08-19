@@ -65,10 +65,12 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'NFL';
   } else if (upperText.includes('TENNIS')) {
     sport_category = 'TENNIS';
-  } else if (upperText.includes('PPV') || upperText.includes('PAY-PER-VIEW')) {
+  } else if (upperText.includes('PPV') || upperText.includes('PAY-PER-VIEW') || upperText.includes('LIVE EVENT') || upperText.includes('STAN EVENT')) {
     sport_category = 'PPV';
   } else if (upperText.includes('SOCCER') || upperText.includes('FOOTBALL')) {
     sport_category = 'SOCCER';
+  } else if (upperText.includes('DIRTVISION')) {
+    sport_category = 'RACING';
   }
 
   // Parse game information and channels
@@ -95,14 +97,50 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
       continue;
     }
     
-    // Parse channel list format: "US| MLB PPV" or "CA| PRIME PPV ᴿᴬᵂ"
-    const channelMatch = line.match(/^([A-Z]{2})\|\s*(.+)$/);
+    // Parse LIVE EVENT format: "LIVE EVENT 04 -8PM Dana Whites Contender Series Week 2"
+    const liveEventMatch = line.match(/^LIVE EVENT\s+(\d+)\s+-(.+)$/);
+    if (liveEventMatch) {
+      const [, eventNumber, eventName] = liveEventMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: '', // Time is embedded in the event name
+        channel: `LIVE EVENT ${eventNumber}`
+      });
+      continue;
+    }
+    
+    // Parse STAN EVENT format: "STAN EVENT 02 | Vavassori/Errani v Rybakina/Fritz - Mixed Doubles R1 US Open 2025 // Tue 19 Aug 2025 16:00"
+    const stanEventMatch = line.match(/^STAN EVENT\s+(\d+)\s*\|\s*(.+?)\s*\/\/\s*(.+)$/);
+    if (stanEventMatch) {
+      const [, eventNumber, eventName, dateTime] = stanEventMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: dateTime.trim(),
+        channel: `STAN EVENT ${eventNumber}`
+      });
+      continue;
+    }
+    
+    // Parse DIRTVISION format: "DIRTVISION 03 - Mississippi Thunder Speedway 7:15pm"
+    const dirtvisionMatch = line.match(/^DIRTVISION\s+(\d+)\s+-\s*(.+)$/);
+    if (dirtvisionMatch) {
+      const [, channelNumber, eventName] = dirtvisionMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: '', // Time is embedded in the event name
+        channel: `DIRTVISION ${channelNumber}`
+      });
+      continue;
+    }
+    
+    // Parse US channel categories only: "US| MLB PPV" (filter out non-US channels)
+    const channelMatch = line.match(/^US\|\s*(.+)$/);
     if (channelMatch) {
-      const [, region, channelName] = channelMatch;
+      const [, channelName] = channelMatch;
       channel_info.push({
         game: '',
         time: '',
-        channel: `${region} | ${channelName.trim()}`
+        channel: `US | ${channelName.trim()}`
       });
       continue;
     }

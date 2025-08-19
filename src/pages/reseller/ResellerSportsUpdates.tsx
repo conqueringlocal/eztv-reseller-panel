@@ -28,7 +28,7 @@ export default function ResellerSportsUpdates() {
   const [activeTab, setActiveTab] = useState('ALL');
   const { toast } = useToast();
 
-  const sportCategories = ['ALL', 'MLB', 'NBA', 'NFL', 'TENNIS', 'SOCCER', 'PPV', 'GENERAL'];
+  const sportCategories = ['ALL', 'MLB', 'NBA', 'NFL', 'TENNIS', 'SOCCER', 'PPV', 'RACING', 'GENERAL'];
 
   const fetchUpdates = async () => {
     try {
@@ -156,10 +156,28 @@ export default function ResellerSportsUpdates() {
       'TENNIS': 'bg-yellow-500',
       'SOCCER': 'bg-purple-500',
       'PPV': 'bg-red-500',
+      'RACING': 'bg-amber-500',
       'GENERAL': 'bg-gray-500'
     };
     return colors[category] || 'bg-gray-500';
   };
+
+  // Extract US channel categories from all updates
+  const getUSChannelCategories = () => {
+    const categories = new Set<string>();
+    
+    updates.forEach(update => {
+      update.channel_info?.forEach(info => {
+        if (info.channel?.startsWith('US |') && !info.game) {
+          categories.add(info.channel);
+        }
+      });
+    });
+    
+    return Array.from(categories).sort();
+  };
+
+  const usChannelCategories = getUSChannelCategories();
 
   const formatTime = (timeString: string) => {
     try {
@@ -196,8 +214,35 @@ export default function ResellerSportsUpdates() {
           </div>
         </div>
 
+        {/* US Channel Categories Section */}
+        {usChannelCategories.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                📺 US Channel Categories
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {usChannelCategories.map((category, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200"
+                  >
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span className="font-medium text-blue-800">{category}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm text-muted-foreground mt-3">
+                These are the US channel categories where you can find the sports content in your IPTV system.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 lg:grid-cols-8 gap-1">
+          <TabsList className="grid grid-cols-4 lg:grid-cols-9 gap-1">
             {sportCategories.map((category) => (
               <TabsTrigger key={category} value={category} className="text-xs">
                 {category}
@@ -264,23 +309,27 @@ export default function ResellerSportsUpdates() {
                     
                     <CardContent>
                       <div className="space-y-3">
-                        {update.channel_info.map((info, index) => (
+                        {update.channel_info.filter(info => info.game || !info.channel?.startsWith('US |')).map((info, index) => (
                           <div 
                             key={index}
                             className="flex items-center justify-between p-3 bg-accent/50 rounded-lg"
                           >
                             <div className="flex-1">
-                              <div className="font-medium">{info.game}</div>
-                              <div className="text-sm text-muted-foreground flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {info.time}
-                              </div>
+                              <div className="font-medium">{info.game || 'Event Information'}</div>
+                              {info.time && (
+                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  {info.time}
+                                </div>
+                              )}
                             </div>
                             
-                            <Badge variant="secondary" className="flex items-center gap-1">
-                              <Tv className="h-3 w-3" />
-                              {info.channel}
-                            </Badge>
+                            {info.channel && (
+                              <Badge variant="secondary" className="flex items-center gap-1">
+                                <Tv className="h-3 w-3" />
+                                {info.channel}
+                              </Badge>
+                            )}
                           </div>
                         ))}
                       </div>
