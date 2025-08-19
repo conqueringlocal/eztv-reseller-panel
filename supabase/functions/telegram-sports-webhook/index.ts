@@ -61,6 +61,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'MLB';
   } else if (upperText.includes('NBA') || upperText.includes('BASKETBALL')) {
     sport_category = 'NBA';
+  } else if (upperText.includes('WNBA')) {
+    sport_category = 'WNBA';
   } else if (upperText.includes('NFL') || upperText.includes('FOOTBALL')) {
     sport_category = 'NFL';
   } else if (upperText.includes('TENNIS')) {
@@ -89,6 +91,18 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     const mlbMatch = line.match(/^(MLB\s+\d+)\s*\|\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
     if (mlbMatch) {
       const [, channel, teams, startTime] = mlbMatch;
+      channel_info.push({
+        game: teams.trim(),
+        time: startTime.trim(),
+        channel: channel.trim()
+      });
+      continue;
+    }
+    
+    // Parse WNBA format: "WNBA 1 Minnesota Lynx @ New York Liberty start:2025-08-20 00:00:00 stop:2025-08-20 02:00:00"
+    const wnbaMatch = line.match(/^(WNBA\s+\d+)\s+(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    if (wnbaMatch) {
+      const [, channel, teams, startTime] = wnbaMatch;
       channel_info.push({
         game: teams.trim(),
         time: startTime.trim(),
