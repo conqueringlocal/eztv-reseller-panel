@@ -150,6 +150,27 @@ export default function ResellerSportsUpdates() {
     ? updates 
     : updates.filter(update => update.sport_category === activeTab);
 
+  // Sort updates so that those with lower channel numbers appear first
+  const sortedUpdates = [...filteredUpdates].sort((a, b) => {
+    // If they're the same sport category, sort by lowest channel number
+    if (a.sport_category === b.sport_category) {
+      const getLowestChannelNumber = (update: SportsUpdate) => {
+        const channelNumbers = update.channel_info
+          .map(info => {
+            const match = info.channel.match(/(\d+)/);
+            return match ? parseInt(match[1], 10) : 0;
+          })
+          .filter(num => num > 0);
+        return channelNumbers.length > 0 ? Math.min(...channelNumbers) : 0;
+      };
+      
+      return getLowestChannelNumber(a) - getLowestChannelNumber(b);
+    }
+    
+    // Different sport categories, sort by creation time (most recent first)
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
+
   const getSportColor = (category: string) => {
     const colors: Record<string, string> = {
       'MLB': 'bg-blue-500',
@@ -302,7 +323,7 @@ export default function ResellerSportsUpdates() {
                   </Card>
                 ))}
               </div>
-            ) : filteredUpdates.length === 0 ? (
+            ) : sortedUpdates.length === 0 ? (
               <Card>
                 <CardContent className="text-center py-12">
                   <Tv className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -317,7 +338,7 @@ export default function ResellerSportsUpdates() {
               </Card>
             ) : (
               <div className="grid gap-4">
-                {filteredUpdates.map((update) => (
+                {sortedUpdates.map((update) => (
                   <Card key={update.id} className="hover:shadow-md transition-shadow">
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
