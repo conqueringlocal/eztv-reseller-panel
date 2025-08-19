@@ -162,11 +162,16 @@ export default function ResellerSportsUpdates() {
     return colors[category] || 'bg-gray-500';
   };
 
-  // Extract US channel categories from all updates
-  const getUSChannelCategories = () => {
+  // Extract US channel categories filtered by active tab
+  const getFilteredUSChannelCategories = (sportCategory: string) => {
     const categories = new Set<string>();
     
-    updates.forEach(update => {
+    // Filter updates by sport category first
+    const relevantUpdates = sportCategory === 'ALL' 
+      ? updates 
+      : updates.filter(update => update.sport_category === sportCategory);
+    
+    relevantUpdates.forEach(update => {
       update.channel_info?.forEach(info => {
         if (info.channel?.startsWith('US |') && !info.game) {
           categories.add(info.channel);
@@ -177,7 +182,7 @@ export default function ResellerSportsUpdates() {
     return Array.from(categories).sort();
   };
 
-  const usChannelCategories = getUSChannelCategories();
+  const filteredUSChannelCategories = getFilteredUSChannelCategories(activeTab);
 
   const formatTime = (timeString: string) => {
     try {
@@ -214,33 +219,6 @@ export default function ResellerSportsUpdates() {
           </div>
         </div>
 
-        {/* US Channel Categories Section */}
-        {usChannelCategories.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                📺 US Channel Categories
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {usChannelCategories.map((category, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200"
-                  >
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="font-medium text-blue-800">{category}</span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-muted-foreground mt-3">
-                These are the US channel categories where you can find the sports content in your IPTV system.
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="grid grid-cols-4 lg:grid-cols-9 gap-1">
             {sportCategories.map((category) => (
@@ -251,6 +229,33 @@ export default function ResellerSportsUpdates() {
           </TabsList>
 
           <TabsContent value={activeTab} className="mt-6">
+            {/* US Channel Categories Section - Filtered by active tab */}
+            {filteredUSChannelCategories.length > 0 && (
+              <Card className="mb-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    📺 {activeTab === 'ALL' ? 'US Channel Categories' : `${activeTab} Channel Categories`}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {filteredUSChannelCategories.map((category, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200"
+                      >
+                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                        <span className="font-medium text-blue-800">{category}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-3">
+                    These are the US channel categories where you can find the sports content in your IPTV system.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
             {isLoading ? (
               <div className="grid gap-4">
                 {[1, 2, 3].map((i) => (
