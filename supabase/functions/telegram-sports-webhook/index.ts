@@ -113,6 +113,18 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
       continue;
     }
     
+    // Parse Tennis format: "Tennis 01 :US Open: Court 14 Qualifying (First Round) @ Aug 19 11:00 AM"
+    const tennisMatch = line.match(/^Tennis\s+(\d+)\s*:(.+?)\s+@\s+(.+)$/);
+    if (tennisMatch) {
+      const [, gameNumber, eventName, dateTime] = tennisMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: dateTime.trim(),
+        channel: `Tennis ${gameNumber}`
+      });
+      continue;
+    }
+    
     // Parse LIVE EVENT format: "LIVE EVENT 04 -8PM Dana Whites Contender Series Week 2"
     const liveEventMatch = line.match(/^LIVE EVENT\s+(\d+)\s+-(.+)$/);
     if (liveEventMatch) {
