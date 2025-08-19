@@ -30,3 +30,9 @@ verify_jwt = false
 
 [functions.domain-router]
 verify_jwt = false
+
+[functions.telegram-sports-webhook]
+verify_jwt = false
+
+[functions.auto-post-sports-update]
+verify_jwt = false
