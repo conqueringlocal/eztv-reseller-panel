@@ -65,12 +65,12 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'NFL';
   } else if (upperText.includes('TENNIS')) {
     sport_category = 'TENNIS';
+  } else if (upperText.includes('DIRTVISION')) {
+    sport_category = 'DIRTVISION';
   } else if (upperText.includes('PPV') || upperText.includes('PAY-PER-VIEW') || upperText.includes('LIVE EVENT') || upperText.includes('STAN EVENT')) {
     sport_category = 'PPV';
   } else if (upperText.includes('SOCCER') || upperText.includes('FOOTBALL')) {
     sport_category = 'SOCCER';
-  } else if (upperText.includes('DIRTVISION')) {
-    sport_category = 'RACING';
   }
 
   // Parse game information and channels
@@ -157,6 +157,20 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         channel: channel.trim()
       });
     }
+  }
+
+  // Check if we have UK| DIRTVISION PPV and add US| DIRTVISION PPV automatically
+  const hasUkDirtvision = channel_info.some(info => 
+    info.channel && info.channel.includes('UK| DIRTVISION PPV')
+  );
+  
+  if (hasUkDirtvision) {
+    // Add US| DIRTVISION PPV channel category
+    channel_info.push({
+      game: '',
+      time: '',
+      channel: 'US | DIRTVISION PPV'
+    });
   }
 
   console.log('Parsed result:', { sport_category, channel_info });
