@@ -33,11 +33,12 @@ export default function ResellerSportsUpdates() {
   const fetchUpdates = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
       const { data, error } = await supabase
         .from('sports_ppv_updates')
         .select('*')
-        .eq('game_date', today)
+        .in('game_date', [today, tomorrow])
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -92,9 +93,10 @@ export default function ResellerSportsUpdates() {
         (payload) => {
           const newUpdate = payload.new as any;
           const today = new Date().toISOString().split('T')[0];
+          const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
           
-          // Only add if it's for today
-          if (newUpdate.game_date === today) {
+          // Only add if it's for today or tomorrow
+          if (newUpdate.game_date === today || newUpdate.game_date === tomorrow) {
             const processedUpdate: SportsUpdate = {
               ...newUpdate,
               channel_info: Array.isArray(newUpdate.channel_info) 
