@@ -67,6 +67,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'NFL';
   } else if (upperText.includes('TENNIS')) {
     sport_category = 'TENNIS';
+  } else if (upperText.includes('UEFA')) {
+    sport_category = 'UEFA';
   } else if (upperText.includes('PARAMOUNT+') || upperText.includes('PARAMOUNT')) {
     sport_category = 'PARAMOUNT+';
   } else if (upperText.includes('FLO RACING') || upperText.includes('FLORACING')) {
@@ -149,6 +151,18 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         game: eventName.trim(),
         time: dateTime.trim(),
         channel: `Flo Racing ${gameNumber}`
+      });
+      continue;
+    }
+    
+    // Parse UEFA format: "UEFA  | 01 - Crvena zvesda vs Pafos 8:00pm"
+    const uefaMatch = line.match(/^UEFA\s*\|\s*(\d+)\s*-\s*(.+?)\s+(\d{1,2}:\d{2}[ap]m)$/i);
+    if (uefaMatch) {
+      const [, gameNumber, matchup, time] = uefaMatch;
+      channel_info.push({
+        game: matchup.trim(),
+        time: time.trim(),
+        channel: `UEFA ${gameNumber.padStart(2, '0')}`
       });
       continue;
     }
