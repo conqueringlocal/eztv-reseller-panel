@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instanciate createClient with right options
+  // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "12.2.3 (519615d)"
@@ -761,18 +761,18 @@ export type Database = {
       calculate_mrr_projections: {
         Args: Record<PropertyKey, never>
         Returns: {
-          current_month_revenue: number
-          projected_mrr: number
-          growth_rate: number
           avg_sale_amount: number
+          current_month_revenue: number
+          growth_rate: number
+          projected_mrr: number
           total_sales_count: number
         }[]
       }
       calculate_renewal_credits_required: {
         Args: { customer_id_param: string; duration_months: number }
         Returns: {
-          credits_required: number
           accounts_count: number
+          credits_required: number
           customer_group_name: string
         }[]
       }
@@ -782,8 +782,8 @@ export type Database = {
       }
       check_rate_limit: {
         Args: {
-          p_identifier: string
           p_attempt_type: string
+          p_identifier: string
           p_max_attempts?: number
           p_window_minutes?: number
         }
@@ -792,9 +792,9 @@ export type Database = {
       consolidate_customer_connections: {
         Args: { customer_group_name: string; reseller_id_param: string }
         Returns: {
+          connection_details: Json
           consolidated_customer_id: string
           total_connections: number
-          connection_details: Json
         }[]
       }
       generate_api_key: {
@@ -813,8 +813,8 @@ export type Database = {
         Args: { reseller_id: string }
         Returns: {
           id: string
-          name: string
           level: number
+          name: string
         }[]
       }
       is_admin: {
@@ -824,10 +824,10 @@ export type Database = {
       log_security_event: {
         Args: {
           p_action: string
-          p_resource_type: string
-          p_resource_id?: string
-          p_success?: boolean
           p_details?: Json
+          p_resource_id?: string
+          p_resource_type: string
+          p_success?: boolean
         }
         Returns: undefined
       }
@@ -842,14 +842,14 @@ export type Database = {
           reseller_id_param: string
         }
         Returns: {
-          success: boolean
           accounts_renewed: number
           credits_used: number
           error_message: string
+          success: boolean
         }[]
       }
       update_connection_count: {
-        Args: { customer_id: string; connection_change?: number }
+        Args: { connection_change?: number; customer_id: string }
         Returns: boolean
       }
       validate_connection_limit: {
