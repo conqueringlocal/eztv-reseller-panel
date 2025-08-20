@@ -376,9 +376,9 @@ export default function ResellerSportsUpdates() {
                             </div>
                             
                             {info.channel && (
-                              <Badge variant="secondary" className="flex items-center gap-1 shrink-0 w-fit">
-                                <Tv className="h-3 w-3" />
-                                <span className="truncate">{info.channel}</span>
+                              <Badge variant="secondary" className="flex items-center gap-1 shrink-0 max-w-[200px] sm:max-w-none">
+                                <Tv className="h-3 w-3 shrink-0" />
+                                <span className="truncate text-xs">{info.channel}</span>
                               </Badge>
                             )}
                           </div>
