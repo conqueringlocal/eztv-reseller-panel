@@ -34,11 +34,12 @@ export default function ResellerSportsUpdates() {
     try {
       const today = new Date().toISOString().split('T')[0];
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
       const { data, error } = await supabase
         .from('sports_ppv_updates')
         .select('*')
-        .in('game_date', [today, tomorrow])
+        .in('game_date', [yesterday, today, tomorrow])
         .order('created_at', { ascending: false });
 
       if (error) {
