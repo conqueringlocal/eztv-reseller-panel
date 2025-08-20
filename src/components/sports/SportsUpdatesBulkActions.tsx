@@ -75,6 +75,27 @@ export const SportsUpdatesBulkActions: React.FC<SportsUpdatesBulkActionsProps> =
     return filtered;
   };
 
+  const handleQuickEmailShare = () => {
+    // Quick email share with today's updates for the current sport category
+    const todayUpdates = updates.filter(update => {
+      const today = new Date().toISOString().split('T')[0];
+      const matchesToday = update.game_date === today;
+      const matchesSport = activeTab === 'ALL' || update.sport_category === activeTab;
+      return matchesToday && matchesSport;
+    });
+    
+    if (todayUpdates.length === 0) {
+      // Fallback to all visible updates if no today updates
+      const allVisible = activeTab === 'ALL' ? updates : updates.filter(update => update.sport_category === activeTab);
+      const digest = generateDailyDigest(allVisible, { includeResellerInfo: true });
+      shareViaEmail(digest, undefined, `${activeTab === 'ALL' ? 'Sports' : activeTab} Updates`);
+    } else {
+      const digest = generateDailyDigest(todayUpdates, { includeResellerInfo: true });
+      const subject = activeTab === 'ALL' ? "Today's Sports Updates" : `Today's ${activeTab} Updates`;
+      shareViaEmail(digest, undefined, subject);
+    }
+  };
+
   const handleDailyDigest = () => {
     const filteredUpdates = getFilteredUpdates();
     const digest = generateDailyDigest(filteredUpdates, { 
@@ -135,6 +156,13 @@ export const SportsUpdatesBulkActions: React.FC<SportsUpdatesBulkActionsProps> =
             <DropdownMenuItem onClick={() => setShowDigestDialog(true)}>
               <Calendar className="h-4 w-4 mr-2" />
               Create Daily Digest
+            </DropdownMenuItem>
+            
+            <DropdownMenuSeparator />
+            
+            <DropdownMenuItem onClick={handleQuickEmailShare}>
+              <Mail className="h-4 w-4 mr-2" />
+              Share via Email
             </DropdownMenuItem>
             
             <DropdownMenuItem onClick={handleExportPDF}>
