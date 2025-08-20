@@ -58,8 +58,10 @@ export const SecurityDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchMetrics();
-  }, [user]);
+    if (user?.role === 'admin') {
+      fetchMetrics();
+    }
+  }, [user?.role]);
 
   const getMetricIcon = (metricName: string) => {
     switch (metricName) {

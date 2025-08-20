@@ -76,8 +76,10 @@ export const SecurityAuditLogs: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchLogs();
-  }, [user, searchTerm, actionFilter, successFilter]);
+    if (user?.role === 'admin') {
+      fetchLogs();
+    }
+  }, [user?.role, searchTerm, actionFilter, successFilter]);
 
   const getActionIcon = (action: string, success: boolean) => {
     if (!success) {
