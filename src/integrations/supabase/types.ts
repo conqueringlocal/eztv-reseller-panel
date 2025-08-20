@@ -950,6 +950,19 @@ export type Database = {
           success: boolean
         }[]
       }
+      transfer_credits_to_sub_reseller: {
+        Args: {
+          credits_to_transfer: number
+          notes_param?: string
+          parent_reseller_id_param: string
+          sub_reseller_id_param: string
+        }
+        Returns: {
+          error_message: string
+          new_balance: number
+          success: boolean
+        }[]
+      }
       update_connection_count: {
         Args: { connection_change?: number; customer_id: string }
         Returns: boolean

@@ -116,88 +116,24 @@ export const ParentCreditManagement: React.FC = () => {
           return;
         }
 
-        // Transfer credits
-        const newParentCredits = parentProfile.credits - request.credits_requested;
-        
-        // Update parent credits
-        const { error: parentUpdateError } = await supabase
-          .from('profiles')
-          .update({ credits: newParentCredits })
-          .eq('id', user.id);
+        // Use the proper credit transfer function
+        const { data: transferResult, error: transferError } = await supabase
+          .rpc('transfer_credits_to_sub_reseller', {
+            parent_reseller_id_param: user.id,
+            sub_reseller_id_param: request.requester_id,
+            credits_to_transfer: request.credits_requested,
+            notes_param: `Credits received from parent reseller`
+          });
 
-        if (parentUpdateError) {
-          console.error('Error updating parent credits:', parentUpdateError);
+        if (transferError || !transferResult || !transferResult[0]?.success) {
+          console.error('Error transferring credits:', transferError);
           toast({
             title: "Error",
-            description: "Failed to deduct credits from your account",
+            description: transferResult?.[0]?.error_message || "Failed to transfer credits",
             variant: "destructive",
           });
           return;
         }
-
-        // Get current sub-reseller credits and add to them
-        const { data: subResellerProfile, error: subResellerError } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', request.requester_id)
-          .single();
-
-        if (subResellerError || !subResellerProfile) {
-          // Rollback parent credits
-          await supabase
-            .from('profiles')
-            .update({ credits: parentProfile.credits })
-            .eq('id', user.id);
-          
-          toast({
-            title: "Error",
-            description: "Failed to get sub-reseller credit balance",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        const newSubResellerCredits = subResellerProfile.credits + request.credits_requested;
-
-        // Update sub-reseller credits
-        const { error: subResellerUpdateError } = await supabase
-          .from('profiles')
-          .update({ credits: newSubResellerCredits })
-          .eq('id', request.requester_id);
-
-        if (subResellerUpdateError) {
-          // Rollback parent credits
-          await supabase
-            .from('profiles')
-            .update({ credits: parentProfile.credits })
-            .eq('id', user.id);
-          
-          console.error('Error updating sub-reseller credits:', subResellerUpdateError);
-          toast({
-            title: "Error",
-            description: "Failed to add credits to sub-reseller account",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Log the credit transfer
-        await supabase
-          .from('credit_logs')
-          .insert([
-            {
-              reseller_id: user.id,
-              action: 'deduction',
-              credits_used: request.credits_requested,
-              notes: `Credit transfer to sub-reseller: ${request.profiles.name}`,
-            },
-            {
-              reseller_id: request.requester_id,
-              action: 'addition',
-              credits_used: request.credits_requested,
-              notes: `Credits received from parent reseller`,
-            }
-          ]);
       }
 
       // Update request status
