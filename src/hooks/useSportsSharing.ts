@@ -23,7 +23,6 @@ interface ShareOptions {
 }
 
 export const useSportsSharing = () => {
-  const [isSharing, setIsSharing] = useState(false);
   const { toast } = useToast();
 
   const formatSportsUpdate = (update: SportsUpdate, options: ShareOptions = {}) => {
@@ -182,8 +181,9 @@ export const useSportsSharing = () => {
 
   const generatePublicLink = async (updateId: string) => {
     try {
-      // In a real implementation, you'd create a public sharing link
-      const baseUrl = window.location.origin;
+      // Use custom domain if available, otherwise fallback to current origin
+      const customDomain = localStorage.getItem('customDomain');
+      const baseUrl = customDomain || window.location.origin;
       const publicLink = `${baseUrl}/sports-update/${updateId}`;
       
       await copyToClipboard(publicLink);
@@ -203,36 +203,6 @@ export const useSportsSharing = () => {
     }
   };
 
-  const sendToHighLevel = async (resellerId: string, message: string) => {
-    setIsSharing(true);
-    try {
-      const { error } = await supabase.functions.invoke('send-highlevel-message', {
-        body: {
-          message,
-          resellerId,
-          messageType: 'SMS'
-        }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Message sent via HighLevel",
-      });
-      return true;
-    } catch (error) {
-      console.error('Error sending to HighLevel:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send via HighLevel",
-        variant: "destructive",
-      });
-      return false;
-    } finally {
-      setIsSharing(false);
-    }
-  };
 
   const exportToPDF = async (updates: SportsUpdate[], title: string = 'Sports Updates') => {
     try {
@@ -312,8 +282,6 @@ export const useSportsSharing = () => {
     shareViaSMS,
     shareViaEmail,
     generatePublicLink,
-    sendToHighLevel,
-    exportToPDF,
-    isSharing
+    exportToPDF
   };
 };

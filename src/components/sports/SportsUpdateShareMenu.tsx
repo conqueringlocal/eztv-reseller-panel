@@ -57,9 +57,7 @@ export const SportsUpdateShareMenu: React.FC<SportsUpdateShareMenuProps> = ({
     shareViaWhatsApp,
     shareViaSMS,
     shareViaEmail,
-    generatePublicLink,
-    sendToHighLevel,
-    isSharing
+    generatePublicLink
   } = useSportsSharing();
 
   const handleQuickCopy = () => {
@@ -100,16 +98,6 @@ export const SportsUpdateShareMenu: React.FC<SportsUpdateShareMenuProps> = ({
     setShowCustomizeDialog(false);
   };
 
-  const handleHighLevelShare = () => {
-    if (!resellerId) return;
-    
-    const formatted = formatSportsUpdate(update, { 
-      includeResellerInfo, 
-      customMessage 
-    });
-    sendToHighLevel(resellerId, formatted);
-  };
-
   return (
     <>
       <DropdownMenu>
@@ -146,16 +134,6 @@ export const SportsUpdateShareMenu: React.FC<SportsUpdateShareMenuProps> = ({
           </DropdownMenuItem>
           
           <DropdownMenuSeparator />
-          
-          {resellerId && (
-            <DropdownMenuItem 
-              onClick={handleHighLevelShare}
-              disabled={isSharing}
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Send via HighLevel
-            </DropdownMenuItem>
-          )}
           
           <DropdownMenuItem onClick={() => setShowCustomizeDialog(true)}>
             <Settings className="h-4 w-4 mr-2" />
@@ -202,18 +180,6 @@ export const SportsUpdateShareMenu: React.FC<SportsUpdateShareMenuProps> = ({
                 <Copy className="h-4 w-4 mr-2" />
                 Copy Custom
               </Button>
-              
-              {resellerId && (
-                <Button
-                  onClick={handleHighLevelShare}
-                  disabled={isSharing}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  Send HighLevel
-                </Button>
-              )}
             </div>
           </div>
         </DialogContent>

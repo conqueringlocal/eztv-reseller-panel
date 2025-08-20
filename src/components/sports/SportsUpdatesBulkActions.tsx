@@ -59,9 +59,7 @@ export const SportsUpdatesBulkActions: React.FC<SportsUpdatesBulkActionsProps> =
     copyToClipboard,
     shareViaWhatsApp,
     shareViaEmail,
-    exportToPDF,
-    sendToHighLevel,
-    isSharing
+    exportToPDF
   } = useSportsSharing();
 
   const getFilteredUpdates = () => {
@@ -105,16 +103,6 @@ export const SportsUpdatesBulkActions: React.FC<SportsUpdatesBulkActionsProps> =
     shareViaEmail(digest, undefined, 'Daily Sports Digest');
   };
 
-  const handleDigestHighLevel = () => {
-    if (!resellerId) return;
-    
-    const filteredUpdates = getFilteredUpdates();
-    const digest = generateDailyDigest(filteredUpdates, { 
-      customMessage, 
-      includeResellerInfo 
-    });
-    sendToHighLevel(resellerId, digest);
-  };
 
   const handleExportPDF = () => {
     const filteredUpdates = getFilteredUpdates();
@@ -153,18 +141,6 @@ export const SportsUpdatesBulkActions: React.FC<SportsUpdatesBulkActionsProps> =
               <Download className="h-4 w-4 mr-2" />
               Export to PDF
             </DropdownMenuItem>
-            
-            <DropdownMenuSeparator />
-            
-            {resellerId && (
-              <DropdownMenuItem 
-                onClick={handleDigestHighLevel}
-                disabled={isSharing}
-              >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Send All via HighLevel
-              </DropdownMenuItem>
-            )}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -247,21 +223,11 @@ export const SportsUpdatesBulkActions: React.FC<SportsUpdatesBulkActionsProps> =
               <Button 
                 onClick={handleDigestEmail}
                 variant="outline"
+                className="col-span-2"
               >
                 <Mail className="h-4 w-4 mr-2" />
                 Email
               </Button>
-              
-              {resellerId && (
-                <Button
-                  onClick={handleDigestHighLevel}
-                  disabled={isSharing}
-                  variant="outline"
-                >
-                  <ExternalLink className="h-4 w-4 mr-2" />
-                  HighLevel
-                </Button>
-              )}
             </div>
           </div>
         </DialogContent>
