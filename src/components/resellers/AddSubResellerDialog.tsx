@@ -18,11 +18,13 @@ import { Loader2 } from 'lucide-react';
 interface AddSubResellerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSuccess?: () => void;
 }
 
 export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
   open,
   onOpenChange,
+  onSuccess,
 }) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -156,6 +158,11 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       // Reset form and close dialog
       setFormData({ name: '', email: '', password: '', credits: 100 });
       onOpenChange(false);
+      
+      // Call onSuccess callback if provided
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error) {
       console.error('Unexpected error:', error);
       toast({
