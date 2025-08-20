@@ -179,29 +179,6 @@ export const useSportsSharing = () => {
     window.open(url, '_blank');
   };
 
-  const generatePublicLink = async (updateId: string) => {
-    try {
-      // Use custom domain if available, otherwise fallback to current origin
-      const customDomain = localStorage.getItem('customDomain');
-      const baseUrl = customDomain || window.location.origin;
-      const publicLink = `${baseUrl}/sports-update/${updateId}`;
-      
-      await copyToClipboard(publicLink);
-      toast({
-        title: "Link Generated",
-        description: "Public sharing link copied to clipboard",
-      });
-      
-      return publicLink;
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to generate public link",
-        variant: "destructive",
-      });
-      return null;
-    }
-  };
 
 
   const exportToPDF = async (updates: SportsUpdate[], title: string = 'Sports Updates') => {
@@ -281,7 +258,6 @@ export const useSportsSharing = () => {
     shareViaWhatsApp,
     shareViaSMS,
     shareViaEmail,
-    generatePublicLink,
     exportToPDF
   };
 };

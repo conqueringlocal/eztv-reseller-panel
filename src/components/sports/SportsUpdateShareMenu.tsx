@@ -17,10 +17,7 @@ import {
   MessageCircle, 
   Phone, 
   Mail, 
-  Link2,
-  Download,
-  Settings,
-  ExternalLink
+  Settings
 } from 'lucide-react';
 import { useSportsSharing } from '@/hooks/useSportsSharing';
 
@@ -56,8 +53,7 @@ export const SportsUpdateShareMenu: React.FC<SportsUpdateShareMenuProps> = ({
     copyToClipboard,
     shareViaWhatsApp,
     shareViaSMS,
-    shareViaEmail,
-    generatePublicLink
+    shareViaEmail
   } = useSportsSharing();
 
   const handleQuickCopy = () => {
@@ -126,11 +122,6 @@ export const SportsUpdateShareMenu: React.FC<SportsUpdateShareMenuProps> = ({
           <DropdownMenuItem onClick={handleEmailShare}>
             <Mail className="h-4 w-4 mr-2" />
             Share via Email
-          </DropdownMenuItem>
-          
-          <DropdownMenuItem onClick={() => generatePublicLink(update.id)}>
-            <Link2 className="h-4 w-4 mr-2" />
-            Generate Public Link
           </DropdownMenuItem>
           
           <DropdownMenuSeparator />
