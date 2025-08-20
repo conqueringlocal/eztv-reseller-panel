@@ -363,12 +363,12 @@ export default function ResellerSportsUpdates() {
                         {sortChannelInfo(update.channel_info).filter(info => info.game || !info.channel?.startsWith('US |')).map((info, index) => (
                           <div 
                             key={index}
-                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-accent/50 rounded-lg"
+                            className="flex flex-col gap-2 p-3 bg-accent/50 rounded-lg"
                           >
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium truncate">{info.game || 'Event Information'}</div>
+                              <div className="font-medium text-sm">{info.game || 'Event Information'}</div>
                               {info.time && (
-                                <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                   <Clock className="h-3 w-3" />
                                   {info.time}
                                 </div>
@@ -376,7 +376,7 @@ export default function ResellerSportsUpdates() {
                             </div>
                             
                             {info.channel && (
-                              <Badge variant="secondary" className="flex items-center gap-1 shrink-0 max-w-[200px] sm:max-w-none">
+                              <Badge variant="secondary" className="flex items-center gap-1 w-fit max-w-full">
                                 <Tv className="h-3 w-3 shrink-0" />
                                 <span className="truncate text-xs">{info.channel}</span>
                               </Badge>
