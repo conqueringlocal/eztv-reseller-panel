@@ -92,6 +92,6 @@ export function useResellerLevel() {
     resellerPath,
     isLoading,
     error,
-    resellerLevel: resellerPath.length > 0 ? resellerPath[0].level : null
+    resellerLevel: resellerPath.length > 0 ? resellerPath[resellerPath.length - 1].level : null
   };
 }
