@@ -37,7 +37,12 @@ export const useSportsSharing = () => {
     
     // Sport category header
     formattedText += `🏆 ${update.sport_category} SPORTS UPDATE\n`;
-    formattedText += `📅 ${new Date(update.game_date).toLocaleDateString()}\n\n`;
+    
+    // Format the date properly to avoid timezone issues
+    const gameDate = update.game_date.includes('T') 
+      ? new Date(update.game_date).toLocaleDateString()
+      : new Date(update.game_date + 'T00:00:00').toLocaleDateString();
+    formattedText += `📅 ${gameDate}\n\n`;
     
     // Channel information
     if (update.channel_info && update.channel_info.length > 0) {
@@ -233,7 +238,9 @@ export const useSportsSharing = () => {
           <div class="update">
             <div class="sport-badge">${update.sport_category}</div>
             <h3>${update.sport_category} Updates</h3>
-            <p><strong>Date:</strong> ${new Date(update.game_date).toLocaleDateString()}</p>
+            <p><strong>Date:</strong> ${update.game_date.includes('T') 
+              ? new Date(update.game_date).toLocaleDateString()
+              : new Date(update.game_date + 'T00:00:00').toLocaleDateString()}</p>
             
             ${update.channel_info?.map(info => `
               <div class="channel-info">
