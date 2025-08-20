@@ -271,9 +271,9 @@ export default function ResellerSportsUpdates() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 lg:grid-cols-9 gap-1">
+          <TabsList className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-9 xl:grid-cols-11 gap-1 h-auto flex-wrap">
             {sportCategories.map((category) => (
-              <TabsTrigger key={category} value={category} className="text-xs">
+              <TabsTrigger key={category} value={category} className="text-xs px-2 py-1 h-8 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 {category}
               </TabsTrigger>
             ))}
@@ -289,14 +289,14 @@ export default function ResellerSportsUpdates() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                     {filteredUSChannelCategories.map((category, index) => (
                       <div
                         key={index}
-                        className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200"
+                        className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800"
                       >
                         <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span className="font-medium text-blue-800">{category}</span>
+                        <span className="font-medium text-blue-800 dark:text-blue-200 text-sm">{category}</span>
                       </div>
                     ))}
                   </div>
@@ -354,11 +354,6 @@ export default function ResellerSportsUpdates() {
                             <Clock className="h-4 w-4" />
                             {formatTime(update.created_at)}
                           </div>
-                          {update.posted_to_highlevel && (
-                            <Badge variant="outline" className="text-green-600 border-green-600">
-                              Posted to HighLevel
-                            </Badge>
-                          )}
                         </div>
                       </div>
                     </CardHeader>
@@ -368,10 +363,10 @@ export default function ResellerSportsUpdates() {
                         {sortChannelInfo(update.channel_info).filter(info => info.game || !info.channel?.startsWith('US |')).map((info, index) => (
                           <div 
                             key={index}
-                            className="flex items-center justify-between p-3 bg-accent/50 rounded-lg"
+                            className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 bg-accent/50 rounded-lg"
                           >
-                            <div className="flex-1">
-                              <div className="font-medium">{info.game || 'Event Information'}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">{info.game || 'Event Information'}</div>
                               {info.time && (
                                 <div className="text-sm text-muted-foreground flex items-center gap-1">
                                   <Clock className="h-3 w-3" />
@@ -381,9 +376,9 @@ export default function ResellerSportsUpdates() {
                             </div>
                             
                             {info.channel && (
-                              <Badge variant="secondary" className="flex items-center gap-1">
+                              <Badge variant="secondary" className="flex items-center gap-1 shrink-0 w-fit">
                                 <Tv className="h-3 w-3" />
-                                {info.channel}
+                                <span className="truncate">{info.channel}</span>
                               </Badge>
                             )}
                           </div>
