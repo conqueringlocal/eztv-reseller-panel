@@ -6,6 +6,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { Calendar, Clock, Tv, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth/AuthProvider';
+import { SportsUpdateShareMenu } from '@/components/sports/SportsUpdateShareMenu';
+import { SportsUpdatesBulkActions } from '@/components/sports/SportsUpdatesBulkActions';
 
 interface SportsUpdate {
   id: string;
@@ -27,6 +30,7 @@ export default function ResellerSportsUpdates() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('ALL');
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const sportCategories = ['ALL', 'MLB', 'MILB', 'NBA', 'WNBA', 'NFL', 'TENNIS', 'UEFA', 'MLS', 'UFC', 'PPV', 'PARAMOUNT+', 'DIRTVISION', 'FLO RACING', 'FLO COLLEGE'];
 
@@ -280,6 +284,13 @@ export default function ResellerSportsUpdates() {
           </TabsList>
 
           <TabsContent value={activeTab} className="mt-6">
+            {/* Bulk Actions */}
+            <SportsUpdatesBulkActions 
+              updates={filteredUpdates}
+              activeTab={activeTab}
+              resellerId={user?.id}
+            />
+
             {/* US Channel Categories Section - Filtered by active tab */}
             {filteredUSChannelCategories.length > 0 && (
               <Card className="mb-6">
@@ -350,10 +361,15 @@ export default function ResellerSportsUpdates() {
                         </CardTitle>
                         
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4" />
                             {formatTime(update.created_at)}
                           </div>
+                          
+                          <SportsUpdateShareMenu 
+                            update={update} 
+                            resellerId={user?.id}
+                          />
                         </div>
                       </div>
                     </CardHeader>

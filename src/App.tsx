@@ -15,6 +15,7 @@ import Login from "./pages/Login";
 import TokenAuth from "./pages/TokenAuth";
 import ResetPassword from "./pages/ResetPassword";
 import NotFound from "./pages/NotFound";
+import PublicSportsUpdate from "./pages/PublicSportsUpdate";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminResellers from "./pages/admin/AdminResellers";
 import AdminResellerDetail from "./pages/admin/AdminResellerDetail";
@@ -51,6 +52,7 @@ function App() {
                   <Route path="/auth/token" element={<TokenAuth />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
                   <Route path="/api/webhook" element={<Webhook />} />
+                  <Route path="/sports-update/:updateId" element={<PublicSportsUpdate />} />
                   
                   {/* Protected admin routes */}
                   <Route
