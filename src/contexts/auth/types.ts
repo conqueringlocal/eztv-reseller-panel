@@ -17,4 +17,5 @@ export interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   signup: (email: string, password: string, name: string, role?: UserRole) => Promise<boolean>;
+  refreshUserProfile: () => Promise<void>;
 }

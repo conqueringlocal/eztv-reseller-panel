@@ -224,9 +224,12 @@ export const ParentCreditManagement: React.FC = () => {
         description: `Credit request ${action} successfully`,
       });
 
-      // Refresh data
+      // Refresh data and trigger user profile refresh across the app
       await fetchData();
       await refreshData();
+      
+      // Broadcast refresh event for other components
+      window.dispatchEvent(new CustomEvent('creditsUpdated'));
     } catch (error) {
       console.error('Unexpected error:', error);
       toast({

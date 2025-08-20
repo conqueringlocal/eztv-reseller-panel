@@ -12,6 +12,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: () => {},
   isAuthenticated: false,
   signup: async () => false,
+  refreshUserProfile: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -35,6 +36,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('❌ Error fetching user profile:', error);
     }
   }, [fetchUserProfile]);
+
+  // Listen for credit updates to refresh user profile
+  useEffect(() => {
+    const handleCreditsUpdated = () => {
+      if (user?.id) {
+        stableFetchUserProfile(user.id);
+      }
+    };
+
+    window.addEventListener('creditsUpdated', handleCreditsUpdated);
+    return () => window.removeEventListener('creditsUpdated', handleCreditsUpdated);
+  }, [user?.id, stableFetchUserProfile]);
 
   // Initialize auth system
   useEffect(() => {
@@ -115,6 +128,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const refreshUserProfile = async () => {
+    if (user?.id) {
+      await stableFetchUserProfile(user.id);
+    }
+  };
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -123,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout, 
       signup,
       isAuthenticated: !!user,
+      refreshUserProfile,
     }}>
       {children}
     </AuthContext.Provider>
