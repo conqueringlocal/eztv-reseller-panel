@@ -181,7 +181,34 @@ export const useSportsSharing = () => {
       ? `mailto:${email}?subject=${encodedSubject}&body=${encodedBody}`
       : `mailto:?subject=${encodedSubject}&body=${encodedBody}`;
     
-    window.open(url, '_blank');
+    try {
+      // Try to open mailto link
+      const opened = window.open(url, '_blank');
+      
+      // If window.open returns null, mailto likely didn't work
+      if (!opened || opened.closed || typeof opened.closed === 'undefined') {
+        // Fallback: copy to clipboard and show instructions
+        copyToClipboard(text);
+        toast({
+          title: "Email sharing not available",
+          description: "Content copied to clipboard instead. You can paste it into your email app.",
+          duration: 5000,
+        });
+      } else {
+        toast({
+          title: "Email app opened",
+          description: "Your email client should open with the sports update ready to send.",
+        });
+      }
+    } catch (error) {
+      // Fallback: copy to clipboard
+      copyToClipboard(text);
+      toast({
+        title: "Email sharing not available",
+        description: "Content copied to clipboard instead. You can paste it into your email app.",
+        duration: 5000,
+      });
+    }
   };
 
 
