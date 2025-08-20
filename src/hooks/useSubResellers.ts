@@ -59,14 +59,14 @@ export const useSubResellers = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user?.id, user?.role]); // Only depend on stable user properties
 
   // Auto-fetch when user becomes available
   useEffect(() => {
     if (user && user.role === 'reseller') {
       fetchSubResellers();
     }
-  }, [user, fetchSubResellers]);
+  }, [user?.id, user?.role]); // Remove fetchSubResellers from dependencies
 
   return {
     subResellers,
