@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
+import { SubResellerCreditsView } from '@/components/credits/SubResellerCreditsView';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,9 +26,40 @@ export default function ResellerCredits() {
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const [resellerInfo, setResellerInfo] = useState<{
+    reseller_level: number;
+    credit_purchase_enabled: boolean;
+    credit_price_per_unit: number | null;
+    parent_reseller_id: string | null;
+  } | null>(null);
 
   // Filter credit logs for current reseller
   const userCreditLogs = creditLogs.filter(log => log.reseller_id === user?.id);
+
+  // Fetch reseller information
+  useEffect(() => {
+    const fetchResellerInfo = async () => {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('reseller_level, credit_purchase_enabled, credit_price_per_unit, parent_reseller_id')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching reseller info:', error);
+        } else {
+          setResellerInfo(data);
+        }
+      } catch (error) {
+        console.error('Unexpected error:', error);
+      }
+    };
+
+    fetchResellerInfo();
+  }, [user]);
 
   // Handle success/cancel URL parameters
   useEffect(() => {
@@ -172,78 +204,91 @@ export default function ResellerCredits() {
         </div>
       </div>
 
+      {/* Dynamic content based on reseller level */}
       <div className="mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Purchase Credits</CardTitle>
-            <CardDescription>
-              Add more credits to your account to provision new customer accounts
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {creditPackages.map((pack) => (
-                <Card key={pack.id} className="flex flex-col p-4 hover:shadow-md transition-shadow">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold">{pack.name}</h3>
-                    <p className="text-2xl font-bold text-eztv-600 my-2">{pack.price}</p>
-                    <p className="text-gray-500 text-sm">{pack.description}</p>
-                  </div>
-                  <Button 
-                    onClick={() => handlePurchase(pack.id)}
-                    disabled={!!isLoading}
-                    className="w-full mt-4"
-                  >
-                    {isLoading === pack.id ? (
-                      <span className="flex items-center">
-                        <span className="animate-spin mr-2">
-                          <CreditCard size={16} />
+        {resellerInfo?.credit_purchase_enabled ? (
+          // Level 1 Reseller - Show purchase options
+          <Card>
+            <CardHeader>
+              <CardTitle>Purchase Credits</CardTitle>
+              <CardDescription>
+                Add more credits to your account to provision new customer accounts
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {creditPackages.map((pack) => (
+                  <Card key={pack.id} className="flex flex-col p-4 hover:shadow-md transition-shadow">
+                    <div className="flex-1">
+                      <h3 className="text-xl font-bold">{pack.name}</h3>
+                      <p className="text-2xl font-bold text-eztv-600 my-2">{pack.price}</p>
+                      <p className="text-gray-500 text-sm">{pack.description}</p>
+                    </div>
+                    <Button 
+                      onClick={() => handlePurchase(pack.id)}
+                      disabled={!!isLoading}
+                      className="w-full mt-4"
+                    >
+                      {isLoading === pack.id ? (
+                        <span className="flex items-center">
+                          <span className="animate-spin mr-2">
+                            <CreditCard size={16} />
+                          </span>
+                          Processing...
                         </span>
-                        Processing...
-                      </span>
-                    ) : (
-                      <span className="flex items-center">
-                        <CreditCard className="mr-2" size={16} />
-                        Buy Now
-                      </span>
-                    )}
-                  </Button>
-                </Card>
-              ))}
-            </div>
-            
-            <div className="mt-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-              <h4 className="font-medium mb-3">Important Information</h4>
+                      ) : (
+                        <span className="flex items-center">
+                          <CreditCard className="mr-2" size={16} />
+                          Buy Now
+                        </span>
+                      )}
+                    </Button>
+                  </Card>
+                ))}
+              </div>
               
-              <div className="space-y-2">
-                <div className="flex items-start space-x-2">
-                  <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">
-                    Credits are used to provision new customer accounts (1 credit = 1 month of service)
-                  </span>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">
-                    All payments are processed securely through Stripe
-                  </span>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">
-                    Credits never expire and can be used at any time
-                  </span>
-                </div>
-                <div className="flex items-start space-x-2">
-                  <AlertCircle size={20} className="text-blue-500 shrink-0 mt-0.5" />
-                  <span className="text-sm text-gray-600">
-                    Checkout will open in a new tab. Complete payment there and return here to see updated balance
-                  </span>
+              <div className="mt-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <h4 className="font-medium mb-3">Important Information</h4>
+                
+                <div className="space-y-2">
+                  <div className="flex items-start space-x-2">
+                    <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                    <span className="text-sm text-gray-600">
+                      Credits are used to provision new customer accounts (1 credit = 1 month of service)
+                    </span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                    <span className="text-sm text-gray-600">
+                      All payments are processed securely through Stripe
+                    </span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                    <span className="text-sm text-gray-600">
+                      Credits never expire and can be used at any time
+                    </span>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <AlertCircle size={20} className="text-blue-500 shrink-0 mt-0.5" />
+                    <span className="text-sm text-gray-600">
+                      Checkout will open in a new tab. Complete payment there and return here to see updated balance
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : (
+          // Level 2+ Reseller - Show request credits interface
+          resellerInfo && (
+            <SubResellerCreditsView
+              userCredits={user?.credits || 0}
+              creditPricePerUnit={resellerInfo.credit_price_per_unit || 5.00}
+              parentResellerId={resellerInfo.parent_reseller_id || ''}
+            />
+          )
+        )}
       </div>
 
       <Card>

@@ -101,6 +101,66 @@ export type Database = {
           },
         ]
       }
+      credit_requests: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          credits_requested: number
+          id: string
+          message: string | null
+          parent_reseller_id: string
+          price_per_credit: number
+          processed_at: string | null
+          requester_id: string
+          status: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          credits_requested: number
+          id?: string
+          message?: string | null
+          parent_reseller_id: string
+          price_per_credit: number
+          processed_at?: string | null
+          requester_id: string
+          status?: string
+          total_amount: number
+          updated_at?: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          credits_requested?: number
+          id?: string
+          message?: string | null
+          parent_reseller_id?: string
+          price_per_credit?: number
+          processed_at?: string | null
+          requester_id?: string
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_requests_parent_reseller_id_fkey"
+            columns: ["parent_reseller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_requests_requester_id_fkey"
+            columns: ["requester_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           cancelled_at: string | null
@@ -438,6 +498,8 @@ export type Database = {
         Row: {
           api_key: string | null
           created_at: string
+          credit_price_per_unit: number | null
+          credit_purchase_enabled: boolean | null
           credits: number
           email: string
           id: string
@@ -452,6 +514,8 @@ export type Database = {
         Insert: {
           api_key?: string | null
           created_at?: string
+          credit_price_per_unit?: number | null
+          credit_purchase_enabled?: boolean | null
           credits?: number
           email: string
           id: string
@@ -466,6 +530,8 @@ export type Database = {
         Update: {
           api_key?: string | null
           created_at?: string
+          credit_price_per_unit?: number | null
+          credit_purchase_enabled?: boolean | null
           credits?: number
           email?: string
           id?: string

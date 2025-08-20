@@ -96,6 +96,13 @@ export function AppSidebar() {
           path: '/reseller/sub-resellers',
           icon: <UserPlus className="w-5 h-5" />,
         });
+        
+        // Add Credit Management for Level 1 resellers
+        resellerItems.push({
+          title: 'Credit Management',
+          path: '/reseller/credit-management',
+          icon: <Zap className="w-5 h-5" />,
+        });
       }
 
       resellerItems.push({

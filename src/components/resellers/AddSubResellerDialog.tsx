@@ -37,6 +37,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
     email: '',
     password: '',
     credits: 100,
+    creditPricePerUnit: 5.00, // Default price per credit for sub-reseller
   });
 
   const fetchAvailableCredits = useCallback(async () => {
@@ -135,6 +136,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
           password: formData.password,
           credits: formData.credits,
           parent_reseller_id: user.id,
+          credit_price_per_unit: formData.creditPricePerUnit,
         },
       });
 
@@ -156,7 +158,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       });
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', password: '', credits: 100 });
+      setFormData({ name: '', email: '', password: '', credits: 100, creditPricePerUnit: 5.00 });
       onOpenChange(false);
       
       // Call onSuccess callback if provided
@@ -281,6 +283,26 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
                     Cannot allocate more credits than available.
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="creditPrice">
+                  Price per Credit ($) - What you'll charge your sub-reseller
+                </Label>
+                <Input
+                  id="creditPrice"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={formData.creditPricePerUnit}
+                  onChange={(e) => handleInputChange('creditPricePerUnit', parseFloat(e.target.value) || 0)}
+                  placeholder="Enter price per credit (e.g., 5.00)"
+                  required
+                />
+                <div className="text-sm text-muted-foreground">
+                  <p>This price will be shown to your sub-reseller when they request credits.</p>
+                  <p>Total cost for {formData.credits} credits: ${(formData.credits * formData.creditPricePerUnit).toFixed(2)}</p>
+                </div>
               </div>
 
               <div className="flex justify-end space-x-2 pt-4">

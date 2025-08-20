@@ -92,7 +92,7 @@ serve(async (req) => {
     console.log('User verified, parsing request body');
 
     // Parse the request body (provider is no longer expected from frontend)
-    const { name, email, password, credits, parent_reseller_id, use_admin_api = true, api_key, panel_url } = await req.json();
+    const { name, email, password, credits, parent_reseller_id, use_admin_api = true, api_key, panel_url, credit_price_per_unit } = await req.json();
 
     console.log('Request data:', { name, email, credits, parent_reseller_id, use_admin_api, has_api_key: !!api_key, has_panel_url: !!panel_url });
 
@@ -211,7 +211,9 @@ serve(async (req) => {
           reseller_level: resellerLevel,
           use_admin_api,
           api_key: use_admin_api ? null : api_key,
-          panel_url: use_admin_api ? null : panel_url
+          panel_url: use_admin_api ? null : panel_url,
+          credit_price_per_unit: parent_reseller_id ? credit_price_per_unit : null,
+          credit_purchase_enabled: resellerLevel === 1  // Only Level 1 resellers can purchase credits directly
         })
         .eq('id', authData.user.id);
 

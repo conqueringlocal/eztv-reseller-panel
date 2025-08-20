@@ -27,6 +27,7 @@ import ResellerCustomers from "./pages/reseller/ResellerCustomers";
 import ResellerSportsUpdates from "./pages/reseller/ResellerSportsUpdates";
 import ResellerCredits from "./pages/reseller/ResellerCredits";
 import ResellerSubResellers from "./pages/reseller/ResellerSubResellers";
+import ResellerCreditManagement from "./pages/reseller/ResellerCreditManagement";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
 import ResellerFunnels from "./pages/reseller/ResellerFunnels";
 import Webhook from "./pages/Webhook";
@@ -133,6 +134,13 @@ function App() {
                   <Route path="/reseller/sub-resellers" element={
                     <ProtectedRoute allowedRoles={['reseller']}>
                       <ResellerSubResellers />
+                    </ProtectedRoute>
+                  } />
+                  
+                  {/* Credit Management Route */}
+                  <Route path="/reseller/credit-management" element={
+                    <ProtectedRoute allowedRoles={['reseller']}>
+                      <ResellerCreditManagement />
                     </ProtectedRoute>
                   } />
                   
