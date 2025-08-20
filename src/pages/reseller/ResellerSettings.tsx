@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { FileText, Upload, Users, Link, KeyRound } from 'lucide-react';
 import { ResellerApiCredentialsForm } from '@/components/reseller/ResellerApiCredentialsForm';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
-import { HighLevelSocialMediaTest } from '@/components/resellers/HighLevelSocialMediaTest';
+
 
 export default function ResellerSettings() {
   const { user } = useAuth();
@@ -187,8 +187,6 @@ export default function ResellerSettings() {
         </DashboardCard>
 
         {user?.id && <HighLevelSettings resellerId={user.id} />}
-        
-        {user?.id && <HighLevelSocialMediaTest resellerId={user.id} />}
 
         <DashboardCard
           title="Account Management"
