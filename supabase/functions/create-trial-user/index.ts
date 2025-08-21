@@ -320,8 +320,8 @@ serve(async (req) => {
         )
       }
 
-      // Start with generated M3U URL as fallback
-      let m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+      // Start with working Trex OTT URL as fallback
+      let m3uUrl = `http://line.trx-ott.com/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
       let urlSource = 'generated';
       
       // Enhanced URL extraction from API response
