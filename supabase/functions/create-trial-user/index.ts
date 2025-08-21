@@ -320,9 +320,9 @@ serve(async (req) => {
         )
       }
 
-      // Always use working Trex OTT URL for trials
-      let m3uUrl = `http://line.trx-ott.com/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
-      let urlSource = 'trex-ott-fixed';
+      // Always use working Trex OTT URL for trials - no extraction from API
+      const m3uUrl = `http://line.trx-ott.com/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+      const urlSource = 'trex-ott-fixed';
       
       console.log(`🔗 Using fixed Trex OTT URL for trial: ${m3uUrl}`);
       
