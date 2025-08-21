@@ -307,23 +307,103 @@ serve(async (req) => {
       const finalPassword = apiResult.password || password;
 
       console.log('✅ Trex trial account created successfully')
-
-      // Check if API response contains URL information, otherwise generate M3U URL
-      let m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
       
-      // Look for URL in API response
-      if (apiResult.m3u_url || apiResult.url || apiResult.m3uUrl) {
-        const responseUrl = apiResult.m3u_url || apiResult.url || apiResult.m3uUrl;
-        console.log(`🔗 Using M3U URL from API response: ${responseUrl}`);
-        m3uUrl = responseUrl;
-      } else if (typeof apiResult.response === 'string' && apiResult.response.includes('http')) {
-        // Try to extract URL from text response
-        const urlMatch = apiResult.response.match(/(https?:\/\/[^\s]+)/);
-        if (urlMatch) {
-          console.log(`🔗 Extracted M3U URL from response text: ${urlMatch[0]}`);
-          m3uUrl = urlMatch[0];
+      // Enhanced logging for debugging URL extraction
+      console.log('🔍 DEBUGGING API RESPONSE FOR URL EXTRACTION:')
+      console.log('📋 Full API Result Object:', JSON.stringify(apiResult, null, 2))
+      console.log('📋 API Result Keys:', Object.keys(apiResult))
+      if (apiResult.response) {
+        console.log('📋 Response Text (first 500 chars):', 
+          typeof apiResult.response === 'string' 
+            ? apiResult.response.substring(0, 500)
+            : JSON.stringify(apiResult.response).substring(0, 500)
+        )
+      }
+
+      // Start with generated M3U URL as fallback
+      let m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+      let urlSource = 'generated';
+      
+      // Enhanced URL extraction from API response
+      // Method 1: Direct URL fields
+      const possibleUrlFields = ['m3u_url', 'url', 'm3uUrl', 'M3U_URL', 'URL', 'link', 'stream_url', 'playlist_url', 'iptv_url'];
+      for (const field of possibleUrlFields) {
+        if (apiResult[field] && typeof apiResult[field] === 'string') {
+          console.log(`🎯 Found URL in field '${field}': ${apiResult[field]}`);
+          m3uUrl = apiResult[field];
+          urlSource = `field:${field}`;
+          break;
         }
       }
+      
+      // Method 2: Extract from response text with enhanced patterns
+      if (urlSource === 'generated' && apiResult.response && typeof apiResult.response === 'string') {
+        const responseText = apiResult.response;
+        
+        // Pattern 1: Standard HTTP(S) URLs
+        const httpUrlMatch = responseText.match(/(https?:\/\/[^\s\n\r"'<>,;]+)/i);
+        if (httpUrlMatch) {
+          console.log(`🎯 Extracted HTTP URL from response: ${httpUrlMatch[1]}`);
+          m3uUrl = httpUrlMatch[1];
+          urlSource = 'regex:http';
+        }
+        
+        // Pattern 2: Look for M3U specific patterns
+        const m3uPatterns = [
+          /m3u[_-]?url[:\s]*([^\s\n\r"'<>,;]+)/i,
+          /playlist[_-]?url[:\s]*([^\s\n\r"'<>,;]+)/i,
+          /stream[_-]?url[:\s]*([^\s\n\r"'<>,;]+)/i,
+          /url[:\s]*(https?:\/\/[^\s\n\r"'<>,;]*\.m3u[^\s\n\r"'<>,;]*)/i
+        ];
+        
+        for (const pattern of m3uPatterns) {
+          const match = responseText.match(pattern);
+          if (match && match[1]) {
+            console.log(`🎯 Extracted M3U URL with pattern: ${match[1]}`);
+            m3uUrl = match[1];
+            urlSource = 'regex:m3u';
+            break;
+          }
+        }
+        
+        // Pattern 3: Look for URLs that contain common IPTV parameters
+        if (urlSource === 'generated') {
+          const iptvParamPattern = /(https?:\/\/[^\s\n\r"'<>,;]*[?&](username|user|login)[=][^&\s\n\r"'<>,;]*)/i;
+          const iptvMatch = responseText.match(iptvParamPattern);
+          if (iptvMatch) {
+            console.log(`🎯 Extracted IPTV URL with parameters: ${iptvMatch[1]}`);
+            m3uUrl = iptvMatch[1];
+            urlSource = 'regex:iptv';
+          }
+        }
+      }
+      
+      // Method 3: Check for nested objects in response
+      if (urlSource === 'generated' && typeof apiResult.response === 'object' && apiResult.response !== null) {
+        const searchNestedUrl = (obj: any, path = ''): string | null => {
+          for (const [key, value] of Object.entries(obj)) {
+            const currentPath = path ? `${path}.${key}` : key;
+            if (typeof value === 'string' && value.startsWith('http')) {
+              console.log(`🎯 Found URL in nested object at ${currentPath}: ${value}`);
+              return value;
+            } else if (typeof value === 'object' && value !== null) {
+              const nestedResult = searchNestedUrl(value, currentPath);
+              if (nestedResult) return nestedResult;
+            }
+          }
+          return null;
+        };
+        
+        const nestedUrl = searchNestedUrl(apiResult.response);
+        if (nestedUrl) {
+          m3uUrl = nestedUrl;
+          urlSource = 'nested';
+        }
+      }
+      
+      console.log(`🔗 Final M3U URL (${urlSource}): ${m3uUrl}`)
+      console.log('🔍 URL EXTRACTION COMPLETE')
+      
 
       console.log(`🔐 Final Trex trial credentials - Username: ${finalUsername}, Password: ${finalPassword}`)
       console.log(`🔗 Trex M3U URL: ${m3uUrl}`)
