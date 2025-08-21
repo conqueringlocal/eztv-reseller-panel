@@ -51,8 +51,8 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
     console.log(`🎯 Creating 24-hour trial account for: ${data.name} with provider: ${provider}`);
 
     try {
-      // Call the appropriate edge function based on reseller's provider
-      const functionName = provider === 'trex' ? 'create-trex-trial-user' : 'create-trial-user';
+      // Call the unified trial creation function for all providers
+      const functionName = 'create-trial-user';
       
       console.log(`📞 Calling function: ${functionName}`);
       
