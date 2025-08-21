@@ -127,6 +127,21 @@ serve(async (req) => {
 
     if (existingTrial && !duplicateError) {
       console.log(`⚠️ Duplicate trial detected for email: ${customerData.email}`)
+      
+      // Update existing trial with correct Trex OTT URL
+      const correctedUrl = `http://line.trx-ott.com/get.php?username=${existingTrial.username}&password=${existingTrial.password}&type=m3u_plus&output=ts`;
+      
+      const { error: updateError } = await supabase
+        .from('customers')
+        .update({ m3u_url: correctedUrl })
+        .eq('id', existingTrial.id)
+      
+      if (updateError) {
+        console.log('⚠️ Failed to update existing trial URL:', updateError)
+      } else {
+        console.log(`✅ Updated existing trial URL to Trex OTT: ${correctedUrl}`)
+      }
+      
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -135,7 +150,7 @@ serve(async (req) => {
             id: existingTrial.id,
             username: existingTrial.username,
             password: existingTrial.password,
-            m3uUrl: existingTrial.m3u_url,
+            m3uUrl: correctedUrl,
             isTrial: true,
             provider: 'trex'
           }
