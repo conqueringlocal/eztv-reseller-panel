@@ -320,86 +320,11 @@ serve(async (req) => {
         )
       }
 
-      // Start with working Trex OTT URL as fallback
+      // Always use working Trex OTT URL for trials
       let m3uUrl = `http://line.trx-ott.com/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
-      let urlSource = 'generated';
+      let urlSource = 'trex-ott-fixed';
       
-      // Enhanced URL extraction from API response
-      // Method 1: Direct URL fields
-      const possibleUrlFields = ['m3u_url', 'url', 'm3uUrl', 'M3U_URL', 'URL', 'link', 'stream_url', 'playlist_url', 'iptv_url'];
-      for (const field of possibleUrlFields) {
-        if (apiResult[field] && typeof apiResult[field] === 'string') {
-          console.log(`🎯 Found URL in field '${field}': ${apiResult[field]}`);
-          m3uUrl = apiResult[field];
-          urlSource = `field:${field}`;
-          break;
-        }
-      }
-      
-      // Method 2: Extract from response text with enhanced patterns
-      if (urlSource === 'generated' && apiResult.response && typeof apiResult.response === 'string') {
-        const responseText = apiResult.response;
-        
-        // Pattern 1: Standard HTTP(S) URLs
-        const httpUrlMatch = responseText.match(/(https?:\/\/[^\s\n\r"'<>,;]+)/i);
-        if (httpUrlMatch) {
-          console.log(`🎯 Extracted HTTP URL from response: ${httpUrlMatch[1]}`);
-          m3uUrl = httpUrlMatch[1];
-          urlSource = 'regex:http';
-        }
-        
-        // Pattern 2: Look for M3U specific patterns
-        const m3uPatterns = [
-          /m3u[_-]?url[:\s]*([^\s\n\r"'<>,;]+)/i,
-          /playlist[_-]?url[:\s]*([^\s\n\r"'<>,;]+)/i,
-          /stream[_-]?url[:\s]*([^\s\n\r"'<>,;]+)/i,
-          /url[:\s]*(https?:\/\/[^\s\n\r"'<>,;]*\.m3u[^\s\n\r"'<>,;]*)/i
-        ];
-        
-        for (const pattern of m3uPatterns) {
-          const match = responseText.match(pattern);
-          if (match && match[1]) {
-            console.log(`🎯 Extracted M3U URL with pattern: ${match[1]}`);
-            m3uUrl = match[1];
-            urlSource = 'regex:m3u';
-            break;
-          }
-        }
-        
-        // Pattern 3: Look for URLs that contain common IPTV parameters
-        if (urlSource === 'generated') {
-          const iptvParamPattern = /(https?:\/\/[^\s\n\r"'<>,;]*[?&](username|user|login)[=][^&\s\n\r"'<>,;]*)/i;
-          const iptvMatch = responseText.match(iptvParamPattern);
-          if (iptvMatch) {
-            console.log(`🎯 Extracted IPTV URL with parameters: ${iptvMatch[1]}`);
-            m3uUrl = iptvMatch[1];
-            urlSource = 'regex:iptv';
-          }
-        }
-      }
-      
-      // Method 3: Check for nested objects in response
-      if (urlSource === 'generated' && typeof apiResult.response === 'object' && apiResult.response !== null) {
-        const searchNestedUrl = (obj: any, path = ''): string | null => {
-          for (const [key, value] of Object.entries(obj)) {
-            const currentPath = path ? `${path}.${key}` : key;
-            if (typeof value === 'string' && value.startsWith('http')) {
-              console.log(`🎯 Found URL in nested object at ${currentPath}: ${value}`);
-              return value;
-            } else if (typeof value === 'object' && value !== null) {
-              const nestedResult = searchNestedUrl(value, currentPath);
-              if (nestedResult) return nestedResult;
-            }
-          }
-          return null;
-        };
-        
-        const nestedUrl = searchNestedUrl(apiResult.response);
-        if (nestedUrl) {
-          m3uUrl = nestedUrl;
-          urlSource = 'nested';
-        }
-      }
+      console.log(`🔗 Using fixed Trex OTT URL for trial: ${m3uUrl}`);
       
       console.log(`🔗 Final M3U URL (${urlSource}): ${m3uUrl}`)
       console.log('🔍 URL EXTRACTION COMPLETE')
