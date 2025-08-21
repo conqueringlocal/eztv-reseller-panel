@@ -45,14 +45,14 @@ export const CreditPurchaseRoute: React.FC<CreditPurchaseRouteProps> = ({ childr
     );
   }
   
-  // For resellers, check if they can purchase credits (level 1)
+  // For resellers, check if they can purchase credits (only level 1)
   if (user?.role === 'reseller' && !canPurchaseCredits) {
     return (
       <div className="container mx-auto p-6">
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Only level 1 resellers can purchase credits directly. Please contact your parent reseller to add credits to your account.
+            Only Level 1 resellers can purchase credits directly from the admin. Please request credits from your parent reseller to add credits to your account.
           </AlertDescription>
         </Alert>
       </div>

@@ -80,30 +80,28 @@ export function AppSidebar() {
         },
       ];
 
-      // Add Credits menu item with different accessibility
+      // Add Credits menu item - always accessible
       resellerItems.push({
-        title: canPurchaseCredits ? 'Credits' : 'Credits (View Only)',
+        title: 'Credits',
         path: '/reseller/credits',
         icon: <CreditCard className="w-5 h-5" />,
       });
 
       // Funnel feature is hidden from resellers
 
-      // Add Sub-Resellers menu for level 1 resellers
-      if (resellerLevel === 1) {
-        resellerItems.push({
-          title: 'Sub-Resellers',
-          path: '/reseller/sub-resellers',
-          icon: <UserPlus className="w-5 h-5" />,
-        });
-        
-        // Add Credit Management for Level 1 resellers
-        resellerItems.push({
-          title: 'Credit Management',
-          path: '/reseller/credit-management',
-          icon: <Zap className="w-5 h-5" />,
-        });
-      }
+      // Add Sub-Resellers menu for all resellers (they can create sub-resellers)
+      resellerItems.push({
+        title: 'Sub-Resellers',
+        path: '/reseller/sub-resellers',
+        icon: <UserPlus className="w-5 h-5" />,
+      });
+      
+      // Add Credit Management for all resellers (they can manage their sub-resellers)
+      resellerItems.push({
+        title: 'Credit Management',
+        path: '/reseller/credit-management',
+        icon: <Zap className="w-5 h-5" />,
+      });
 
       resellerItems.push({
         title: 'Settings',
