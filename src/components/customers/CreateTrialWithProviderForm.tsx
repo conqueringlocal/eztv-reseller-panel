@@ -52,8 +52,8 @@ export function CreateTrialWithProviderForm({ onSuccess }: CreateTrialWithProvid
     console.log(`🎯 Creating 24-hour trial account for: ${data.name} with provider: ${data.provider}`);
 
     try {
-      // Call the appropriate edge function based on provider
-      const functionName = data.provider === 'trex' ? 'create-trex-trial-user' : 'create-trial-user';
+      // Both providers use the same trial function
+      const functionName = 'create-trial-user';
       
       const { data: result, error } = await supabase.functions.invoke(functionName, {
         body: {
@@ -69,12 +69,14 @@ export function CreateTrialWithProviderForm({ onSuccess }: CreateTrialWithProvid
       if (error) {
         console.error(`❌ Error creating ${data.provider} trial account:`, error);
         toast.error(`Failed to create ${data.provider} trial account`);
+        setIsLoading(false);
         return;
       }
 
       if (!result.success) {
         console.error(`❌ ${data.provider} trial creation failed:`, result.error);
         toast.error(result.error || `Failed to create ${data.provider} trial account`);
+        setIsLoading(false);
         return;
       }
 

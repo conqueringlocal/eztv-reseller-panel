@@ -114,6 +114,39 @@ serve(async (req) => {
       )
     }
 
+    // Check for duplicate trial (same email today)
+    const { data: existingTrial, error: duplicateError } = await supabase
+      .from('customers')
+      .select('id, username, password, m3u_url')
+      .eq('email', customerData.email)
+      .eq('provider', 'trex')
+      .eq('is_trial', true)
+      .gte('trial_created_at', `${today}T00:00:00.000Z`)
+      .lt('trial_created_at', `${today}T23:59:59.999Z`)
+      .single()
+
+    if (existingTrial && !duplicateError) {
+      console.log(`⚠️ Duplicate trial detected for email: ${customerData.email}`)
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Trial account already exists for this email today',
+          customer: {
+            id: existingTrial.id,
+            username: existingTrial.username,
+            password: existingTrial.password,
+            m3uUrl: existingTrial.m3u_url,
+            isTrial: true,
+            provider: 'trex'
+          }
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200 
+        }
+      )
+    }
+
     // Generate unique username and password for trial
     const timestamp = Date.now();
     const randomNum = Math.floor(Math.random() * 1000);
@@ -275,8 +308,22 @@ serve(async (req) => {
 
       console.log('✅ Trex trial account created successfully')
 
-      // Generate M3U URL
-      const m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+      // Check if API response contains URL information, otherwise generate M3U URL
+      let m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+      
+      // Look for URL in API response
+      if (apiResult.m3u_url || apiResult.url || apiResult.m3uUrl) {
+        const responseUrl = apiResult.m3u_url || apiResult.url || apiResult.m3uUrl;
+        console.log(`🔗 Using M3U URL from API response: ${responseUrl}`);
+        m3uUrl = responseUrl;
+      } else if (typeof apiResult.response === 'string' && apiResult.response.includes('http')) {
+        // Try to extract URL from text response
+        const urlMatch = apiResult.response.match(/(https?:\/\/[^\s]+)/);
+        if (urlMatch) {
+          console.log(`🔗 Extracted M3U URL from response text: ${urlMatch[0]}`);
+          m3uUrl = urlMatch[0];
+        }
+      }
 
       console.log(`🔐 Final Trex trial credentials - Username: ${finalUsername}, Password: ${finalPassword}`)
       console.log(`🔗 Trex M3U URL: ${m3uUrl}`)
@@ -437,7 +484,7 @@ serve(async (req) => {
     }
 
   } catch (error) {
-    console.error('💥 Error in create-trex-trial-user function:', error)
+    console.error('💥 Error in create-trial-user function:', error)
     return new Response(
       JSON.stringify({ 
         success: false, 
