@@ -61,10 +61,10 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'MLB';
   } else if (upperText.includes('MILB') || upperText.includes('MINOR LEAGUE BASEBALL')) {
     sport_category = 'MILB';
-  } else if (upperText.includes('NBA') || upperText.includes('BASKETBALL')) {
-    sport_category = 'NBA';
   } else if (upperText.includes('WNBA')) {
     sport_category = 'WNBA';
+  } else if (upperText.includes('NBA') || upperText.includes('BASKETBALL')) {
+    sport_category = 'NBA';
   } else if (upperText.includes('NFL') || upperText.includes('FOOTBALL')) {
     sport_category = 'NFL';
   } else if (upperText.includes('TENNIS')) {
