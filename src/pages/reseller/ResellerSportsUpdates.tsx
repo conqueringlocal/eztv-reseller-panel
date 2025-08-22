@@ -40,11 +40,19 @@ export default function ResellerSportsUpdates() {
       const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
+      console.log('🗓️ Date filtering:', { yesterday, today, tomorrow });
+      
       const { data, error } = await supabase
         .from('sports_ppv_updates')
         .select('*')
         .in('game_date', [yesterday, today, tomorrow])
         .order('created_at', { ascending: false });
+
+      console.log('📊 Raw updates fetched:', data?.length || 0);
+      console.log('📊 Updates by category:', data?.reduce((acc, update) => {
+        acc[update.sport_category] = (acc[update.sport_category] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>));
 
       if (error) {
         console.error('Error fetching sports updates:', error);
@@ -154,6 +162,13 @@ export default function ResellerSportsUpdates() {
   const filteredUpdates = activeTab === 'ALL' 
     ? updates 
     : updates.filter(update => update.sport_category === activeTab);
+
+  console.log('🎯 Filtered updates:', { 
+    activeTab, 
+    totalUpdates: updates.length, 
+    filteredCount: filteredUpdates.length,
+    categories: [...new Set(updates.map(u => u.sport_category))]
+  });
 
   // Sort updates so that those with lower channel numbers appear first
   const sortedUpdates = [...filteredUpdates].sort((a, b) => {
