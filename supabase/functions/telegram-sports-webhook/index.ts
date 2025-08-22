@@ -246,8 +246,9 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     }
     
     // Parse UFC format: "UFC 00 : Event Name start:2025-08-19 01:55:00 stop:2025-08-19 05:00:00"
-    const ufcMatch = line.match(/^UFC\s+(\d+)\s*:\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    const ufcMatch = line.match(/^UFC\s+(\d+)\s*:\s*(.+)\s+start:(.+?)\s+stop:(.+?)$/);
     if (ufcMatch) {
+      console.log('UFC match found:', { line, match: ufcMatch });
       const [, channelNumber, eventName, startTime] = ufcMatch;
       channel_info.push({
         game: eventName.trim(),
@@ -255,6 +256,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         channel: `UFC ${channelNumber.padStart(2, '0')}`
       });
       continue;
+    } else if (line.includes('UFC') && line.includes('start:')) {
+      console.log('UFC line not matched:', line);
     }
     
     // Parse NFL format: "NFL  | 03 - 7:30PM Eagles at Jets"
