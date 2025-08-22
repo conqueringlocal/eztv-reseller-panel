@@ -57,7 +57,14 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
   let sport_category = 'GENERAL';
   const upperText = text.toUpperCase();
   
-  if (upperText.includes('MLB') || upperText.includes('BASEBALL')) {
+  // Check platform-specific categories first before generic sport categories
+  if (upperText.includes('PARAMOUNT+') || upperText.includes('PARAMOUNT')) {
+    sport_category = 'PARAMOUNT+';
+  } else if (upperText.includes('FLO COLLEGE') || upperText.includes('FLORACINGCOLLEGE')) {
+    sport_category = 'FLO COLLEGE';
+  } else if (upperText.includes('FLO RACING') || upperText.includes('FLORACING')) {
+    sport_category = 'FLO RACING';
+  } else if (upperText.includes('MLB') || upperText.includes('BASEBALL')) {
     sport_category = 'MLB';
   } else if (upperText.includes('MILB') || upperText.includes('MINOR LEAGUE BASEBALL')) {
     sport_category = 'MILB';
@@ -73,12 +80,6 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'UEFA';
   } else if (upperText.includes('MLS') || upperText.includes('MAJOR LEAGUE SOCCER')) {
     sport_category = 'MLS';
-  } else if (upperText.includes('PARAMOUNT+') || upperText.includes('PARAMOUNT')) {
-    sport_category = 'PARAMOUNT+';
-  } else if (upperText.includes('FLO COLLEGE') || upperText.includes('FLORACINGCOLLEGE')) {
-    sport_category = 'FLO COLLEGE';
-  } else if (upperText.includes('FLO RACING') || upperText.includes('FLORACING')) {
-    sport_category = 'FLO RACING';
   } else if (upperText.includes('UFC') || (upperText.includes('DANA WHITE') && upperText.includes('CONTENDER SERIES') && !upperText.includes('LIVE EVENT'))) {
     sport_category = 'UFC';
   } else if (upperText.includes('DIRTVISION')) {
@@ -169,6 +170,18 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
         game: eventName.trim(),
         time: dateTime.trim(),
         channel: `Paramount+ ${gameNumber}`
+      });
+      continue;
+    }
+    
+    // Parse Flo College format: "Flo College 01 :Event @ Aug 19 5:00 PM"
+    const floCollegeMatch = line.match(/^Flo College\s+(\d+)\s*:(.+?)\s+@\s+(.+)$/);
+    if (floCollegeMatch) {
+      const [, gameNumber, eventName, dateTime] = floCollegeMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: dateTime.trim(),
+        channel: `Flo College ${gameNumber}`
       });
       continue;
     }
