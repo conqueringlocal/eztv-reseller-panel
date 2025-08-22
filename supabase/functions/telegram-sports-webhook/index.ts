@@ -221,8 +221,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
       continue;
     }
     
-    // Parse DIRTVISION format: "DIRTVISION 03 - Mississippi Thunder Speedway 7:15pm"
-    const dirtvisionMatch = line.match(/^DIRTVISION\s+(\d+)\s+-\s*(.+)$/);
+    // Parse DIRTVISION format: "DIRTVISION 03 - Event" or "Dirtvision 05: Event"
+    const dirtvisionMatch = line.match(/^DIRTVISION\s+(\d+)\s*[-:]\s*(.+)$/i);
     if (dirtvisionMatch) {
       const [, channelNumber, eventName] = dirtvisionMatch;
       channel_info.push({
