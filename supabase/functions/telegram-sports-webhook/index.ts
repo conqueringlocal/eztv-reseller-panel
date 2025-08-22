@@ -245,6 +245,42 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
       continue;
     }
     
+    // Parse UFC format: "UFC 00 : Event Name start:2025-08-19 01:55:00 stop:2025-08-19 05:00:00"
+    const ufcMatch = line.match(/^UFC\s+(\d+)\s*:\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    if (ufcMatch) {
+      const [, channelNumber, eventName, startTime] = ufcMatch;
+      channel_info.push({
+        game: eventName.trim(),
+        time: startTime.trim(),
+        channel: `UFC ${channelNumber.padStart(2, '0')}`
+      });
+      continue;
+    }
+    
+    // Parse NFL format: "NFL  | 03 - 7:30PM Eagles at Jets"
+    const nflMatch = line.match(/^NFL\s*\|\s*(\d+)\s*-\s*(.+)$/);
+    if (nflMatch) {
+      const [, gameNumber, gameInfo] = nflMatch;
+      // Extract time and teams from gameInfo (e.g., "7:30PM Eagles at Jets")
+      const timeTeamsMatch = gameInfo.match(/^(\d{1,2}:?\d{0,2}[APap][Mm])\s+(.+)$/);
+      if (timeTeamsMatch) {
+        const [, time, teams] = timeTeamsMatch;
+        channel_info.push({
+          game: teams.trim(),
+          time: time.trim(),
+          channel: `NFL ${gameNumber.padStart(2, '0')}`
+        });
+      } else {
+        // Fallback if time parsing fails
+        channel_info.push({
+          game: gameInfo.trim(),
+          time: '',
+          channel: `NFL ${gameNumber.padStart(2, '0')}`
+        });
+      }
+      continue;
+    }
+    
     // Generic fallback for other sport formats with patterns like "Team vs Team - Time - Channel"
     const gamePattern = /(.+?)\s*-\s*(\d{1,2}:\d{2}\s*[APap][Mm].*?)\s*-\s*.*(Channel\s*\d+|Ch\s*\d+)/i;
     const match = line.match(gamePattern);
