@@ -37,15 +37,13 @@ export default function ResellerSportsUpdates() {
   const fetchUpdates = async () => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
       
-      console.log('🗓️ Date filtering:', { yesterday, today, tomorrow });
+      console.log('🗓️ Date filtering:', { today });
       
       const { data, error } = await supabase
         .from('sports_ppv_updates')
         .select('*')
-        .in('game_date', [yesterday, today, tomorrow])
+        .eq('game_date', today)
         .order('created_at', { ascending: false });
 
       console.log('📊 Raw updates fetched:', data?.length || 0);
@@ -108,8 +106,8 @@ export default function ResellerSportsUpdates() {
           const today = new Date().toISOString().split('T')[0];
           const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
           
-          // Only add if it's for today or tomorrow
-          if (newUpdate.game_date === today || newUpdate.game_date === tomorrow) {
+          // Only add if it's for today
+          if (newUpdate.game_date === today) {
             const processedUpdate: SportsUpdate = {
               ...newUpdate,
               channel_info: Array.isArray(newUpdate.channel_info) 
@@ -160,8 +158,19 @@ export default function ResellerSportsUpdates() {
   }, [toast]);
 
   const filteredUpdates = activeTab === 'ALL' 
-    ? updates 
-    : updates.filter(update => update.sport_category === activeTab);
+    ? updates.filter(update => 
+        // Only show updates that have at least one channel with actual game info or non-generic channels
+        update.channel_info.some(info => 
+          info.game || (!info.channel?.startsWith('US |') && info.channel)
+        )
+      )
+    : updates.filter(update => 
+        update.sport_category === activeTab &&
+        // Only show updates that have at least one channel with actual game info or non-generic channels
+        update.channel_info.some(info => 
+          info.game || (!info.channel?.startsWith('US |') && info.channel)
+        )
+      );
 
   console.log('🎯 Filtered updates:', { 
     activeTab, 
