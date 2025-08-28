@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalHighLevelSettings } from '@/components/admin/GlobalHighLevelSettings';
 import { SecurityAuditLogs } from '@/components/admin/SecurityAuditLogs';
+import { RenewalAuditTool } from '@/components/admin/RenewalAuditTool';
 
 interface SystemSetting {
   id: string;
@@ -235,10 +236,11 @@ export default function AdminSettings() {
       
       <div className="container mx-auto">
         <Tabs defaultValue="settings" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="settings">System Settings</TabsTrigger>
             <TabsTrigger value="highlevel">HighLevel</TabsTrigger>
             <TabsTrigger value="security">Security Audit</TabsTrigger>
+            <TabsTrigger value="audit">Renewal Audit</TabsTrigger>
           </TabsList>
           
           <TabsContent value="settings">
@@ -577,6 +579,10 @@ export default function AdminSettings() {
           
           <TabsContent value="security">
             <SecurityAuditLogs />
+          </TabsContent>
+          
+          <TabsContent value="audit">
+            <RenewalAuditTool />
           </TabsContent>
         </Tabs>
       </div>
