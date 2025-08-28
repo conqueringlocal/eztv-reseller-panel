@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { RevenueChart } from '@/components/dashboard/RevenueChart';
+import { RenewalAuditTool } from '@/components/admin/RenewalAuditTool';
 import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMrrData } from '@/hooks/useMrrData';
@@ -142,9 +143,10 @@ export default function AdminDashboard() {
         />
       </div>
 
-      {/* Revenue Charts */}
-      <div className="mb-6">
+      {/* Revenue Charts and Audit Tool */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-6">
         <RevenueChart historicalData={historicalData} isLoading={mrrLoading} />
+        <RenewalAuditTool />
       </div>
 
       <Card>

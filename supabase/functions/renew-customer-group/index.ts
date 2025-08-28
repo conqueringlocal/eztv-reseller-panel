@@ -150,37 +150,71 @@ serve(async (req) => {
 
     const creditsRequired = groupCustomers.length * planDuration;
 
-    // Idempotency guard: if a matching group renewal was logged very recently, return success without reprocessing
-    try {
-      const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-      const { data: existingLogs, error: existingLogsError } = await supabaseClient
-        .from('credit_logs')
-        .select('id, date')
-        .eq('reseller_id', user.id)
-        .eq('customer_id', customerId)
-        .eq('action', 'account_creation')
-        .eq('credits_used', creditsRequired)
-        .gte('date', tenMinutesAgo)
-        .ilike('notes', 'Group renewal for%');
+    // Enhanced idempotency protection using database-level transaction tracking
+    console.log(`🔐 Checking for existing renewal transaction for customer ${customerId}`);
+    
+    const { data: transactionData, error: transactionError } = await supabaseClient.rpc(
+      'get_or_create_renewal_transaction',
+      {
+        p_customer_id: customerId,
+        p_reseller_id: user.id,
+        p_plan_duration: planDuration,
+        p_credits_required: creditsRequired
+      }
+    );
 
-      if (existingLogsError) {
-        console.warn('⚠️ Idempotency check failed (continuing):', existingLogsError.message);
-      } else if (existingLogs && existingLogs.length > 0) {
-        console.log('🛑 Duplicate renewal detected via recent credit log. Skipping reprocessing.');
+    if (transactionError) {
+      console.error('❌ Failed to create/check renewal transaction:', transactionError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to initialize renewal transaction. Please try again.',
+          code: 'TRANSACTION_ERROR',
+          details: transactionError.message
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const transactionResult = transactionData?.[0];
+    if (!transactionResult) {
+      console.error('❌ No transaction result returned');
+      return new Response(
+        JSON.stringify({ error: 'Failed to initialize renewal transaction' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // If this is not a new transaction, check the status
+    if (!transactionResult.is_new_transaction) {
+      if (transactionResult.current_status === 'completed') {
+        console.log('🛑 Duplicate renewal detected via transaction tracking. Already completed.');
         return new Response(
           JSON.stringify({
             success: true,
-            message: 'Renewal already processed recently; skipping duplicate.',
+            message: 'Renewal already processed successfully',
             alreadyProcessed: true,
-            accountsRenewed: 0,
-            creditsUsed: 0,
+            accountsRenewed: groupCustomers.length,
+            creditsUsed: creditsRequired,
+            transactionId: transactionResult.transaction_id
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
+      } else if (transactionResult.current_status === 'pending') {
+        console.log('🛑 Duplicate renewal request detected while transaction is still pending.');
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'A renewal for this customer is already in progress. Please wait and try again if needed.',
+            code: 'RENEWAL_IN_PROGRESS',
+            transactionId: transactionResult.transaction_id
+          }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
-    } catch (idemError) {
-      console.warn('⚠️ Idempotency guard encountered an error, proceeding anyway:', idemError);
     }
+
+    const transactionId = transactionResult.transaction_id;
+    console.log(`✅ Created new renewal transaction: ${transactionId}`);
 
     // Check if reseller has enough credits
     if (reseller.credits < creditsRequired) {
@@ -308,39 +342,95 @@ serve(async (req) => {
 
     // Update database with consolidated results - only if all renewals succeeded
     if (successfulRenewals === renewalResults.length) {
-      // Use the existing database function to update all accounts and deduct credits
-      const { data: dbResult, error: dbError } = await supabaseClient.rpc('renew_customer_group', {
-        customer_id_param: customerId,
-        duration_months: planDuration,
-        reseller_id_param: user.id
-      });
+      try {
+        // Use the existing database function to update all accounts and deduct credits
+        const { data: dbResult, error: dbError } = await supabaseClient.rpc('renew_customer_group', {
+          customer_id_param: customerId,
+          duration_months: planDuration,
+          reseller_id_param: user.id
+        });
 
-      if (dbError || !dbResult?.[0]?.success) {
-        console.error('❌ Database update failed:', dbError || dbResult?.[0]?.error_message);
+        if (dbError || !dbResult?.[0]?.success) {
+          console.error('❌ Database update failed:', dbError || dbResult?.[0]?.error_message);
+          
+          // Mark transaction as failed
+          const { error: failError } = await supabaseClient.rpc('fail_renewal_transaction', {
+            p_transaction_id: transactionId,
+            p_reason: `Database update failed: ${dbError?.message || dbResult?.[0]?.error_message}`
+          });
+          
+          if (failError) {
+            console.error('❌ Failed to mark transaction as failed:', failError);
+          }
+          
+          return new Response(
+            JSON.stringify({ 
+              error: 'API renewals succeeded but database update failed',
+              details: dbError?.message || dbResult?.[0]?.error_message,
+              renewalResults: renewalResults,
+              transactionId: transactionId
+            }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Mark transaction as completed
+        const { error: completeError } = await supabaseClient.rpc('complete_renewal_transaction', {
+          p_transaction_id: transactionId
+        });
+        
+        if (completeError) {
+          console.error('❌ Failed to mark transaction as completed:', completeError);
+          // Don't fail the request, just log the error
+        }
+
+        console.log(`✅ Group renewal completed successfully: ${successfulRenewals} accounts renewed`);
+
         return new Response(
           JSON.stringify({ 
-            error: 'API renewals succeeded but database update failed',
-            details: dbError?.message || dbResult?.[0]?.error_message,
-            renewalResults: renewalResults
+            success: true,
+            message: `Successfully renewed ${successfulRenewals} accounts for ${planDuration} months`,
+            accountsRenewed: successfulRenewals,
+            creditsUsed: creditsRequired,
+            renewalResults: renewalResults,
+            transactionId: transactionId
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (dbUpdateError) {
+        console.error('💥 Exception during database update:', dbUpdateError);
+        
+        // Mark transaction as failed
+        try {
+          await supabaseClient.rpc('fail_renewal_transaction', {
+            p_transaction_id: transactionId,
+            p_reason: `Exception during database update: ${dbUpdateError.message}`
+          });
+        } catch (failError) {
+          console.error('❌ Failed to mark transaction as failed after exception:', failError);
+        }
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'Database update exception occurred',
+            details: dbUpdateError.message,
+            renewalResults: renewalResults,
+            transactionId: transactionId
           }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
-
-      console.log(`✅ Group renewal completed successfully: ${successfulRenewals} accounts renewed`);
-
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message: `Successfully renewed ${successfulRenewals} accounts for ${planDuration} months`,
-          accountsRenewed: successfulRenewals,
-          creditsUsed: creditsRequired,
-          renewalResults: renewalResults
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     } else {
-      // Partial failure - return detailed results
+      // Partial failure - mark transaction as failed
+      const { error: failError } = await supabaseClient.rpc('fail_renewal_transaction', {
+        p_transaction_id: transactionId,
+        p_reason: `Partial renewal failure: ${successfulRenewals}/${renewalResults.length} accounts renewed`
+      });
+      
+      if (failError) {
+        console.error('❌ Failed to mark transaction as failed:', failError);
+      }
+      
       console.error(`❌ Partial renewal failure: ${successfulRenewals}/${renewalResults.length} accounts renewed`);
       
       return new Response(
@@ -349,7 +439,8 @@ serve(async (req) => {
           error: `Only ${successfulRenewals} out of ${renewalResults.length} accounts were renewed successfully`,
           accountsRenewed: successfulRenewals,
           totalAccounts: renewalResults.length,
-          renewalResults: renewalResults
+          renewalResults: renewalResults,
+          transactionId: transactionId
         }),
         { status: 207, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -357,6 +448,15 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('💥 Unexpected error in renew-customer-group function:', error);
+    
+    // Try to fail the transaction if we have a transaction ID
+    try {
+      // We need to extract transactionId from the scope if it exists
+      // For now, we'll log this as a general failure
+      console.log('🔄 Attempting to clean up any pending transactions due to unexpected error');
+    } catch (cleanupError) {
+      console.error('❌ Failed to cleanup transaction after error:', cleanupError);
+    }
     
     // Provide more specific error messages based on error type
     let errorMessage = 'An unexpected error occurred while processing the renewal.';

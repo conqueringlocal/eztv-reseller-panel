@@ -553,6 +553,56 @@ export type Database = {
           },
         ]
       }
+      renewal_transactions: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          credits_required: number
+          customer_id: string
+          id: string
+          metadata: Json | null
+          plan_duration: number
+          reseller_id: string
+          rollback_reason: string | null
+          status: string
+          transaction_key: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          credits_required: number
+          customer_id: string
+          id?: string
+          metadata?: Json | null
+          plan_duration: number
+          reseller_id: string
+          rollback_reason?: string | null
+          status?: string
+          transaction_key: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          credits_required?: number
+          customer_id?: string
+          id?: string
+          metadata?: Json | null
+          plan_duration?: number
+          reseller_id?: string
+          rollback_reason?: string | null
+          status?: string
+          transaction_key?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "renewal_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reseller_api_keys: {
         Row: {
           api_key: string
@@ -891,6 +941,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      complete_renewal_transaction: {
+        Args: { p_transaction_id: string }
+        Returns: boolean
+      }
       consolidate_customer_connections: {
         Args: { customer_group_name: string; reseller_id_param: string }
         Returns: {
@@ -899,8 +953,31 @@ export type Database = {
           total_connections: number
         }[]
       }
+      detect_duplicate_renewals: {
+        Args: { p_hours_back?: number }
+        Returns: {
+          customer_id: string
+          customer_name: string
+          duplicate_count: number
+          log_ids: string[]
+          reseller_id: string
+          total_excess_credits: number
+        }[]
+      }
+      fail_renewal_transaction: {
+        Args: { p_reason?: string; p_transaction_id: string }
+        Returns: boolean
+      }
       generate_api_key: {
         Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_renewal_transaction_key: {
+        Args: {
+          p_customer_id: string
+          p_plan_duration: number
+          p_time_window_minutes?: number
+        }
         Returns: string
       }
       generate_sso_token: {
@@ -910,6 +987,19 @@ export type Database = {
       get_current_user_role: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      get_or_create_renewal_transaction: {
+        Args: {
+          p_credits_required: number
+          p_customer_id: string
+          p_plan_duration: number
+          p_reseller_id: string
+        }
+        Returns: {
+          current_status: string
+          is_new_transaction: boolean
+          transaction_id: string
+        }[]
       }
       get_reseller_path: {
         Args: { reseller_id: string }
@@ -936,6 +1026,14 @@ export type Database = {
       refresh_security_dashboard: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      refund_duplicate_charges: {
+        Args: {
+          p_credits_to_refund: number
+          p_reason: string
+          p_reseller_id: string
+        }
+        Returns: boolean
       }
       renew_customer_group: {
         Args: {
