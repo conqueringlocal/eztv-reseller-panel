@@ -74,6 +74,8 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
     sport_category = 'NBA';
   } else if (upperText.includes('NFL') || upperText.includes('FOOTBALL')) {
     sport_category = 'NFL';
+  } else if (upperText.includes('NCAAF') || upperText.includes('COLLEGE FOOTBALL')) {
+    sport_category = 'NCAAF';
   } else if (upperText.includes('TENNIS')) {
     sport_category = 'TENNIS';
   } else if (upperText.includes('UEFA')) {
