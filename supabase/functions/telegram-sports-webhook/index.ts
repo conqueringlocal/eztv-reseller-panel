@@ -188,6 +188,30 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
       continue;
     }
     
+    // Parse NCAAF format: "NCAAF 01: ESPN" or "NCAAF 16: 12PM UConn at Syracuse"
+    const ncaafMatch = line.match(/^NCAAF\s+(\d+):\s*(.+)$/);
+    if (ncaafMatch) {
+      const [, gameNumber, content] = ncaafMatch;
+      // Check if content contains time and game info
+      const timeGameMatch = content.match(/^(\d{1,2}(?::\d{2})?\s*[AP]M)\s+(.+)$/);
+      if (timeGameMatch) {
+        const [, time, game] = timeGameMatch;
+        channel_info.push({
+          game: game.trim(),
+          time: time.trim(),
+          channel: `NCAAF ${gameNumber}`
+        });
+      } else {
+        // Just channel info
+        channel_info.push({
+          game: '',
+          time: '',
+          channel: `NCAAF ${gameNumber}: ${content.trim()}`
+        });
+      }
+      continue;
+    }
+    
     // Parse Flo Racing format: "Flo Racing 01 :PBR RidePass @ Aug 19 5:00 PM"
     const floRacingMatch = line.match(/^Flo Racing\s+(\d+)\s*:(.+?)\s+@\s+(.+)$/);
     if (floRacingMatch) {
