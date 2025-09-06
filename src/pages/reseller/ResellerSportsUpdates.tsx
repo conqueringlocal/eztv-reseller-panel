@@ -32,7 +32,7 @@ export default function ResellerSportsUpdates() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const sportCategories = ['ALL', 'MLB', 'MILB', 'NBA', 'WNBA', 'NFL', 'TENNIS', 'UEFA', 'MLS', 'UFC', 'PPV', 'PARAMOUNT+', 'DIRTVISION', 'FLO RACING', 'FLO COLLEGE'];
+  const sportCategories = ['ALL', 'MLB', 'MILB', 'NBA', 'WNBA', 'NFL', 'NCAAF', 'TENNIS', 'UEFA', 'MLS', 'UFC', 'PPV', 'PARAMOUNT+', 'DIRTVISION', 'FLO RACING', 'FLO COLLEGE'];
 
   const fetchUpdates = async () => {
     try {
@@ -207,6 +207,7 @@ export default function ResellerSportsUpdates() {
       'NBA': 'bg-orange-500',
       'WNBA': 'bg-pink-500',
       'NFL': 'bg-green-500',
+      'NCAAF': 'bg-purple-500',
       'TENNIS': 'bg-yellow-500',
       'UEFA': 'bg-indigo-500',
       'MLS': 'bg-emerald-500',
