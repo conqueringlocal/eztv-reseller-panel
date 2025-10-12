@@ -407,12 +407,19 @@ export default function ResellerSportsUpdates() {
                     
                     <CardContent>
                       <div className="space-y-3">
+                        {/* For MLS/NCAAF: show content as fallback if no parsed game data */}
+                        {['MLS', 'NCAAF'].includes(update.sport_category) && 
+                         update.channel_info.every(info => !info.game) && 
+                         update.content && (
+                          <div className="p-3 bg-accent/50 rounded-lg">
+                            <div className="font-medium text-sm whitespace-pre-wrap">
+                              {update.content}
+                            </div>
+                          </div>
+                        )}
+                        
                         {sortChannelInfo(update.channel_info)
-                          .filter(info => 
-                            // Only show entries that have game info
-                            // US | channels without game info are already shown in the categories section
-                            info.game && info.game.trim() !== ''
-                          )
+                          .filter(info => info.game && info.game.trim() !== '')
                           .map((info, index) => (
                           <div 
                             key={index}
