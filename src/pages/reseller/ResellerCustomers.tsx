@@ -8,6 +8,9 @@ import { CustomerStatsHeader } from '@/components/customers/CustomerStatsHeader'
 import { CustomerActions } from '@/components/customers/CustomerActions';
 import { CustomerDialogsManager } from '@/components/customers/CustomerDialogsManager';
 import { ConsolidationManager } from '@/components/customers/ConsolidationManager';
+import { findAllDuplicateGroups } from '@/utils/customerConsolidation/duplicateDetection';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertTriangle } from 'lucide-react';
 
 import { useCustomerOperations } from '@/hooks/useCustomerOperations';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,6 +32,10 @@ export default function ResellerCustomers() {
   
   // Filter customers for this reseller
   const resellerCustomers = customers.filter(c => c.resellerId === user?.id);
+  
+  // Find duplicate groups
+  const duplicateGroups = findAllDuplicateGroups(resellerCustomers);
+  const hasDuplicates = duplicateGroups.length > 0;
 
   // Check if user can create trials
   const canCreateTrials = true; // Always allow trial creation for EZTV
@@ -77,6 +84,33 @@ export default function ResellerCustomers() {
           onAddCustomerClick={() => setIsAddCustomerOpen(true)}
         />
       </div>
+
+      {/* Duplicate warning alert */}
+      {hasDuplicates && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>⚠️ Duplicate Customers Detected</AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">
+              Found <strong>{duplicateGroups.length}</strong> group{duplicateGroups.length > 1 ? 's' : ''} of potential duplicate customers. 
+              This can cause double charges during renewals.
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-sm">
+              {duplicateGroups.slice(0, 3).map((group, idx) => (
+                <li key={idx}>
+                  <strong>{group.customer.name}</strong> has {group.matchingCustomers.length} potential duplicate{group.matchingCustomers.length > 1 ? 's' : ''}
+                </li>
+              ))}
+              {duplicateGroups.length > 3 && (
+                <li>...and {duplicateGroups.length - 3} more</li>
+              )}
+            </ul>
+            <p className="mt-2 text-sm font-semibold">
+              Please use the Consolidation Manager below to merge these records.
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Add ConsolidationManager component */}
       <ConsolidationManager

@@ -24,8 +24,10 @@ import { useApp } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIptvPackages } from '@/hooks/useIptvPackages';
 import { toast } from 'sonner';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { checkForExistingCustomer } from '@/utils/customerConsolidation/duplicateDetection';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // Form schema with validation - updated to support multi-connection accounts
 const formSchema = z.object({
@@ -64,7 +66,7 @@ interface AddCustomerFormProps {
 
 export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { user } = useAuth();
-  const { addCustomer } = useApp();
+  const { addCustomer, customers } = useApp();
   const { packages, isLoading: packagesLoading, error: packagesError, source, debugInfo, refetch } = useIptvPackages(undefined, false);
   
   // Initialize form with default values
@@ -111,6 +113,25 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
 
   const [totalCreditsNeeded, setTotalCreditsNeeded] = React.useState(1);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [duplicateCustomer, setDuplicateCustomer] = React.useState<any>(null);
+  
+  // Watch name and email for duplicate detection
+  const watchName = form.watch('name');
+  const watchEmail = form.watch('email');
+  
+  // Check for duplicates when name or email changes
+  React.useEffect(() => {
+    if (watchName && watchEmail) {
+      const existing = checkForExistingCustomer(
+        watchName, 
+        watchEmail, 
+        customers.filter(c => c.resellerId === user?.id)
+      );
+      setDuplicateCustomer(existing);
+    } else {
+      setDuplicateCustomer(null);
+    }
+  }, [watchName, watchEmail, customers, user?.id]);
 
   React.useEffect(() => {
     const updateCredits = async () => {
@@ -192,6 +213,28 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     <div className="p-1">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          {/* Duplicate customer warning */}
+          {duplicateCustomer && (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Duplicate Customer Detected</AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">
+                  A customer with similar information already exists:
+                </p>
+                <div className="bg-red-50 p-2 rounded border border-red-200">
+                  <p className="text-sm"><strong>Name:</strong> {duplicateCustomer.name}</p>
+                  <p className="text-sm"><strong>Email:</strong> {duplicateCustomer.email}</p>
+                  <p className="text-sm"><strong>Status:</strong> {duplicateCustomer.status}</p>
+                </div>
+                <p className="mt-2 text-sm font-semibold">
+                  Creating a duplicate customer will cause double charges during renewals. 
+                  Please verify this is a different customer before proceeding.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           <div className="grid grid-cols-1 gap-4">
             <FormField
               control={form.control}

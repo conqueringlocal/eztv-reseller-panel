@@ -19,6 +19,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Customer } from '@/contexts/AppContext';
 import { supabase } from '@/integrations/supabase/client';
+import { findPotentialDuplicates } from '@/utils/customerConsolidation/duplicateDetection';
+import { DuplicateRenewalWarning } from './DuplicateRenewalWarning';
 
 // Form schema with validation - using numbers directly instead of enum transformation
 const formSchema = z.object({
@@ -42,7 +44,7 @@ interface RenewalCostInfo {
 
 export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProps) {
   const { user, isAuthenticated } = useAuth();
-  const { resellers, refreshData } = useApp();
+  const { resellers, refreshData, customers } = useApp();
   const [renewalCostInfo, setRenewalCostInfo] = useState<RenewalCostInfo | null>(null);
   const [isLoadingCost, setIsLoadingCost] = useState(false);
   const [isRenewing, setIsRenewing] = useState(false);
@@ -50,6 +52,10 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
   
   // Get current reseller to show available credits
   const currentReseller = resellers.find(r => r.id === user?.id);
+  
+  // Check for duplicate customers
+  const duplicateCheck = findPotentialDuplicates(customer, customers.filter(c => c.resellerId === user?.id));
+  const hasDuplicates = duplicateCheck && duplicateCheck.matchingCustomers.length > 0;
   
   // Initialize form with default values - using number directly
   const form = useForm<FormData>({
@@ -286,6 +292,13 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Show duplicate warning if detected */}
+        {hasDuplicates && duplicateCheck && (
+          <DuplicateRenewalWarning
+            customer={customer}
+            duplicates={duplicateCheck.matchingCustomers}
+          />
+        )}
         <div className="rounded-md bg-gray-50 p-4 mb-2">
           <h3 className="text-sm font-medium">Customer Information</h3>
           <div className="mt-2 grid grid-cols-2 gap-2">

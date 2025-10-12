@@ -11,6 +11,9 @@ import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppContext } from '@/contexts/AppContext';
 import { supabase } from '@/integrations/supabase/client';
+import { checkForExistingCustomer } from '@/utils/customerConsolidation/duplicateDetection';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertTriangle } from 'lucide-react';
 
 const formSchema = z.object({
   name: z.string().min(2, 'Customer name must be at least 2 characters'),
@@ -26,8 +29,9 @@ interface CreateTrialFormProps {
 
 export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
   const { user } = useAuth();
-  const { refreshData } = useAppContext();
+  const { refreshData, customers } = useAppContext();
   const [isLoading, setIsLoading] = useState(false);
+  const [duplicateCustomer, setDuplicateCustomer] = useState<any>(null);
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -37,6 +41,24 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
       deviceType: 'Smart TV',
     },
   });
+  
+  // Watch name and email for duplicate detection
+  const watchName = form.watch('name');
+  const watchEmail = form.watch('email');
+  
+  // Check for duplicates when name or email changes
+  React.useEffect(() => {
+    if (watchName && watchEmail) {
+      const existing = checkForExistingCustomer(
+        watchName, 
+        watchEmail, 
+        customers.filter(c => c.resellerId === user?.id)
+      );
+      setDuplicateCustomer(existing);
+    } else {
+      setDuplicateCustomer(null);
+    }
+  }, [watchName, watchEmail, customers, user?.id]);
 
   const onSubmit = async (data: FormData) => {
     if (!user) {
@@ -100,6 +122,28 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        {/* Duplicate customer warning */}
+        {duplicateCustomer && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Duplicate Customer Detected</AlertTitle>
+            <AlertDescription>
+              <p className="mb-2">
+                A customer with similar information already exists:
+              </p>
+              <div className="bg-red-50 p-2 rounded border border-red-200">
+                <p className="text-sm"><strong>Name:</strong> {duplicateCustomer.name}</p>
+                <p className="text-sm"><strong>Email:</strong> {duplicateCustomer.email}</p>
+                <p className="text-sm"><strong>Status:</strong> {duplicateCustomer.status}</p>
+              </div>
+              <p className="mt-2 text-sm font-semibold">
+                Creating a trial for an existing customer may cause issues. 
+                Please verify this is a different customer before proceeding.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <div className="bg-green-50 p-4 rounded-lg border border-green-200">
           <h4 className="font-medium text-green-800 mb-2">EZTV Trial Information</h4>
           <p className="text-sm text-green-700">
