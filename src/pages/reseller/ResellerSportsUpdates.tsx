@@ -407,7 +407,14 @@ export default function ResellerSportsUpdates() {
                     
                     <CardContent>
                       <div className="space-y-3">
-                        {sortChannelInfo(update.channel_info).filter(info => info.game || !info.channel?.startsWith('US |')).map((info, index) => (
+                        {sortChannelInfo(update.channel_info)
+                          .filter(info => 
+                            // Show if has game info, non-US channels, or update is MLS/NCAAF
+                            info.game || 
+                            !info.channel?.startsWith('US |') || 
+                            ['NCAAF', 'MLS'].includes(update.sport_category)
+                          )
+                          .map((info, index) => (
                           <div 
                             key={index}
                             className="flex flex-col gap-2 p-3 bg-accent/50 rounded-lg"
