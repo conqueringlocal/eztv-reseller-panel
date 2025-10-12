@@ -116,6 +116,30 @@ function parseMessageContent(text: string): ParsedSportsUpdate {
       continue;
     }
     
+    // Parse MLS format: "MLS Live 1 | Austin  vs.  LAFC start:2025-10-12 23:55:00 stop:2025-10-13 02:37:00"
+    const mlsMatch = line.match(/^(MLS\s+Live\s+\d+)\s*\|\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    if (mlsMatch) {
+      const [, channel, teams, startTime] = mlsMatch;
+      channel_info.push({
+        game: teams.trim(),
+        time: startTime.trim(),
+        channel: channel.trim()
+      });
+      continue;
+    }
+    
+    // Parse NBA format with explicit pattern
+    const nbaMatch = line.match(/^(NBA\s+\d+)\s*:\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
+    if (nbaMatch) {
+      const [, channel, teams, startTime] = nbaMatch;
+      channel_info.push({
+        game: teams.trim(),
+        time: startTime.trim(),
+        channel: channel.trim()
+      });
+      continue;
+    }
+    
     // Parse MILB format: "MILB 1 | Team vs Team start:2025-08-19 19:20:00 stop:2025-08-20 02:33:20"
     const milbMatch = line.match(/^(MILB\s+\d+)\s*\|\s*(.+?)\s+start:(.+?)\s+stop:(.+?)$/);
     if (milbMatch) {

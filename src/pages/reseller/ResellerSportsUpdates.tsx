@@ -407,6 +407,17 @@ export default function ResellerSportsUpdates() {
                     
                     <CardContent>
                       <div className="space-y-3">
+                        {/* Show game info from content if channel_info is empty or has no game data */}
+                        {update.sport_category === 'MLS' && 
+                         update.channel_info.every(info => !info.game) && 
+                         update.content && (
+                          <div className="p-3 bg-accent/50 rounded-lg mb-3">
+                            <div className="font-medium text-sm whitespace-pre-wrap">
+                              {update.content.split('\n')[0]}
+                            </div>
+                          </div>
+                        )}
+                        
                         {sortChannelInfo(update.channel_info)
                           .filter(info => 
                             // Show if has game info, non-US channels, or update is MLS/NCAAF
