@@ -159,16 +159,18 @@ export default function ResellerSportsUpdates() {
 
   const filteredUpdates = activeTab === 'ALL' 
     ? updates.filter(update => 
-        // Show updates that have game info, non-US channels, or are NCAAF category
+        // Show updates that have game info, non-US channels, or are in exception categories (NCAAF, MLS)
         update.channel_info.some(info => 
-          info.game || (!info.channel?.startsWith('US |') && info.channel) || update.sport_category === 'NCAAF'
+          info.game || (!info.channel?.startsWith('US |') && info.channel) || 
+          ['NCAAF', 'MLS'].includes(update.sport_category)
         )
       )
     : updates.filter(update => 
         update.sport_category === activeTab &&
-        // Show updates that have game info, non-US channels, or are NCAAF category  
+        // Show updates that have game info, non-US channels, or are in exception categories  
         update.channel_info.some(info => 
-          info.game || (!info.channel?.startsWith('US |') && info.channel) || update.sport_category === 'NCAAF'
+          info.game || (!info.channel?.startsWith('US |') && info.channel) || 
+          ['NCAAF', 'MLS'].includes(update.sport_category)
         )
       );
 
