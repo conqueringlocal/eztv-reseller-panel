@@ -953,6 +953,18 @@ export type Database = {
           total_connections: number
         }[]
       }
+      detect_duplicate_customers: {
+        Args: { p_reseller_id?: string }
+        Returns: {
+          customer1_email: string
+          customer1_id: string
+          customer1_name: string
+          customer2_email: string
+          customer2_id: string
+          customer2_name: string
+          match_type: string
+        }[]
+      }
       detect_duplicate_renewals: {
         Args: { p_hours_back?: number }
         Returns: {

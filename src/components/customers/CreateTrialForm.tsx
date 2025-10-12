@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -47,7 +47,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
   const watchEmail = form.watch('email');
   
   // Check for duplicates when name or email changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (watchName && watchEmail) {
       const existing = checkForExistingCustomer(
         watchName, 

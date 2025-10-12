@@ -9,6 +9,14 @@ export { getFieldValue } from './fieldHelpers';
 export { getConnectionDetails } from './connectionUtils';  
 export { isConsolidatedCustomer, getCustomerDisplayName, getTotalConnections, getConnectionSummary } from './customerInfo';
 export { getCustomerCredentials, formatCredentialsForDisplay } from './credentialsUtils';
+export { 
+  findPotentialDuplicates, 
+  checkForExistingCustomer, 
+  findAllDuplicateGroups,
+  normalizeName,
+  normalizeEmail 
+} from './duplicateDetection';
+export type { DuplicateCustomerMatch } from './duplicateDetection';
 
 /**
  * Get all connection credentials for a customer
