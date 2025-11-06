@@ -139,151 +139,136 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
 
   // Handle form submission with enhanced error handling
   const onSubmit = async (data: FormData) => {
-    // Enhanced authentication checks
-    if (!isAuthenticated || !user || !authCheckPassed) {
-      toast.error('Authentication required. Please log in to continue.');
+    if (!isAuthenticated) {
+      toast.error("Authentication required. Please log in again.");
       return;
     }
 
     if (!renewalCostInfo) {
-      toast.error('Please wait for cost calculation to complete.');
+      toast.error("Still calculating renewal cost. Please wait.");
       return;
     }
 
-    // Check credits before attempting renewal
     if (currentReseller && currentReseller.credits < renewalCostInfo.creditsRequired) {
-      toast.error(`Insufficient credits. You need ${renewalCostInfo.creditsRequired} credits but only have ${currentReseller.credits}.`);
+      toast.error(
+        `Insufficient credits. You need ${renewalCostInfo.creditsRequired} credits but only have ${currentReseller.credits}.`
+      );
       return;
     }
-    
+
     setIsRenewing(true);
-    
+
     try {
-      console.log(`🔄 RenewCustomerForm: Starting group renewal for ${customer.name}`);
-      console.log(`📋 Renewal details:`, {
-        customerId: customer.id,
-        planDuration: data.planDuration,
-        accountsCount: renewalCostInfo.accountsCount,
-        creditsRequired: renewalCostInfo.creditsRequired,
-        userSession: user?.id
-      });
+      const accountsInGroup = renewalCostInfo.accountsCount;
       
-      // Call the edge function with retry logic
-      let attempts = 0;
-      const maxAttempts = 2;
-      let lastError = null;
+      console.log('🔄 Starting renewal process for customer:', customer.id);
+      console.log('   - Customer group:', customer.customer_group);
+      console.log('   - Accounts in group:', accountsInGroup);
+      console.log('   - Plan duration:', data.planDuration, 'months');
+      console.log('   - Credits required:', renewalCostInfo.creditsRequired);
+      console.log('   - Current credits:', currentReseller?.credits || 0);
 
-      while (attempts < maxAttempts) {
-        attempts++;
-        console.log(`🔄 Attempt ${attempts}/${maxAttempts} to renew subscription`);
-
-        try {
-          const { data: renewalResult, error } = await supabase.functions.invoke('renew-customer-group', {
-            body: {
-              customerId: customer.id,
-              planDuration: data.planDuration
-            }
-          });
-
-          if (error) {
-            lastError = error;
-            console.error(`❌ Edge function error (attempt ${attempts}):`, error);
-            
-            // Handle specific error types
-            if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-              // Try refreshing session before retry
-              if (attempts < maxAttempts) {
-                console.log('🔄 Attempting session refresh...');
-                const { error: refreshError } = await supabase.auth.refreshSession();
-                if (refreshError) {
-                  console.error('❌ Session refresh failed:', refreshError);
-                  throw new Error('Authentication expired. Please log in again.');
-                }
-                continue; // Retry with refreshed session
-              } else {
-                throw new Error('Authentication failed. Please log in again.');
-              }
-            } else if (error.message?.includes('403') || error.message?.includes('Forbidden')) {
-              throw new Error('You do not have permission to renew this customer subscription.');
-            } else if (error.message?.includes('404')) {
-              throw new Error('Customer not found or has been deleted.');
-            } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
-              // Network error - retry once
-              if (attempts < maxAttempts) {
-                console.log('🔄 Retrying due to network error...');
-                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-                continue;
-              } else {
-                throw new Error('Network error. Please check your connection and try again.');
-              }
-            } else {
-              throw new Error(`Service error: ${error.message}`);
-            }
-          }
-
-          if (renewalResult?.success) {
-            console.log(`✅ RenewCustomerForm: Group renewal successful for ${customer.name}`);
-            console.log(`📈 Renewed ${renewalResult.accountsRenewed} accounts using ${renewalResult.creditsUsed} credits`);
-            
-            toast.success(
-              `Successfully renewed ${renewalResult.accountsRenewed} account${renewalResult.accountsRenewed !== 1 ? 's' : ''} for ${data.planDuration} month${data.planDuration !== 1 ? 's' : ''}. Used ${renewalResult.creditsUsed} credits.`
-            );
-            
-            form.reset();
-            await refreshData(); // Refresh data to show updated customer info
-            if (onSuccess) onSuccess();
-            return; // Success - exit retry loop
-          } else {
-            console.error(`❌ RenewCustomerForm: Renewal failed - ${renewalResult?.error}`);
-            
-            // Handle partial failures
-            if (renewalResult?.accountsRenewed > 0) {
-              throw new Error(
-                `Partial renewal: ${renewalResult.accountsRenewed} out of ${renewalResult.totalAccounts} accounts renewed. ${renewalResult.error}`
-              );
-            } else {
-              throw new Error(renewalResult?.error || 'Service failed to process renewal request');
-            }
-          }
-        } catch (innerError) {
-          lastError = innerError;
-          console.error(`❌ Inner error (attempt ${attempts}):`, innerError);
-          
-          // Don't retry for user permission errors
-          if (innerError.message?.includes('permission') || 
-              innerError.message?.includes('Authentication') ||
-              innerError.message?.includes('log in')) {
-            throw innerError;
-          }
-          
-          // If this was the last attempt, throw the error
-          if (attempts >= maxAttempts) {
-            throw innerError;
-          }
-        }
+      // Show progress toast for multi-account renewals
+      if (accountsInGroup > 1) {
+        toast.loading(`Renewing ${accountsInGroup} accounts...`, { id: 'renewal-progress' });
       }
 
-      // If we get here, all attempts failed
-      throw lastError || new Error('All renewal attempts failed');
+      const { data: responseData, error } = await supabase.functions.invoke(
+        'renew-customer-group',
+        {
+          body: {
+            customerId: customer.id,
+            planDuration: data.planDuration,
+          }
+        }
+      );
+
+      // Dismiss progress toast
+      if (accountsInGroup > 1) {
+        toast.dismiss('renewal-progress');
+      }
+
+      // Enhanced error handling with retry logic for network/auth issues
+      if (error) {
+        console.error('❌ Edge function error:', error);
+        
+        // Check if it's a network or auth error that might be temporary
+        if (error.message?.includes('Failed to fetch') || 
+            error.message?.includes('network') ||
+            error.message?.includes('JWT')) {
+          toast.error("Connection issue. Please try again.");
+        } else {
+          toast.error(`Renewal failed: ${error.message}`);
+        }
+        setIsRenewing(false);
+        return;
+      }
+
+      if (!responseData?.success) {
+        const errorMessage = responseData?.error || 'Unknown error occurred';
+        console.error('❌ Renewal failed:', responseData);
+        
+        // Show detailed error information for partial failures
+        if (responseData?.failedRenewals?.length > 0) {
+          const totalAccounts = responseData.summary?.total || accountsInGroup;
+          const successCount = responseData.summary?.successful || 0;
+          const failedCount = responseData.summary?.failed || responseData.failedRenewals.length;
+          
+          console.error(`   Failed accounts (${failedCount}/${totalAccounts}):`, responseData.failedRenewals);
+          
+          // Show summary first
+          toast.error(
+            `Partial renewal: ${successCount} succeeded, ${failedCount} failed. Check console for details.`,
+            { duration: 8000 }
+          );
+          
+          // Show individual failures
+          responseData.failedRenewals.forEach((failure: any, index: number) => {
+            if (index < 3) { // Limit to first 3 to avoid spam
+              setTimeout(() => {
+                toast.error(
+                  `${failure.name}: ${failure.error}`,
+                  { duration: 5000 }
+                );
+              }, index * 500);
+            }
+          });
+        } else {
+          toast.error(errorMessage);
+        }
+        
+        setIsRenewing(false);
+        return;
+      }
+
+      // Success case
+      const accountsRenewed = responseData.accountsRenewed || 1;
+      const creditsUsed = responseData.creditsUsed || renewalCostInfo.creditsRequired;
       
-    } catch (error: any) {
-      console.error('💥 RenewCustomerForm: Renewal error:', error);
+      console.log('✅ Renewal successful!');
+      console.log('   - Accounts renewed:', accountsRenewed);
+      console.log('   - Credits used:', creditsUsed);
+      console.log('   - Plan duration:', data.planDuration, 'months');
       
-      // Enhanced error messages for users
-      const errorMessage = error.message || 'An unexpected error occurred while renewing the subscription.';
-      toast.error(errorMessage);
-      
-      // Log detailed context for debugging
-      console.error('Renewal error context:', {
-        customerId: customer.id,
-        customerName: customer.name,
-        planDuration: data.planDuration,
-        userAuthenticated: isAuthenticated,
-        authCheckPassed,
-        userId: user?.id,
-        creditsRequired: renewalCostInfo?.creditsRequired,
-        availableCredits: currentReseller?.credits
-      });
+      // Enhanced success message for multi-account renewals
+      if (accountsRenewed > 1) {
+        toast.success(
+          `🎉 Successfully renewed all ${accountsRenewed} accounts for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'}!`,
+          { duration: 5000 }
+        );
+        toast.success(`${creditsUsed} credits used`, { duration: 3000 });
+      } else {
+        toast.success(
+          `Successfully renewed for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'}. ${creditsUsed} credits used.`
+        );
+      }
+
+      form.reset();
+      await refreshData();
+      onSuccess?.();
+    } catch (error) {
+      console.error('❌ Unexpected error during renewal:', error);
+      toast.error('An unexpected error occurred. Please try again.');
     } finally {
       setIsRenewing(false);
     }

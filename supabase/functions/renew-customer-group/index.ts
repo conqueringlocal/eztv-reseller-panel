@@ -232,11 +232,17 @@ serve(async (req) => {
 
     console.log(`✅ Credit check passed: ${reseller.credits} credits available, ${creditsRequired} required`);
 
-    // Separate customers by type (MAG vs M3U)
-    const magCustomers = groupCustomers.filter(c => c.mac_address && !c.username);
-    const m3uCustomers = groupCustomers.filter(c => c.username && c.password);
+    // Separate customers into MAG and M3U types
+    const magCustomers = groupMembers.filter(c => c.mac_address);
+    const m3uCustomers = groupMembers.filter(c => !c.mac_address);
 
-    console.log(`📋 Customer breakdown: ${magCustomers.length} MAG accounts, ${m3uCustomers.length} M3U accounts`);
+    console.log(`📊 Customer Group Breakdown:`);
+    console.log(`   - Total accounts in group: ${groupMembers.length}`);
+    console.log(`   - MAG devices: ${magCustomers.length}`);
+    console.log(`   - M3U accounts: ${m3uCustomers.length}`);
+    console.log(`   - Plan duration: ${planDuration} months`);
+    console.log(`   - Credits required: ${creditsRequired}`);
+    console.log(`   - Transaction ID: ${transactionId}`);
 
     let renewalResults: Array<{account: CustomerAccount, success: boolean, error?: string}> = [];
 
@@ -254,10 +260,11 @@ serve(async (req) => {
     );
 
     // Renew MAG customers
+    console.log(`\n🔄 Starting MAG Customer Renewals (${magCustomers.length} accounts)...`);
     for (const customer of magCustomers) {
-      console.log(`🔄 Renewing MAG customer: ${customer.name} (${customer.mac_address})`);
-      
       try {
+        console.log(`   → Renewing MAG: ${customer.name} | MAC: ${customer.mac_address} | Customer ID: ${customer.id}`);
+        
         const { data, error } = await clientWithAuth.functions.invoke('renew-mag-user', {
           body: {
             customerId: customer.id,
@@ -266,21 +273,22 @@ serve(async (req) => {
         });
 
         if (error || !data?.success) {
-          console.error(`❌ Failed to renew MAG customer ${customer.name}:`, error || data?.error);
+          const errorMsg = error?.message || data?.error || 'Unknown error';
+          console.error(`   ❌ FAILED: ${customer.name} - ${errorMsg}`);
           renewalResults.push({
             account: customer as CustomerAccount,
             success: false,
-            error: error?.message || data?.error || 'Unknown error'
+            error: errorMsg
           });
         } else {
-          console.log(`✅ Successfully renewed MAG customer: ${customer.name}`);
+          console.log(`   ✅ SUCCESS: ${customer.name}`);
           renewalResults.push({
             account: customer as CustomerAccount,
             success: true
           });
         }
       } catch (error) {
-        console.error(`💥 Exception renewing MAG customer ${customer.name}:`, error);
+        console.error(`   ❌ EXCEPTION: ${customer.name} - ${error.message}`);
         renewalResults.push({
           account: customer as CustomerAccount,
           success: false,
@@ -290,15 +298,14 @@ serve(async (req) => {
     }
 
     // Renew M3U customers based on provider
+    console.log(`\n🔄 Starting M3U Customer Renewals (${m3uCustomers.length} accounts)...`);
     for (const customer of m3uCustomers) {
-      console.log(`🔄 Renewing M3U customer: ${customer.name} (${customer.username}) - Provider: ${customer.provider}`);
-      
       try {
-        let functionName = 'renew-iptv-user'; // Default to 8k provider
-        if (customer.provider === 'trex') {
-          functionName = 'renew-trex-user';
-        }
-
+        const provider = customer.provider || '8k';
+        const functionName = provider === 'trex' ? 'renew-trex-user' : 'renew-iptv-user';
+        
+        console.log(`   → Renewing ${provider.toUpperCase()}: ${customer.name} | Username: ${customer.username} | Customer ID: ${customer.id}`);
+        
         const { data, error } = await clientWithAuth.functions.invoke(functionName, {
           body: {
             customerId: customer.id,
@@ -307,21 +314,23 @@ serve(async (req) => {
         });
 
         if (error || !data?.success) {
-          console.error(`❌ Failed to renew M3U customer ${customer.name}:`, error || data?.error);
+          const errorMsg = error?.message || data?.error || 'Unknown error';
+          console.error(`   ❌ FAILED: ${customer.name} - ${errorMsg}`);
           renewalResults.push({
             account: customer as CustomerAccount,
             success: false,
-            error: error?.message || data?.error || 'Unknown error'
+            error: errorMsg
           });
         } else {
-          console.log(`✅ Successfully renewed M3U customer: ${customer.name}`);
+          console.log(`   ✅ SUCCESS: ${customer.name}`);
           renewalResults.push({
             account: customer as CustomerAccount,
             success: true
           });
         }
       } catch (error) {
-        console.error(`💥 Exception renewing M3U customer ${customer.name}:`, error);
+        const provider = customer.provider || '8k';
+        console.error(`   ❌ EXCEPTION: ${customer.name} - ${error.message}`);
         renewalResults.push({
           account: customer as CustomerAccount,
           success: false,
@@ -334,10 +343,18 @@ serve(async (req) => {
     const successfulRenewals = renewalResults.filter(r => r.success).length;
     const failedRenewals = renewalResults.filter(r => !r.success);
 
-    console.log(`📊 Renewal summary: ${successfulRenewals}/${renewalResults.length} accounts renewed successfully`);
-
+    console.log(`\n📊 Renewal Results Summary:`);
+    console.log(`   - Total accounts: ${renewalResults.length}`);
+    console.log(`   - Successful: ${successfulRenewals}`);
+    console.log(`   - Failed: ${failedRenewals.length}`);
+    console.log(`   - Transaction ID: ${transactionId}`);
+    
     if (failedRenewals.length > 0) {
-      console.error('❌ Failed renewals:', failedRenewals.map(f => `${f.account.name}: ${f.error}`));
+      console.error(`\n❌ RENEWAL INCOMPLETE - Some accounts failed to renew`);
+      console.error(`Failed accounts:`);
+      failedRenewals.forEach(f => {
+        console.error(`   - ${f.account.name} (ID: ${f.account.id}): ${f.error}`);
+      });
     }
 
     // Update database with consolidated results - only if all renewals succeeded

@@ -155,38 +155,18 @@ serve(async (req) => {
       );
     }
 
-    // Calculate new expiration date for database
-    const currentExpiration = new Date(customer.expiration_date);
-    const newDatabaseExpiration = new Date(currentExpiration);
-    newDatabaseExpiration.setMonth(newDatabaseExpiration.getMonth() + planDuration);
-    
-    // Update customer in database
-    const { error: updateError } = await supabaseClient
-      .from('customers')
-      .update({ 
-        expiration_date: newDatabaseExpiration.toISOString().split('T')[0],
-        plan_duration: planDuration,
-        status: 'active' // Reset status to active after renewal
-      })
-      .eq('id', customerId);
+    // NOTE: This function ONLY handles the Trex API call
+    // Database updates and credit deduction are handled by renew-customer-group function
 
-    if (updateError) {
-      console.error('Failed to update customer:', updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to update customer record' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Note: Credit deduction and logging is now handled by renew-customer-group function
-
-    console.log(`✅ Successfully renewed Trex customer ${customer.name} (${customer.username}) for ${planDuration} months`);
+    console.log(`✅ Successfully renewed Trex customer ${customer.name} (${customer.username}) for ${planDuration} months via API`);
 
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: `Trex customer renewed for ${planDuration} ${planDuration === 1 ? 'month' : 'months'}`,
-        newExpirationDate: newDatabaseExpiration.toISOString().split('T')[0]
+        message: `Trex API renewal successful for ${planDuration} ${planDuration === 1 ? 'month' : 'months'}`,
+        provider: 'trex',
+        customerName: customer.name,
+        username: customer.username
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
