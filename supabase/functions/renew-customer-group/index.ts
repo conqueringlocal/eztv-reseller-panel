@@ -233,11 +233,11 @@ serve(async (req) => {
     console.log(`✅ Credit check passed: ${reseller.credits} credits available, ${creditsRequired} required`);
 
     // Separate customers into MAG and M3U types
-    const magCustomers = groupMembers.filter(c => c.mac_address);
-    const m3uCustomers = groupMembers.filter(c => !c.mac_address);
+    const magCustomers = groupCustomers.filter(c => c.mac_address);
+    const m3uCustomers = groupCustomers.filter(c => !c.mac_address);
 
     console.log(`📊 Customer Group Breakdown:`);
-    console.log(`   - Total accounts in group: ${groupMembers.length}`);
+    console.log(`   - Total accounts in group: ${groupCustomers.length}`);
     console.log(`   - MAG devices: ${magCustomers.length}`);
     console.log(`   - M3U accounts: ${m3uCustomers.length}`);
     console.log(`   - Plan duration: ${planDuration} months`);
