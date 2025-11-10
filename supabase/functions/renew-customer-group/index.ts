@@ -153,7 +153,7 @@ serve(async (req) => {
     const { data: reseller, error: resellerError } = await supabaseClient
       .from('profiles')
       .select('credits, provider')
-      .eq('id', user.id)
+      .eq('id', primaryCustomer.reseller_id)
       .single();
 
     if (resellerError || !reseller) {
@@ -173,7 +173,7 @@ serve(async (req) => {
       'get_or_create_renewal_transaction',
       {
         p_customer_id: customerId,
-        p_reseller_id: user.id,
+        p_reseller_id: primaryCustomer.reseller_id,
         p_plan_duration: planDuration,
         p_credits_required: creditsRequired
       }
@@ -380,7 +380,7 @@ serve(async (req) => {
         const { data: dbResult, error: dbError } = await supabaseClient.rpc('renew_customer_group', {
           customer_id_param: customerId,
           duration_months: planDuration,
-          reseller_id_param: user.id
+          reseller_id_param: primaryCustomer.reseller_id
         });
 
         if (dbError || !dbResult?.[0]?.success) {
