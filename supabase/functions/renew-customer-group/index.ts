@@ -100,8 +100,24 @@ serve(async (req) => {
       );
     }
 
+    // Fetch user profile to check role
+    const { data: userProfile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      console.error('❌ Failed to fetch user profile:', profileError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify user permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Check if user has permission to renew this customer
-    if (primaryCustomer.reseller_id !== user.id) {
+    // Admins can renew any customer, resellers can only renew their own
+    if (userProfile.role !== 'admin' && primaryCustomer.reseller_id !== user.id) {
       console.error(`❌ Authorization failed: User ${user.id} (${user.email}) attempted to renew customer ${customerId} owned by ${primaryCustomer.reseller_id}`);
       
       return new Response(
@@ -114,7 +130,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`✅ Authorization passed: User ${user.email} can renew customer ${primaryCustomer.name}`);
+    console.log(`✅ Authorization passed: User ${user.email} (${userProfile.role}) can renew customer ${primaryCustomer.name}`);
 
     // Get all customers in the same group
     const { data: groupCustomers, error: groupError } = await supabaseClient
