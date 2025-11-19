@@ -141,22 +141,52 @@ Deno.serve(async (req) => {
 
       // Determine if this is M3U or MAG
       const isMag = !!connection.mac_address;
-      const subParam = planDuration === 1 ? 'month_1' : 
-                      planDuration === 3 ? 'month_3' : 
-                      planDuration === 6 ? 'month_6' : 'month_12';
+      const subParam = planDuration.toString();
 
-      let renewUrl = `${panelUrl}?api_key=${apiKey}&action=renew&sub=${subParam}`;
+      // Build URL in correct order: action → type → username/password → sub → api_key
+      let renewUrl = `${panelUrl}?action=renew`;
       
       if (isMag) {
         renewUrl += `&type=mag&mac=${connection.mac_address}`;
       } else {
         renewUrl += `&type=m3u&username=${connection.username}&password=${connection.password}`;
       }
+      
+      renewUrl += `&sub=${subParam}&api_key=${apiKey}`;
+
+      console.log(`🔄 Calling TREX API for Connection ${connectionNumber}:`, {
+        username: connection.username,
+        isMag,
+        planDuration,
+        expirationDate: connection.expiration_date
+      });
 
       const response = await fetch(renewUrl);
-      const result = await response.json();
-      renewalSuccess = result.status === 'success';
-      renewalError = renewalSuccess ? null : result.message;
+      
+      console.log(`📡 TREX Response Status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ TREX HTTP Error:', errorText);
+        renewalError = `HTTP ${response.status}: ${errorText || 'Unknown error'}`;
+        renewalSuccess = false;
+      } else {
+        const result = await response.json();
+        console.log('📡 TREX Response Body:', JSON.stringify(result));
+        
+        renewalSuccess = result.status === 'success';
+        renewalError = renewalSuccess ? null : (
+          result.message || 
+          result.error || 
+          result.msg || 
+          result.reason || 
+          'Unknown error from TREX API'
+        );
+        
+        if (!renewalSuccess) {
+          console.error('❌ TREX Renewal Failed:', renewalError);
+        }
+      }
 
     } else if (provider === '8k') {
       const apiKey = Deno.env.get('8K_API_KEY');
@@ -166,11 +196,31 @@ Deno.serve(async (req) => {
         throw new Error('8K API credentials not configured');
       }
 
+      console.log(`🔄 Calling 8K API for Connection ${connectionNumber}`);
+
       const renewUrl = `${panelUrl}/api.php?apikey=${apiKey}&action=renew&username=${connection.username}&duration=${planDuration}`;
       const response = await fetch(renewUrl);
-      const result = await response.json();
-      renewalSuccess = result.status === 'success';
-      renewalError = renewalSuccess ? null : result.message;
+      
+      console.log(`📡 8K Response Status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ 8K HTTP Error:', errorText);
+        renewalError = `HTTP ${response.status}: ${errorText || 'Unknown error'}`;
+        renewalSuccess = false;
+      } else {
+        const result = await response.json();
+        console.log('📡 8K Response Body:', JSON.stringify(result));
+        
+        renewalSuccess = result.status === 'success';
+        renewalError = renewalSuccess ? null : (
+          result.message || result.error || result.msg || 'Unknown error from 8K API'
+        );
+        
+        if (!renewalSuccess) {
+          console.error('❌ 8K Renewal Failed:', renewalError);
+        }
+      }
 
     } else {
       // Default IPTV provider
@@ -181,11 +231,31 @@ Deno.serve(async (req) => {
         throw new Error('IPTV API credentials not configured');
       }
 
+      console.log(`🔄 Calling IPTV API for Connection ${connectionNumber}`);
+
       const renewUrl = `${panelUrl}/api.php?apikey=${apiKey}&action=renew&username=${connection.username}&duration=${planDuration}`;
       const response = await fetch(renewUrl);
-      const result = await response.json();
-      renewalSuccess = result.status === 'success';
-      renewalError = renewalSuccess ? null : result.message;
+      
+      console.log(`📡 IPTV Response Status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ IPTV HTTP Error:', errorText);
+        renewalError = `HTTP ${response.status}: ${errorText || 'Unknown error'}`;
+        renewalSuccess = false;
+      } else {
+        const result = await response.json();
+        console.log('📡 IPTV Response Body:', JSON.stringify(result));
+        
+        renewalSuccess = result.status === 'success';
+        renewalError = renewalSuccess ? null : (
+          result.message || result.error || result.msg || 'Unknown error from IPTV API'
+        );
+        
+        if (!renewalSuccess) {
+          console.error('❌ IPTV Renewal Failed:', renewalError);
+        }
+      }
     }
 
     if (!renewalSuccess) {
