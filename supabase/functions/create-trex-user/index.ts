@@ -480,7 +480,6 @@ serve(async (req) => {
           console.error('Error logging admin action:', logError);
         }
       }
-      }
 
       // Consolidate connections if multiple were created
       if (createdCustomers.length > 1) {
