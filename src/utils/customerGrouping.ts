@@ -26,6 +26,7 @@ export interface ConsolidatedCustomer {
     password?: string;
     macAddress?: string;
     m3uUrl?: string;
+    expirationDate?: string;
   }>;
 }
 
@@ -73,7 +74,8 @@ export function consolidateCustomers(customers: Customer[]): ConsolidatedCustome
         username: customer.username,
         password: customer.password,
         macAddress: customer.macAddress,
-        m3uUrl: customer.m3uUrl || ''
+        m3uUrl: customer.m3uUrl || '',
+        expirationDate: customer.expirationDate
       }))
     };
   });

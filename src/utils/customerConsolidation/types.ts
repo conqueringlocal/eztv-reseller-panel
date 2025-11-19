@@ -28,6 +28,7 @@ export interface ConsolidatedCustomer {
     password?: string;
     macAddress?: string;
     m3uUrl?: string;
+    expirationDate?: string;
   }>;
 }
 
