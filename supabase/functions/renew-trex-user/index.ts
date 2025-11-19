@@ -95,13 +95,31 @@ serve(async (req) => {
       );
     }
 
-    // Check if user has permission to renew this customer
-    if (customer.reseller_id !== user.id) {
+    // Fetch user profile to check role
+    const { data: userProfile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      console.error('❌ Failed to fetch user profile:', profileError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify user permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check authorization: admins can renew any customer, resellers only their own
+    if (userProfile.role !== 'admin' && customer.reseller_id !== user.id) {
+      console.error(`❌ Authorization failed: User ${user.id} attempted to renew customer belonging to ${customer.reseller_id}`);
       return new Response(
         JSON.stringify({ error: 'Unauthorized to renew this customer' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`✅ Authorization passed: ${userProfile.role === 'admin' ? 'Admin' : 'Reseller'} ${user.email} renewing customer`);
 
     // Note: Credit checking and deduction is now handled by renew-customer-group function
     // This function only handles the Trex API call and database update
@@ -121,52 +139,148 @@ serve(async (req) => {
     // Map plan duration to subscription format (to match create-trex-user behavior)
     const subscriptionPeriod = mapPlanDurationToSub(planDuration);
     
-    // Call Trex panel to renew user using correct API parameters as per specification
-    console.log(`📡 Calling Trex panel to renew customer: ${customer.username} for ${planDuration} months`);
-    console.log(`📅 Mapped subscription period: ${subscriptionPeriod} (from ${planDuration} months)`);
-    
-    const renewUrl = new URL(panelUrl);
-    renewUrl.searchParams.append("api_key", trexApiKey);
-    renewUrl.searchParams.append("action", "renew");
-    renewUrl.searchParams.append("type", "m3u");
-    renewUrl.searchParams.append("username", customer.username);
-    renewUrl.searchParams.append("password", customer.password);
-    renewUrl.searchParams.append("sub", subscriptionPeriod);
+    // Check if this is a consolidated customer with multiple connections
+    const connectionList = customer.connection_list;
+    const isConsolidated = Array.isArray(connectionList) && connectionList.length > 0;
 
-    console.log(`🔗 Trex renewal API URL: ${renewUrl.toString().replace(trexApiKey, '[REDACTED]')}`);
-    console.log(`👤 Renewing customer username: ${customer.username}`);
-    console.log(`📅 Subscription duration: ${planDuration} months`);
+    console.log(`🔍 Customer type: ${isConsolidated ? 'Consolidated' : 'Single'}`);
+    console.log(`📊 Connections to renew: ${isConsolidated ? connectionList.length : 1}`);
 
-    const trexResponse = await fetch(renewUrl.toString());
-    const trexData = await trexResponse.json();
+    const renewalResults = [];
 
-    console.log('Trex API Response:', trexData);
-
-    // Check if the response indicates success
-    if (!trexResponse.ok || trexData.error || trexData.status === 'error') {
-      console.error('Failed to renew Trex user:', trexData);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to renew Trex subscription', 
-          details: trexData,
-          trexResponse: trexData 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (isConsolidated) {
+      // CONSOLIDATED CUSTOMER: Renew each connection in the list
+      console.log(`🔄 Processing ${connectionList.length} consolidated connections`);
+      
+      for (let i = 0; i < connectionList.length; i++) {
+        const connection = connectionList[i];
+        const connectionNum = connection.connection_number || i + 1;
+        
+        console.log(`\n📡 Renewing connection ${connectionNum} of ${connectionList.length}`);
+        
+        // Determine account type
+        const isMagAccount = !!connection.mac_address;
+        const accountType = isMagAccount ? 'mag' : 'm3u';
+        
+        // Build renewal URL
+        const renewUrl = new URL(panelUrl);
+        renewUrl.searchParams.append("api_key", trexApiKey);
+        renewUrl.searchParams.append("action", "renew");
+        renewUrl.searchParams.append("type", accountType);
+        renewUrl.searchParams.append("sub", subscriptionPeriod);
+        
+        if (isMagAccount) {
+          renewUrl.searchParams.append("mac", connection.mac_address);
+          console.log(`📦 Connection ${connectionNum}: MAG renewal for ${connection.mac_address}`);
+        } else {
+          renewUrl.searchParams.append("username", connection.username);
+          renewUrl.searchParams.append("password", connection.password);
+          console.log(`👤 Connection ${connectionNum}: M3U renewal for ${connection.username}`);
+        }
+        
+        // Call Trex API
+        try {
+          const trexResponse = await fetch(renewUrl.toString());
+          const trexData = await trexResponse.json();
+          
+          if (!trexResponse.ok || trexData.error || trexData.status === 'error') {
+            console.error(`❌ Connection ${connectionNum} renewal failed:`, trexData);
+            renewalResults.push({
+              connectionNumber: connectionNum,
+              success: false,
+              error: trexData.error || trexData.message || 'Unknown error'
+            });
+          } else {
+            console.log(`✅ Connection ${connectionNum} renewed successfully`);
+            renewalResults.push({
+              connectionNumber: connectionNum,
+              success: true
+            });
+          }
+        } catch (error) {
+          console.error(`❌ Connection ${connectionNum} API call failed:`, error);
+          renewalResults.push({
+            connectionNumber: connectionNum,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+      
+      // Check if all renewals succeeded
+      const allSuccessful = renewalResults.every(r => r.success);
+      const successCount = renewalResults.filter(r => r.success).length;
+      
+      if (!allSuccessful) {
+        console.error(`⚠️ Partial renewal failure: ${successCount}/${connectionList.length} connections renewed`);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Partial renewal failure',
+            details: `Only ${successCount} out of ${connectionList.length} connections were renewed successfully`,
+            renewalResults
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log(`✅ All ${connectionList.length} consolidated connections renewed successfully`);
+      
+    } else {
+      // SINGLE CONNECTION: Use top-level credentials (fallback)
+      console.log(`🔄 Processing single connection (legacy format)`);
+      
+      if (!customer.username || !customer.password) {
+        console.error(`❌ Customer ${customer.name} does not have IPTV credentials`);
+        return new Response(
+          JSON.stringify({ error: 'Customer does not have IPTV credentials' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const isMagAccount = !!customer.mac_address;
+      const accountType = isMagAccount ? 'mag' : 'm3u';
+      
+      const renewUrl = new URL(panelUrl);
+      renewUrl.searchParams.append("api_key", trexApiKey);
+      renewUrl.searchParams.append("action", "renew");
+      renewUrl.searchParams.append("type", accountType);
+      renewUrl.searchParams.append("sub", subscriptionPeriod);
+      
+      if (isMagAccount) {
+        renewUrl.searchParams.append("mac", customer.mac_address);
+        console.log(`📦 Single MAG renewal for ${customer.mac_address}`);
+      } else {
+        renewUrl.searchParams.append("username", customer.username);
+        renewUrl.searchParams.append("password", customer.password);
+        console.log(`👤 Single M3U renewal for ${customer.username}`);
+      }
+      
+      const trexResponse = await fetch(renewUrl.toString());
+      const trexData = await trexResponse.json();
+      
+      if (!trexResponse.ok || trexData.error || trexData.status === 'error') {
+        console.error('❌ Trex API renewal failed:', trexData);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Failed to renew Trex subscription', 
+            details: trexData,
+            trexResponse: trexData 
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log(`✅ Single connection renewed successfully`);
     }
 
-    // NOTE: This function ONLY handles the Trex API call
-    // Database updates and credit deduction are handled by renew-customer-group function
-
-    console.log(`✅ Successfully renewed Trex customer ${customer.name} (${customer.username}) for ${planDuration} months via API`);
-
+    // Success response
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: `Trex API renewal successful for ${planDuration} ${planDuration === 1 ? 'month' : 'months'}`,
+        message: `Trex renewal successful for ${planDuration} month(s)`,
+        connectionsRenewed: isConsolidated ? connectionList.length : 1,
         provider: 'trex',
-        customerName: customer.name,
-        username: customer.username
+        customerName: customer.name
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

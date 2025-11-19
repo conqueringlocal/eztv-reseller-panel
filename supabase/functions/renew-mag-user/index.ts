@@ -82,13 +82,31 @@ serve(async (req) => {
       );
     }
 
-    // Check if user has permission to renew this customer
-    if (customer.reseller_id !== user.id) {
+    // Fetch user profile to check role
+    const { data: userProfile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      console.error('❌ Failed to fetch user profile:', profileError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify user permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check authorization: admins can renew any customer, resellers only their own
+    if (userProfile.role !== 'admin' && customer.reseller_id !== user.id) {
+      console.error(`❌ Authorization failed: User ${user.id} attempted to renew customer belonging to ${customer.reseller_id}`);
       return new Response(
         JSON.stringify({ error: 'Unauthorized to renew this customer' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`✅ Authorization passed: ${userProfile.role === 'admin' ? 'Admin' : 'Reseller'} ${user.email} renewing customer`);
 
     // Note: Credit checking and deduction is now handled by renew-customer-group function
     // This function only handles the IPTV API call and database update
@@ -105,50 +123,126 @@ serve(async (req) => {
       );
     }
 
-    // Call IPTV panel to renew MAG user
-    console.log(`📡 Calling IPTV panel to renew MAG customer: ${customer.mac_address} for ${planDuration} months`);
-    
-    const renewUrl = new URL(panelUrl);
-    renewUrl.searchParams.append("api_key", iptvApiKey);
-    renewUrl.searchParams.append("action", "renew");
-    renewUrl.searchParams.append("type", "mag");
-    renewUrl.searchParams.append("mac", customer.mac_address);
-    renewUrl.searchParams.append("sub", planDuration.toString());
+    // Check if this is a consolidated customer
+    const connectionList = customer.connection_list;
+    const isConsolidated = Array.isArray(connectionList) && connectionList.length > 0;
 
-    console.log(`🔗 MAG Renewal API URL: ${renewUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
-    console.log(`📦 Renewing MAC address: ${customer.mac_address}`);
-    console.log(`📅 Subscription duration: ${planDuration} months`);
+    console.log(`🔍 Customer type: ${isConsolidated ? 'Consolidated' : 'Single'}`);
+    console.log(`📊 Connections to renew: ${isConsolidated ? connectionList.length : 1}`);
 
-    const iptvResponse = await fetch(renewUrl.toString());
-    const iptvData = await iptvResponse.json();
+    const renewalResults = [];
 
-    console.log('IPTV API Response:', iptvData);
-
-    // Check if the response indicates success
-    if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
-      console.error('Failed to renew MAG user:', iptvData);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to renew MAG subscription', 
-          details: iptvData,
-          iptvResponse: iptvData 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (isConsolidated) {
+      // CONSOLIDATED: Renew each MAG connection
+      console.log(`🔄 Processing ${connectionList.length} consolidated MAG connections`);
+      
+      for (let i = 0; i < connectionList.length; i++) {
+        const connection = connectionList[i];
+        const connectionNum = connection.connection_number || i + 1;
+        
+        if (!connection.mac_address) {
+          console.warn(`⚠️ Connection ${connectionNum} missing MAC address, skipping`);
+          renewalResults.push({
+            connectionNumber: connectionNum,
+            success: false,
+            error: 'Missing MAC address'
+          });
+          continue;
+        }
+        
+        console.log(`\n📡 Renewing MAG connection ${connectionNum} of ${connectionList.length}`);
+        console.log(`📦 MAC: ${connection.mac_address}`);
+        
+        const renewUrl = new URL(panelUrl);
+        renewUrl.searchParams.append("api_key", iptvApiKey);
+        renewUrl.searchParams.append("action", "renew");
+        renewUrl.searchParams.append("type", "mag");
+        renewUrl.searchParams.append("mac", connection.mac_address);
+        renewUrl.searchParams.append("sub", planDuration.toString());
+        
+        try {
+          const iptvResponse = await fetch(renewUrl.toString());
+          const iptvData = await iptvResponse.json();
+          
+          if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
+            console.error(`❌ Connection ${connectionNum} renewal failed:`, iptvData);
+            renewalResults.push({
+              connectionNumber: connectionNum,
+              success: false,
+              error: iptvData.error || iptvData.message || 'Unknown error'
+            });
+          } else {
+            console.log(`✅ Connection ${connectionNum} renewed successfully`);
+            renewalResults.push({
+              connectionNumber: connectionNum,
+              success: true
+            });
+          }
+        } catch (error) {
+          console.error(`❌ Connection ${connectionNum} API call failed:`, error);
+          renewalResults.push({
+            connectionNumber: connectionNum,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+      
+      const allSuccessful = renewalResults.every(r => r.success);
+      const successCount = renewalResults.filter(r => r.success).length;
+      
+      if (!allSuccessful) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Partial renewal failure',
+            details: `Only ${successCount} out of ${connectionList.length} MAG connections renewed`,
+            renewalResults
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log(`✅ All ${connectionList.length} MAG connections renewed`);
+      
+    } else {
+      // SINGLE CONNECTION (fallback)
+      console.log(`🔄 Processing single MAG connection`);
+      
+      if (!customer.mac_address) {
+        return new Response(
+          JSON.stringify({ error: 'Customer does not have a MAC address configured' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const renewUrl = new URL(panelUrl);
+      renewUrl.searchParams.append("api_key", iptvApiKey);
+      renewUrl.searchParams.append("action", "renew");
+      renewUrl.searchParams.append("type", "mag");
+      renewUrl.searchParams.append("mac", customer.mac_address);
+      renewUrl.searchParams.append("sub", planDuration.toString());
+      
+      const iptvResponse = await fetch(renewUrl.toString());
+      const iptvData = await iptvResponse.json();
+      
+      if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Failed to renew MAG subscription',
+            details: iptvData
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
-
-    // NOTE: This function ONLY handles the MAG API call
-    // Database updates and credit deduction are handled by renew-customer-group function
-
-    console.log(`✅ Successfully renewed MAG customer ${customer.name} (${customer.mac_address}) for ${planDuration} months via API`);
 
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        message: `MAG API renewal successful for ${planDuration} ${planDuration === 1 ? 'month' : 'months'}`,
+        success: true,
+        message: `MAG renewal successful for ${planDuration} month(s)`,
+        connectionsRenewed: isConsolidated ? connectionList.length : 1,
         provider: 'mag',
-        customerName: customer.name,
-        macAddress: customer.mac_address
+        customerName: customer.name
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
