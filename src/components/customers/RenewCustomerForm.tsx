@@ -52,6 +52,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
   
   // Get current reseller to show available credits
   const currentReseller = resellers.find(r => r.id === user?.id);
+  const isAdmin = user?.role === 'admin';
   
   // Check for duplicate customers
   const duplicateCheck = findPotentialDuplicates(customer, customers.filter(c => c.resellerId === user?.id));
@@ -149,7 +150,8 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
       return;
     }
 
-    if (currentReseller && currentReseller.credits < renewalCostInfo.creditsRequired) {
+    // Check if reseller has enough credits (skip for admins)
+    if (!isAdmin && currentReseller && currentReseller.credits < renewalCostInfo.creditsRequired) {
       toast.error(
         `Insufficient credits. You need ${renewalCostInfo.creditsRequired} credits but only have ${currentReseller.credits}.`
       );
@@ -256,10 +258,15 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
           `🎉 Successfully renewed all ${accountsRenewed} accounts for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'}!`,
           { duration: 5000 }
         );
-        toast.success(`${creditsUsed} credits used`, { duration: 3000 });
+        toast.success(
+          isAdmin ? 'No credits charged (Admin Override)' : `${creditsUsed} credits used`,
+          { duration: 3000 }
+        );
       } else {
         toast.success(
-          `Successfully renewed for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'}. ${creditsUsed} credits used.`
+          isAdmin
+            ? `Successfully renewed for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'} (Admin Override - No Credits Charged)`
+            : `Successfully renewed for ${data.planDuration} ${data.planDuration === 1 ? 'month' : 'months'}. ${creditsUsed} credits used.`
         );
       }
 
@@ -344,32 +351,51 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
 
         {/* Credits information */}
         {currentReseller && (
-          <div className="rounded-md bg-blue-50 p-4 mb-4">
-            <h3 className="text-sm font-medium text-blue-900">Credit Information</h3>
-            <div className="mt-2 flex justify-between items-center">
-              <span className="text-sm text-blue-700">Available Credits:</span>
-              <span className="text-sm font-semibold text-blue-900">{currentReseller.credits}</span>
-            </div>
-            <div className="mt-1 flex justify-between items-center">
-              <span className="text-sm text-blue-700">Required Credits:</span>
-              <span className="text-sm font-semibold text-blue-900">
-                {isLoadingCost ? '...' : (renewalCostInfo?.creditsRequired || 0)}
-              </span>
-            </div>
-            {renewalCostInfo && (
-              <div className="mt-1 flex justify-between items-center">
-                <span className="text-sm text-blue-700">Accounts to Renew:</span>
-                <span className="text-sm font-semibold text-blue-900">{renewalCostInfo.accountsCount}</span>
+          <div className={`rounded-md p-4 mb-4 ${isAdmin ? 'bg-green-50' : 'bg-blue-50'}`}>
+            <h3 className={`text-sm font-medium ${isAdmin ? 'text-green-900' : 'text-blue-900'}`}>
+              Credit Information {isAdmin && '(Admin Override)'}
+            </h3>
+            {isAdmin ? (
+              <div className="mt-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-green-700">Admin Mode:</span>
+                  <span className="text-sm font-semibold text-green-900">No Credits Will Be Charged</span>
+                </div>
+                {renewalCostInfo && (
+                  <div className="mt-1 flex justify-between items-center">
+                    <span className="text-sm text-green-700">Accounts to Renew:</span>
+                    <span className="text-sm font-semibold text-green-900">{renewalCostInfo.accountsCount}</span>
+                  </div>
+                )}
               </div>
+            ) : (
+              <>
+                <div className="mt-2 flex justify-between items-center">
+                  <span className="text-sm text-blue-700">Available Credits:</span>
+                  <span className="text-sm font-semibold text-blue-900">{currentReseller.credits}</span>
+                </div>
+                <div className="mt-1 flex justify-between items-center">
+                  <span className="text-sm text-blue-700">Required Credits:</span>
+                  <span className="text-sm font-semibold text-blue-900">
+                    {isLoadingCost ? '...' : (renewalCostInfo?.creditsRequired || 0)}
+                  </span>
+                </div>
+                {renewalCostInfo && (
+                  <div className="mt-1 flex justify-between items-center">
+                    <span className="text-sm text-blue-700">Accounts to Renew:</span>
+                    <span className="text-sm font-semibold text-blue-900">{renewalCostInfo.accountsCount}</span>
+                  </div>
+                )}
+                <div className="mt-1 flex justify-between items-center border-t border-blue-200 pt-2">
+                  <span className="text-sm text-blue-700">Remaining After Renewal:</span>
+                  <span className={`text-sm font-semibold ${
+                    (currentReseller.credits - (renewalCostInfo?.creditsRequired || 0)) >= 0 ? 'text-green-700' : 'text-red-700'
+                  }`}>
+                    {currentReseller.credits - (renewalCostInfo?.creditsRequired || 0)}
+                  </span>
+                </div>
+              </>
             )}
-            <div className="mt-1 flex justify-between items-center border-t border-blue-200 pt-2">
-              <span className="text-sm text-blue-700">Remaining After Renewal:</span>
-              <span className={`text-sm font-semibold ${
-                (currentReseller.credits - (renewalCostInfo?.creditsRequired || 0)) >= 0 ? 'text-green-700' : 'text-red-700'
-              }`}>
-                {currentReseller.credits - (renewalCostInfo?.creditsRequired || 0)}
-              </span>
-            </div>
           </div>
         )}
 
@@ -410,8 +436,14 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
               <FormDescription>
                 {renewalCostInfo ? (
                   <>
-                    This will renew <strong>{renewalCostInfo.accountsCount} account{renewalCostInfo.accountsCount !== 1 ? 's' : ''}</strong> and 
-                    consume <strong>{renewalCostInfo.creditsRequired} credit{renewalCostInfo.creditsRequired !== 1 ? 's' : ''}</strong>.
+                    This will renew <strong>{renewalCostInfo.accountsCount} account{renewalCostInfo.accountsCount !== 1 ? 's' : ''}</strong>{' '}
+                    {isAdmin ? (
+                      <span className="text-green-600 font-semibold">without consuming any credits (Admin Override)</span>
+                    ) : (
+                      <>
+                        and consume <strong>{renewalCostInfo.creditsRequired} credit{renewalCostInfo.creditsRequired !== 1 ? 's' : ''}</strong>
+                      </>
+                    )}.
                     Each account will be renewed separately via API.
                   </>
                 ) : (
