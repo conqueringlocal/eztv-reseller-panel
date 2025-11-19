@@ -82,13 +82,31 @@ serve(async (req) => {
       );
     }
 
-    // Check if user has permission to renew this customer
-    if (customer.reseller_id !== user.id) {
+    // Fetch user profile to check role
+    const { data: userProfile, error: profileError } = await supabaseClient
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !userProfile) {
+      console.error('❌ Failed to fetch user profile:', profileError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify user permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check authorization: admins can renew any customer, resellers only their own
+    if (userProfile.role !== 'admin' && customer.reseller_id !== user.id) {
+      console.error(`❌ Authorization failed: User ${user.id} attempted to renew customer belonging to ${customer.reseller_id}`);
       return new Response(
         JSON.stringify({ error: 'Unauthorized to renew this customer' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log(`✅ Authorization passed: ${userProfile.role === 'admin' ? 'Admin' : 'Reseller'} ${user.email} renewing customer`);
 
     // Note: Credit checking and deduction is now handled by renew-customer-group function
     // This function only handles the IPTV API call and database update
@@ -105,51 +123,118 @@ serve(async (req) => {
       );
     }
 
-    // Call IPTV panel to renew user using correct API parameters as per specification
-    console.log(`📡 Calling IPTV panel to renew customer: ${customer.username} for ${planDuration} months`);
-    
-    const renewUrl = new URL(panelUrl);
-    renewUrl.searchParams.append("api_key", iptvApiKey);
-    renewUrl.searchParams.append("action", "renew");
-    renewUrl.searchParams.append("type", "m3u");
-    renewUrl.searchParams.append("username", customer.username);
-    renewUrl.searchParams.append("password", customer.password);
-    renewUrl.searchParams.append("sub", planDuration.toString());
+    // Check if this is a consolidated customer
+    const connectionList = customer.connection_list;
+    const isConsolidated = Array.isArray(connectionList) && connectionList.length > 0;
 
-    console.log(`🔗 Renewal API URL: ${renewUrl.toString().replace(iptvApiKey, '[REDACTED]')}`);
-    console.log(`👤 Renewing customer username: ${customer.username}`);
-    console.log(`📅 Subscription duration: ${planDuration} months`);
+    console.log(`🔍 Customer type: ${isConsolidated ? 'Consolidated' : 'Single'}`);
+    console.log(`📊 Connections to renew: ${isConsolidated ? connectionList.length : 1}`);
 
-    const iptvResponse = await fetch(renewUrl.toString());
-    const iptvData = await iptvResponse.json();
+    const renewalResults = [];
 
-    console.log('IPTV API Response:', iptvData);
-
-    // Check if the response indicates success
-    if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
-      console.error('Failed to renew IPTV user:', iptvData);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Failed to renew IPTV subscription', 
-          details: iptvData,
-          iptvResponse: iptvData 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (isConsolidated) {
+      // CONSOLIDATED: Renew each M3U connection
+      console.log(`🔄 Processing ${connectionList.length} consolidated connections`);
+      
+      for (let i = 0; i < connectionList.length; i++) {
+        const connection = connectionList[i];
+        const connectionNum = connection.connection_number || i + 1;
+        
+        console.log(`\n📡 Renewing connection ${connectionNum} of ${connectionList.length}`);
+        console.log(`👤 Username: ${connection.username}`);
+        
+        const renewUrl = new URL(panelUrl);
+        renewUrl.searchParams.append("api_key", iptvApiKey);
+        renewUrl.searchParams.append("action", "renew");
+        renewUrl.searchParams.append("type", "m3u");
+        renewUrl.searchParams.append("username", connection.username);
+        renewUrl.searchParams.append("password", connection.password);
+        renewUrl.searchParams.append("sub", planDuration.toString());
+        
+        try {
+          const iptvResponse = await fetch(renewUrl.toString());
+          const iptvData = await iptvResponse.json();
+          
+          if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
+            console.error(`❌ Connection ${connectionNum} renewal failed:`, iptvData);
+            renewalResults.push({
+              connectionNumber: connectionNum,
+              success: false,
+              error: iptvData.error || iptvData.message || 'Unknown error'
+            });
+          } else {
+            console.log(`✅ Connection ${connectionNum} renewed successfully`);
+            renewalResults.push({
+              connectionNumber: connectionNum,
+              success: true
+            });
+          }
+        } catch (error) {
+          console.error(`❌ Connection ${connectionNum} API call failed:`, error);
+          renewalResults.push({
+            connectionNumber: connectionNum,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+      
+      const allSuccessful = renewalResults.every(r => r.success);
+      const successCount = renewalResults.filter(r => r.success).length;
+      
+      if (!allSuccessful) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Partial renewal failure',
+            details: `Only ${successCount} out of ${connectionList.length} connections renewed`,
+            renewalResults
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log(`✅ All ${connectionList.length} connections renewed`);
+      
+    } else {
+      // SINGLE CONNECTION (fallback)
+      console.log(`🔄 Processing single connection`);
+      
+      if (!customer.username || !customer.password) {
+        return new Response(
+          JSON.stringify({ error: 'Customer does not have IPTV credentials' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const renewUrl = new URL(panelUrl);
+      renewUrl.searchParams.append("api_key", iptvApiKey);
+      renewUrl.searchParams.append("action", "renew");
+      renewUrl.searchParams.append("type", "m3u");
+      renewUrl.searchParams.append("username", customer.username);
+      renewUrl.searchParams.append("password", customer.password);
+      renewUrl.searchParams.append("sub", planDuration.toString());
+      
+      const iptvResponse = await fetch(renewUrl.toString());
+      const iptvData = await iptvResponse.json();
+      
+      if (!iptvResponse.ok || iptvData.error || iptvData.status === 'error') {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Failed to renew IPTV subscription',
+            details: iptvData
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
-
-    // NOTE: This function ONLY handles the IPTV API call
-    // Database updates and credit deduction are handled by renew-customer-group function
-
-    console.log(`✅ Successfully renewed IPTV customer ${customer.name} (${customer.username}) for ${planDuration} months via API`);
 
     return new Response(
       JSON.stringify({ 
-        success: true, 
-        message: `IPTV API renewal successful for ${planDuration} ${planDuration === 1 ? 'month' : 'months'}`,
+        success: true,
+        message: `IPTV renewal successful for ${planDuration} month(s)`,
+        connectionsRenewed: isConsolidated ? connectionList.length : 1,
         provider: 'iptv',
-        customerName: customer.name,
-        username: customer.username
+        customerName: customer.name
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
