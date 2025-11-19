@@ -100,10 +100,10 @@ serve(async (req) => {
       );
     }
 
-    // Fetch user profile to check role
+    // Fetch user profile for logging
     const { data: userProfile, error: profileError } = await supabaseClient
       .from('profiles')
-      .select('role')
+      .select('id, name, email')
       .eq('id', user.id)
       .single();
 
@@ -115,9 +115,25 @@ serve(async (req) => {
       );
     }
 
-    // Check if user has permission to renew this customer
-    // Admins can renew any customer, resellers can only renew their own
-    if (userProfile.role !== 'admin' && primaryCustomer.reseller_id !== user.id) {
+    // Check if user is admin using secure function
+    const { data: isAdminData, error: roleError } = await supabaseClient
+      .rpc('has_role', { 
+        _user_id: user.id, 
+        _role: 'admin' 
+      });
+
+    if (roleError) {
+      console.error('❌ Failed to check user role:', roleError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify user permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const isAdmin = isAdminData === true;
+
+    // Authorization: Admin can renew any customer, resellers can only renew their own
+    if (!isAdmin && primaryCustomer.reseller_id !== user.id) {
       console.error(`❌ Authorization failed: User ${user.id} (${user.email}) attempted to renew customer ${customerId} owned by ${primaryCustomer.reseller_id}`);
       
       return new Response(
@@ -130,7 +146,10 @@ serve(async (req) => {
       );
     }
 
-    console.log(`✅ Authorization passed: User ${user.email} (${userProfile.role}) can renew customer ${primaryCustomer.name}`);
+    console.log(`✅ Authorization passed: User ${user.email} ${isAdmin ? '(ADMIN)' : '(RESELLER)'} can renew customer ${primaryCustomer.name}`);
+
+    // Set admin override flag for credit bypass
+    const isAdminOverride = isAdmin;
 
     // Get all customers in the same group
     const { data: groupCustomers, error: groupError } = await supabaseClient
@@ -232,21 +251,26 @@ serve(async (req) => {
     const transactionId = transactionResult.transaction_id;
     console.log(`✅ Created new renewal transaction: ${transactionId}`);
 
-    // Check if reseller has enough credits
-    if (reseller.credits < creditsRequired) {
-      console.log(`❌ Insufficient credits. Required: ${creditsRequired}, Available: ${reseller.credits}`);
-      return new Response(
-        JSON.stringify({ 
-          error: `Insufficient credits. You need ${creditsRequired} credits but only have ${reseller.credits}.`,
-          code: 'INSUFFICIENT_CREDITS',
-          required: creditsRequired, 
-          available: reseller.credits 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Only check credits if NOT admin
+    if (!isAdminOverride) {
+      // Check if reseller has enough credits
+      if (reseller.credits < creditsRequired) {
+        console.log(`❌ Insufficient credits. Required: ${creditsRequired}, Available: ${reseller.credits}`);
+        return new Response(
+          JSON.stringify({ 
+            error: `Insufficient credits. You need ${creditsRequired} credits but only have ${reseller.credits}.`,
+            code: 'INSUFFICIENT_CREDITS',
+            required: creditsRequired, 
+            available: reseller.credits 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    console.log(`✅ Credit check passed: ${reseller.credits} credits available, ${creditsRequired} required`);
+      console.log(`✅ Credit check passed: ${reseller.credits} credits available, ${creditsRequired} required`);
+    } else {
+      console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userProfile.email}`);
+    }
 
     // Separate customers into MAG and M3U types
     const magCustomers = groupCustomers.filter(c => c.mac_address);
@@ -376,35 +400,93 @@ serve(async (req) => {
     // Update database with consolidated results - only if all renewals succeeded
     if (successfulRenewals === renewalResults.length) {
       try {
-        // Use the existing database function to update all accounts and deduct credits
-        const { data: dbResult, error: dbError } = await supabaseClient.rpc('renew_customer_group', {
-          customer_id_param: customerId,
-          duration_months: planDuration,
-          reseller_id_param: primaryCustomer.reseller_id
-        });
-
-        if (dbError || !dbResult?.[0]?.success) {
-          console.error('❌ Database update failed:', dbError || dbResult?.[0]?.error_message);
+        if (isAdminOverride) {
+          // ADMIN PATH: Update customers directly without calling renew_customer_group function
+          console.log(`⚡ ADMIN: Updating customer expiration dates directly (no credit deduction)`);
           
-          // Mark transaction as failed
-          const { error: failError } = await supabaseClient.rpc('fail_renewal_transaction', {
-            p_transaction_id: transactionId,
-            p_reason: `Database update failed: ${dbError?.message || dbResult?.[0]?.error_message}`
-          });
+          // Update all customers in the group
+          const newExpirationDate = new Date();
+          newExpirationDate.setMonth(newExpirationDate.getMonth() + planDuration);
           
-          if (failError) {
-            console.error('❌ Failed to mark transaction as failed:', failError);
+          const { error: updateError } = await supabaseClient
+            .from('customers')
+            .update({
+              expiration_date: newExpirationDate.toISOString().split('T')[0],
+              plan_duration: planDuration,
+              status: 'active'
+            })
+            .eq('customer_group', primaryCustomer.customer_group)
+            .neq('status', 'cancelled');
+          
+          if (updateError) {
+            console.error('❌ Admin database update failed:', updateError);
+            
+            const { error: failError } = await supabaseClient.rpc('fail_renewal_transaction', {
+              p_transaction_id: transactionId,
+              p_reason: `Admin update failed: ${updateError.message}`
+            });
+            
+            if (failError) {
+              console.error('❌ Failed to mark transaction as failed:', failError);
+            }
+            
+            return new Response(
+              JSON.stringify({ 
+                error: 'API renewals succeeded but database update failed',
+                details: updateError.message,
+                renewalResults: renewalResults,
+                transactionId: transactionId
+              }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
           }
           
-          return new Response(
-            JSON.stringify({ 
-              error: 'API renewals succeeded but database update failed',
-              details: dbError?.message || dbResult?.[0]?.error_message,
-              renewalResults: renewalResults,
-              transactionId: transactionId
-            }),
-            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+          // Log admin action (no credit deduction)
+          await supabaseClient
+            .from('credit_logs')
+            .insert({
+              reseller_id: primaryCustomer.reseller_id,
+              action: 'addition',
+              credits_used: 0,
+              customer_name: primaryCustomer.name,
+              customer_id: customerId,
+              notes: `ADMIN ACTION: Renewed by admin ${userProfile.email} without credit charge (${planDuration} months, ${groupCustomers.length} accounts)`
+            });
+          
+          console.log(`✅ Admin renewal completed successfully (no credits charged to reseller)`);
+          
+        } else {
+          // RESELLER PATH: Use the database function to deduct credits normally
+          const { data: dbResult, error: dbError } = await supabaseClient.rpc('renew_customer_group', {
+            customer_id_param: customerId,
+            duration_months: planDuration,
+            reseller_id_param: primaryCustomer.reseller_id
+          });
+
+          if (dbError || !dbResult?.[0]?.success) {
+            console.error('❌ Database update failed:', dbError || dbResult?.[0]?.error_message);
+            
+            const { error: failError } = await supabaseClient.rpc('fail_renewal_transaction', {
+              p_transaction_id: transactionId,
+              p_reason: `Database update failed: ${dbError?.message || dbResult?.[0]?.error_message}`
+            });
+            
+            if (failError) {
+              console.error('❌ Failed to mark transaction as failed:', failError);
+            }
+            
+            return new Response(
+              JSON.stringify({ 
+                error: 'API renewals succeeded but database update failed',
+                details: dbError?.message || dbResult?.[0]?.error_message,
+                renewalResults: renewalResults,
+                transactionId: transactionId
+              }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          
+          console.log(`✅ Reseller renewal: Credits deducted from ${reseller.name}`);
         }
 
         // Mark transaction as completed
@@ -417,14 +499,15 @@ serve(async (req) => {
           // Don't fail the request, just log the error
         }
 
-        console.log(`✅ Group renewal completed successfully: ${successfulRenewals} accounts renewed`);
+        console.log(`✅ Group renewal completed: ${successfulRenewals} accounts renewed`);
 
         return new Response(
           JSON.stringify({ 
             success: true,
-            message: `Successfully renewed ${successfulRenewals} accounts for ${planDuration} months`,
+            message: `Successfully renewed ${successfulRenewals} accounts for ${planDuration} months${isAdminOverride ? ' (Admin - No Credit Charge)' : ''}`,
             accountsRenewed: successfulRenewals,
-            creditsUsed: creditsRequired,
+            creditsUsed: isAdminOverride ? 0 : creditsRequired,
+            adminOverride: isAdminOverride,
             renewalResults: renewalResults,
             transactionId: transactionId
           }),

@@ -100,6 +100,34 @@ serve(async (req) => {
       );
     }
 
+    console.log(`📋 Reseller: ${reseller.name}, Credits: ${reseller.credits}`);
+
+    // Check if current user is admin (for admin override)
+    let isAdminOverride = false;
+
+    if (!serviceCall) {
+      const authHeader = req.headers.get('Authorization');
+      const token = authHeader?.replace('Bearer ', '');
+      
+      if (token) {
+        const { data: { user: currentUser } } = await supabaseClient.auth.getUser(token);
+        
+        if (currentUser) {
+          // Use secure has_role function
+          const { data: isAdminData } = await supabaseClient.rpc('has_role', {
+            _user_id: currentUser.id,
+            _role: 'admin'
+          });
+          
+          isAdminOverride = isAdminData === true;
+          
+          if (isAdminOverride) {
+            console.log(`⚡ ADMIN OVERRIDE: Admin user creating account for reseller ${reseller.name}`);
+          }
+        }
+      }
+    }
+
     const connectionsToCreate = customerData.maxConnections || customerData.connections;
     console.log(`🔌 Creating ${connectionsToCreate} separate Trex accounts`);
 
@@ -163,8 +191,8 @@ serve(async (req) => {
       }
     }
 
-    // Check if reseller has enough credits
-    if (reseller.credits < creditsRequired) {
+    // Check if reseller has enough credits (skip if admin override or service call)
+    if (!serviceCall && !isAdminOverride && reseller.credits < creditsRequired) {
       console.error(`❌ Insufficient credits: ${reseller.credits} available, ${creditsRequired} required`);
       return new Response(
         JSON.stringify({ 
@@ -173,6 +201,12 @@ serve(async (req) => {
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    if (!serviceCall && !isAdminOverride) {
+      console.log(`✅ Credit check passed: ${reseller.credits} >= ${creditsRequired}`);
+    } else if (isAdminOverride) {
+      console.log(`⚡ ADMIN: Skipping credit check (admin override active)`);
     }
 
     // Determine which API credentials to use based on reseller configuration
@@ -398,32 +432,54 @@ serve(async (req) => {
 
     // Only deduct credits if at least one account was created successfully
     if (createdCustomers.length > 0) {
-      console.log(`💳 Deducting ${creditsRequired} credits from reseller`);
-      const { error: creditError } = await supabaseClient
-        .from('profiles')
-        .update({ credits: reseller.credits - creditsRequired })
-        .eq('id', resellerId);
+      if (!isAdminOverride) {
+        console.log(`💳 Deducting ${creditsRequired} credits from reseller`);
+        const { error: creditError } = await supabaseClient
+          .from('profiles')
+          .update({ credits: reseller.credits - creditsRequired })
+          .eq('id', resellerId);
 
-      if (creditError) {
-        console.error('Error deducting credits:', creditError);
-        // Customer was created but credits weren't deducted - log this for manual review
+        if (creditError) {
+          console.error('Error deducting credits:', creditError);
+          // Customer was created but credits weren't deducted - log this for manual review
+        }
+
+        // Log the credit transaction
+        const { error: logError } = await supabaseClient
+          .from('credit_logs')
+          .insert({
+            reseller_id: resellerId,
+            action: 'account_creation',
+            credits_used: creditsRequired,
+            connections_used: connectionsToCreate,
+            customer_id: createdCustomers[0].id, // Use first customer ID as reference
+            customer_name: customerData.name,
+            notes: `${customerData.name} | ${reseller.name}`
+          });
+
+        if (logError) {
+          console.error('Error logging credit transaction:', logError);
+        }
+      } else {
+        // Admin override - log without credit deduction
+        console.log(`⚡ ADMIN: No credits deducted (admin override)`);
+        
+        const { error: logError } = await supabaseClient
+          .from('credit_logs')
+          .insert({
+            reseller_id: resellerId,
+            action: 'addition',
+            credits_used: 0,
+            connections_used: connectionsToCreate,
+            customer_id: createdCustomers[0].id,
+            customer_name: customerData.name,
+            notes: `ADMIN ACTION: Created ${connectionsToCreate} Trex ${customerData.accountType.toUpperCase()} account(s) without credit charge`
+          });
+
+        if (logError) {
+          console.error('Error logging admin action:', logError);
+        }
       }
-
-      // Log the credit transaction
-      const { error: logError } = await supabaseClient
-        .from('credit_logs')
-        .insert({
-          reseller_id: resellerId,
-          action: 'account_creation',
-          credits_used: creditsRequired,
-          connections_used: connectionsToCreate,
-          customer_id: createdCustomers[0].id, // Use first customer ID as reference
-          customer_name: customerData.name,
-          notes: `${customerData.name} | ${reseller.name}`
-        });
-
-      if (logError) {
-        console.error('Error logging credit transaction:', logError);
       }
 
       // Consolidate connections if multiple were created
