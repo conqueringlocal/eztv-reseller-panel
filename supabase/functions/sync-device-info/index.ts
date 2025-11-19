@@ -95,63 +95,6 @@ serve(async (req) => {
       totalConnections: customer.total_connections
     });
 
-    // Function to sync a single connection
-    async function syncSingleConnection(
-      credentials: { username?: string; password?: string; mac_address?: string },
-      connectionNum: number
-    ) {
-      const hasValidUsername = credentials.username?.trim().length > 0;
-      const hasValidPassword = credentials.password?.trim().length > 0;
-      const hasValidMac = credentials.mac_address?.trim().length > 0;
-      
-      console.log(`Syncing connection ${connectionNum}:`, {
-        hasValidUsername,
-        hasValidPassword,
-        hasValidMac
-      });
-
-      let apiUrl: string;
-      
-      if (hasValidUsername && hasValidPassword) {
-        apiUrl = `${panelUrl}?action=device_info&username=${credentials.username}&password=${credentials.password}&api_key=${apiKey}`;
-      } else if (hasValidMac) {
-        apiUrl = `${panelUrl}?action=device_info&mac=${credentials.mac_address}&api_key=${apiKey}`;
-      } else {
-        return { 
-          success: false, 
-          error: 'No valid credentials',
-          connectionNumber: connectionNum 
-        };
-      }
-      
-      try {
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-        
-        if (!response.ok || data.status !== 'true') {
-          return {
-            success: false,
-            error: 'API error',
-            connectionNumber: connectionNum
-          };
-        }
-        
-        return {
-          success: true,
-          expire: data.user_info?.exp_date || data.expire,
-          m3uUrl: data.user_info?.url || data.url,
-          connectionNumber: connectionNum
-        };
-      } catch (error) {
-        console.error(`Error syncing connection ${connectionNum}:`, error);
-        return {
-          success: false,
-          error: error.message,
-          connectionNumber: connectionNum
-        };
-      }
-    }
-
     // If multiple connections exist, sync all of them
     if (hasMultipleConnections) {
       console.log('Syncing multiple connections...');
@@ -159,31 +102,57 @@ serve(async (req) => {
       const syncResults = [];
       const updatedConnectionList = [];
       
-      // Sync primary connection first
-      const primaryResult = await syncSingleConnection(
-        { 
-          username: customer.username, 
-          password: customer.password, 
-          mac_address: customer.mac_address 
-        },
+      // Helper function to sync a connection
+      const syncConnection = async (creds: any, connNum: number) => {
+        const hasUser = creds.username?.trim().length > 0;
+        const hasPass = creds.password?.trim().length > 0;
+        const hasMac = creds.mac_address?.trim().length > 0;
+        
+        if (!hasUser && !hasPass && !hasMac) {
+          return { success: false, error: 'No valid credentials', connectionNumber: connNum };
+        }
+        
+        let url = `${panelUrl}?action=device_info&api_key=${apiKey}`;
+        if (hasUser && hasPass) {
+          url += `&username=${creds.username}&password=${creds.password}`;
+        } else if (hasMac) {
+          url += `&mac=${creds.mac_address}`;
+        }
+        
+        try {
+          const res = await fetch(url);
+          const dat = await res.json();
+          
+          if (!res.ok || dat.status !== 'true') {
+            return { success: false, error: 'API error', connectionNumber: connNum };
+          }
+          
+          return {
+            success: true,
+            expire: dat.user_info?.exp_date || dat.expire,
+            m3uUrl: dat.user_info?.url || dat.url,
+            connectionNumber: connNum
+          };
+        } catch (err: any) {
+          return { success: false, error: err.message, connectionNumber: connNum };
+        }
+      };
+      
+      // Sync primary connection
+      const primaryResult = await syncConnection(
+        { username: customer.username, password: customer.password, mac_address: customer.mac_address },
         1
       );
-      
       syncResults.push(primaryResult);
       
-      // Sync each connection in connection_list
+      // Sync each connection in list
       for (let i = 0; i < connectionList.length; i++) {
         const conn = connectionList[i];
-        const result = await syncSingleConnection(
-          {
-            username: conn.username,
-            password: conn.password,
-            mac_address: conn.macAddress || conn.mac_address
-          },
+        const result = await syncConnection(
+          { username: conn.username, password: conn.password, mac_address: conn.macAddress || conn.mac_address },
           conn.connection_number || conn.connectionNumber || (i + 2)
         );
         
-        // Update connection with new expiration date and M3U URL
         updatedConnectionList.push({
           ...conn,
           expirationDate: result.expire || conn.expirationDate,
@@ -193,26 +162,23 @@ serve(async (req) => {
         syncResults.push(result);
       }
       
-      // Find earliest expiration date among successful syncs
-      const allExpirations = syncResults
+      // Find earliest expiration
+      const validExpirations = syncResults
         .filter(r => r.success && r.expire)
         .map(r => new Date(r.expire));
       
       let earliestExpiration;
-      if (allExpirations.length > 0) {
-        earliestExpiration = new Date(Math.min(...allExpirations.map(d => d.getTime())));
+      if (validExpirations.length > 0) {
+        earliestExpiration = new Date(Math.min(...validExpirations.map(d => d.getTime())));
       }
       
-      // Update database with all synced connections
-      const updates: any = {
-        connection_list: updatedConnectionList
-      };
+      // Update database
+      const updates: any = { connection_list: updatedConnectionList };
       
       if (earliestExpiration) {
         updates.expiration_date = earliestExpiration.toISOString().split('T')[0];
       }
       
-      // If primary connection was synced successfully, update top-level M3U URL
       if (primaryResult.success && primaryResult.m3uUrl) {
         updates.m3u_url = primaryResult.m3uUrl;
       }
@@ -230,123 +196,64 @@ serve(async (req) => {
         );
       }
       
-      console.log('Successfully synced multiple connections:', customerId, syncResults);
+      console.log('Successfully synced multiple connections:', customerId);
       
       return new Response(
         JSON.stringify({
           success: true,
-          message: `Synced ${syncResults.filter(r => r.success).length} of ${syncResults.length} connections successfully`,
+          message: `Synced ${syncResults.filter(r => r.success).length} of ${syncResults.length} connections`,
           syncResults,
-          earliestExpiration: earliestExpiration?.toISOString().split('T')[0],
           updates
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Single connection sync (fallback for non-consolidated customers)
-    console.log('Syncing single connection...');
-    
-    // Clean and validate credentials
-    const hasValidUsername = customer.username && customer.username.trim().length > 0;
-    const hasValidPassword = customer.password && customer.password.trim().length > 0;
-    const hasValidMac = customer.mac_address && customer.mac_address.trim().length > 0;
-
-    console.log('Credential validation:', {
-      hasValidUsername,
-      hasValidPassword,
-      hasValidMac,
-      usernameValue: customer.username,
-      passwordExists: !!customer.password
-    });
+    // Single connection sync
+    const hasValidUsername = customer.username?.trim().length > 0;
+    const hasValidPassword = customer.password?.trim().length > 0;
+    const hasValidMac = customer.mac_address?.trim().length > 0;
 
     let apiUrl: string;
-    let deviceCategory: string;
 
     if (hasValidUsername && hasValidPassword) {
-      deviceCategory = 'M3U-based';
       apiUrl = `${panelUrl}?action=device_info&username=${customer.username}&password=${customer.password}&api_key=${apiKey}`;
-      console.log('Using M3U-based sync for device type:', customer.device_type);
     } else if (hasValidMac) {
-      deviceCategory = 'MAC-based';
       apiUrl = `${panelUrl}?action=device_info&mac=${customer.mac_address}&api_key=${apiKey}`;
-      console.log('Using MAC-based sync for device type:', customer.device_type);
     } else {
-      console.error('Insufficient device credentials for sync:', { 
-        deviceType: customer.device_type, 
-        hasUsername: !!customer.username, 
-        hasPassword: !!customer.password,
-        hasMac: !!customer.mac_address 
-      });
       return new Response(
-        JSON.stringify({ 
-          error: 'Device sync requires either username/password credentials or MAC address',
-          deviceType: customer.device_type,
-          availableCredentials: {
-            hasUsername: !!customer.username,
-            hasPassword: !!customer.password,
-            hasMacAddress: !!customer.mac_address
-          }
-        }),
+        JSON.stringify({ error: 'No valid credentials for sync' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Making API call to:', apiUrl.replace(apiKey, '[REDACTED]'));
-
-    // Make API call to IPTV panel
     const response = await fetch(apiUrl);
     const data = await response.json();
 
-    console.log('API response:', data);
-
     if (!response.ok || data.status !== 'true') {
-      console.error('API error:', data);
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch device info from panel' }),
+        JSON.stringify({ error: 'Failed to fetch device info' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { expire, url } = data;
-
-    // Update customer data in database
     const updates: any = {};
-    if (expire) {
-      updates.expiration_date = expire;
+    if (data.expire || data.user_info?.exp_date) {
+      updates.expiration_date = data.user_info?.exp_date || data.expire;
     }
-    if (url) {
-      updates.m3u_url = url;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return new Response(
-        JSON.stringify({ message: 'No updates needed', data: data }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (data.url || data.user_info?.url) {
+      updates.m3u_url = data.user_info?.url || data.url;
     }
 
-    const { error: updateError } = await supabaseClient
-      .from('customers')
-      .update(updates)
-      .eq('id', customerId);
-
-    if (updateError) {
-      console.error('Update error:', updateError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to update customer data' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (Object.keys(updates).length > 0) {
+      await supabaseClient
+        .from('customers')
+        .update(updates)
+        .eq('id', customerId);
     }
-
-    console.log('Successfully updated customer:', customerId, updates);
 
     return new Response(
-      JSON.stringify({ 
-        message: 'Device info synced successfully', 
-        updates,
-        panelData: data 
-      }),
+      JSON.stringify({ success: true, message: 'Device synced', updates }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
