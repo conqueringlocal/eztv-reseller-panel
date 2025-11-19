@@ -155,8 +155,8 @@ serve(async (req) => {
         
         updatedConnectionList.push({
           ...conn,
-          expirationDate: result.expire || conn.expirationDate,
-          m3uUrl: result.m3uUrl || conn.m3uUrl
+          expiration_date: result.expire || conn.expiration_date || conn.expirationDate,
+          m3u_url: result.m3uUrl || conn.m3u_url || conn.m3uUrl
         });
         
         syncResults.push(result);
