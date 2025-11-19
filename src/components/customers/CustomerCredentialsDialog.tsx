@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Copy, Eye, EyeOff, ExternalLink, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   getConnectionCredentials,
@@ -18,6 +18,7 @@ import {
   isConsolidatedCustomer,
   getTotalConnections
 } from '@/utils/customerConsolidation';
+import { RenewSingleConnectionDialog } from './RenewSingleConnectionDialog';
 
 interface CustomerCredentialsDialogProps {
   customer: any;
@@ -25,7 +26,12 @@ interface CustomerCredentialsDialogProps {
 }
 
 export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredentialsDialogProps) {
-  const [showPasswords, setShowPasswords] = React.useState<{ [key: number]: boolean }>({});
+  const [showPasswords, setShowPasswords] = useState<{ [key: number]: boolean }>({});
+  const [renewDialogOpen, setRenewDialogOpen] = useState(false);
+  const [selectedConnection, setSelectedConnection] = useState<{
+    connectionNumber: number;
+    expirationDate: string;
+  } | null>(null);
   
   const customerName = getCustomerDisplayName(customer);
   const totalConnections = getTotalConnections(customer);
@@ -48,6 +54,31 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
     if (url) {
       window.open(url, '_blank');
     }
+  };
+
+  const getConnectionExpirationDate = (connectionNumber: number): string => {
+    // For consolidated customers, check connection_list
+    if (customer.connection_list && Array.isArray(customer.connection_list)) {
+      const connection = customer.connection_list.find(
+        (conn: any) => conn.connection_number === connectionNumber
+      );
+      if (connection?.expiration_date) {
+        return connection.expiration_date;
+      }
+    }
+    // Fall back to top-level expiration date
+    return customer.expiration_date || customer.expirationDate || '';
+  };
+
+  const handleRenewConnection = (connectionNumber: number) => {
+    const expirationDate = getConnectionExpirationDate(connectionNumber);
+    setSelectedConnection({ connectionNumber, expirationDate });
+    setRenewDialogOpen(true);
+  };
+
+  const handleRenewalSuccess = () => {
+    toast.success("Connection renewed! Refreshing...");
+    setTimeout(() => window.location.reload(), 1000);
   };
 
   return (
@@ -81,27 +112,43 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
             connectionCredentials.map((credential, index) => (
               <Card key={index} className="border-2">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    {totalConnections > 1 ? (
-                      <>
-                        Connection {credential.connection_number}
-                        {credential.status && (
-                          <Badge variant={credential.status === 'active' ? 'default' : 'secondary'}>
-                            {credential.status}
-                          </Badge>
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        {totalConnections > 1 ? (
+                          <>
+                            Connection {credential.connection_number}
+                            {credential.status && (
+                              <Badge variant={credential.status === 'active' ? 'default' : 'secondary'}>
+                                {credential.status}
+                              </Badge>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            Credentials
+                            {credential.status && (
+                              <Badge variant={credential.status === 'active' ? 'default' : 'secondary'}>
+                                {credential.status}
+                              </Badge>
+                            )}
+                          </>
                         )}
-                      </>
-                    ) : (
-                      <>
-                        Credentials
-                        {credential.status && (
-                          <Badge variant={credential.status === 'active' ? 'default' : 'secondary'}>
-                            {credential.status}
-                          </Badge>
-                        )}
-                      </>
-                    )}
-                  </CardTitle>
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">
+                        Expires: {new Date(getConnectionExpirationDate(credential.connection_number)).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRenewConnection(credential.connection_number)}
+                      className="shrink-0"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Renew
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="grid gap-4">
@@ -197,6 +244,18 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
         <div className="flex justify-end pt-4">
           <Button onClick={onClose}>Close</Button>
         </div>
+
+        {selectedConnection && (
+          <RenewSingleConnectionDialog
+            open={renewDialogOpen}
+            onOpenChange={setRenewDialogOpen}
+            customerId={customer.id}
+            customerName={customerName}
+            connectionNumber={selectedConnection.connectionNumber}
+            currentExpirationDate={selectedConnection.expirationDate}
+            onSuccess={handleRenewalSuccess}
+          />
+        )}
       </DialogContent>
     </Dialog>
   );
