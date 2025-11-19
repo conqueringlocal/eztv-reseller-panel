@@ -302,7 +302,7 @@ export type Database = {
           email: string
           funnel_id: string
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           name: string
           phone: string | null
           updated_at: string
@@ -317,7 +317,7 @@ export type Database = {
           email: string
           funnel_id: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           name: string
           phone?: string | null
           updated_at?: string
@@ -332,7 +332,7 @@ export type Database = {
           email?: string
           funnel_id?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           name?: string
           phone?: string | null
           updated_at?: string
@@ -688,7 +688,7 @@ export type Database = {
           created_at: string | null
           details: Json | null
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           resource_id: string | null
           resource_type: string
           success: boolean
@@ -700,7 +700,7 @@ export type Database = {
           created_at?: string | null
           details?: Json | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           resource_id?: string | null
           resource_type: string
           success?: boolean
@@ -712,7 +712,7 @@ export type Database = {
           created_at?: string | null
           details?: Json | null
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           resource_id?: string | null
           resource_type?: string
           success?: boolean
@@ -784,7 +784,7 @@ export type Database = {
           additional_data: Json | null
           created_at: string
           id: string
-          ip_address: unknown | null
+          ip_address: unknown
           reseller_id: string
           token_id: string | null
           user_agent: string | null
@@ -794,7 +794,7 @@ export type Database = {
           additional_data?: Json | null
           created_at?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           reseller_id: string
           token_id?: string | null
           user_agent?: string | null
@@ -804,7 +804,7 @@ export type Database = {
           additional_data?: Json | null
           created_at?: string
           id?: string
-          ip_address?: unknown | null
+          ip_address?: unknown
           reseller_id?: string
           token_id?: string | null
           user_agent?: string | null
@@ -911,7 +911,7 @@ export type Database = {
         Returns: number
       }
       calculate_mrr_projections: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           avg_sale_amount: number
           current_month_revenue: number
@@ -928,10 +928,7 @@ export type Database = {
           customer_group_name: string
         }[]
       }
-      can_purchase_credits: {
-        Args: { reseller_id: string }
-        Returns: boolean
-      }
+      can_purchase_credits: { Args: { reseller_id: string }; Returns: boolean }
       check_rate_limit: {
         Args: {
           p_attempt_type: string
@@ -980,10 +977,7 @@ export type Database = {
         Args: { p_reason?: string; p_transaction_id: string }
         Returns: boolean
       }
-      generate_api_key: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      generate_api_key: { Args: never; Returns: string }
       generate_renewal_transaction_key: {
         Args: {
           p_customer_id: string
@@ -992,14 +986,8 @@ export type Database = {
         }
         Returns: string
       }
-      generate_sso_token: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
-      get_current_user_role: {
-        Args: Record<PropertyKey, never>
-        Returns: string
-      }
+      generate_sso_token: { Args: never; Returns: string }
+      get_current_user_role: { Args: never; Returns: string }
       get_or_create_renewal_transaction: {
         Args: {
           p_credits_required: number
@@ -1021,10 +1009,7 @@ export type Database = {
           name: string
         }[]
       }
-      is_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      is_admin: { Args: never; Returns: boolean }
       log_security_event: {
         Args: {
           p_action: string
@@ -1035,10 +1020,7 @@ export type Database = {
         }
         Returns: undefined
       }
-      refresh_security_dashboard: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      refresh_security_dashboard: { Args: never; Returns: undefined }
       refund_duplicate_charges: {
         Args: {
           p_credits_to_refund: number
