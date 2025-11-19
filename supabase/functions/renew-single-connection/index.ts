@@ -92,23 +92,44 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if customer has connection_list
-    if (!customer.connection_list || !Array.isArray(customer.connection_list)) {
-      return new Response(
-        JSON.stringify({ error: 'Customer does not have multiple connections' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Find the specific connection
-    const connectionList = customer.connection_list as any[];
-    const connection = connectionList.find(c => c.connection_number === connectionNumber);
-
-    if (!connection) {
-      return new Response(
-        JSON.stringify({ error: `Connection ${connectionNumber} not found` }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Handle Connection 1 (primary connection - stored in top-level fields)
+    let connection: any;
+    let connectionList: any[] = [];
+    
+    if (connectionNumber === 1) {
+      // Connection 1 is the primary connection - use top-level fields
+      connection = {
+        connection_number: 1,
+        username: customer.username,
+        password: customer.password,
+        mac_address: customer.mac_address,
+        m3u_url: customer.m3u_url,
+        expiration_date: customer.expiration_date,
+        status: customer.status
+      };
+      
+      // If connection_list exists, we'll need it for updating later
+      if (customer.connection_list && Array.isArray(customer.connection_list)) {
+        connectionList = customer.connection_list as any[];
+      }
+    } else {
+      // Connection 2+ are in connection_list
+      if (!customer.connection_list || !Array.isArray(customer.connection_list)) {
+        return new Response(
+          JSON.stringify({ error: 'Customer does not have multiple connections' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      connectionList = customer.connection_list as any[];
+      connection = connectionList.find(c => c.connection_number === connectionNumber);
+      
+      if (!connection) {
+        return new Response(
+          JSON.stringify({ error: `Connection ${connectionNumber} not found` }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
     }
 
     // Credit check (skip for admins)
@@ -273,29 +294,52 @@ Deno.serve(async (req) => {
     const baseDate = currentExpiration > today ? currentExpiration : today;
     const newExpiration = new Date(baseDate);
     newExpiration.setMonth(newExpiration.getMonth() + planDuration);
+    const newExpirationStr = newExpiration.toISOString().split('T')[0];
 
-    // Update the connection_list with new expiration date
-    const updatedConnectionList = connectionList.map(c => {
-      if (c.connection_number === connectionNumber) {
-        return { ...c, expiration_date: newExpiration.toISOString().split('T')[0] };
+    // Update database differently for Connection 1 vs secondary connections
+    let updateData: any = { status: 'active' };
+    
+    if (connectionNumber === 1) {
+      // Connection 1: Update top-level expiration_date
+      updateData.expiration_date = newExpirationStr;
+      
+      // If there are secondary connections, find earliest expiration
+      if (connectionList.length > 0) {
+        const allExpirations = [newExpiration];
+        connectionList.forEach(c => {
+          if (c.expiration_date) {
+            allExpirations.push(new Date(c.expiration_date));
+          }
+        });
+        allExpirations.sort((a, b) => a.getTime() - b.getTime());
+        updateData.expiration_date = allExpirations[0].toISOString().split('T')[0];
       }
-      return c;
-    });
-
-    // Find earliest expiration date across all connections
-    const expirationDates = updatedConnectionList
-      .map(c => new Date(c.expiration_date || customer.expiration_date))
-      .sort((a, b) => a.getTime() - b.getTime());
-    const earliestExpiration = expirationDates[0].toISOString().split('T')[0];
+    } else {
+      // Connection 2+: Update the connection_list array
+      const updatedConnectionList = connectionList.map(c => {
+        if (c.connection_number === connectionNumber) {
+          return { ...c, expiration_date: newExpirationStr };
+        }
+        return c;
+      });
+      
+      // Find earliest expiration date across ALL connections (including Connection 1)
+      const allExpirations = [new Date(customer.expiration_date)]; // Connection 1's date
+      updatedConnectionList.forEach(c => {
+        if (c.expiration_date) {
+          allExpirations.push(new Date(c.expiration_date));
+        }
+      });
+      allExpirations.sort((a, b) => a.getTime() - b.getTime());
+      
+      updateData.connection_list = updatedConnectionList;
+      updateData.expiration_date = allExpirations[0].toISOString().split('T')[0];
+    }
 
     // Update customer record
     const { error: updateError } = await supabase
       .from('customers')
-      .update({
-        connection_list: updatedConnectionList,
-        expiration_date: earliestExpiration,
-        status: 'active'
-      })
+      .update(updateData)
       .eq('id', customerId);
 
     if (updateError) {
@@ -344,7 +388,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true,
         message: `Connection ${connectionNumber} renewed successfully`,
-        newExpirationDate: newExpiration.toISOString().split('T')[0],
+        newExpirationDate: newExpirationStr,
         creditsUsed: isAdmin ? 0 : creditsRequired
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
