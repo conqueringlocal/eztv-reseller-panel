@@ -90,6 +90,34 @@ serve(async (req) => {
       );
     }
 
+    console.log(`📋 Reseller: ${reseller.name}, Credits: ${reseller.credits}, Provider: ${reseller.provider}`);
+
+    // Check if current user is admin (for admin override)
+    let isAdminOverride = false;
+
+    if (!serviceCall) {
+      const authHeader = req.headers.get('Authorization');
+      const token = authHeader?.replace('Bearer ', '');
+      
+      if (token) {
+        const { data: { user: currentUser } } = await supabaseClient.auth.getUser(token);
+        
+        if (currentUser) {
+          // Use secure has_role function
+          const { data: isAdminData } = await supabaseClient.rpc('has_role', {
+            _user_id: currentUser.id,
+            _role: 'admin'
+          });
+          
+          isAdminOverride = isAdminData === true;
+          
+          if (isAdminOverride) {
+            console.log(`⚡ ADMIN OVERRIDE: Admin user creating account for reseller ${reseller.name}`);
+          }
+        }
+      }
+    }
+
     const provider = reseller.provider || '8k';
     console.log(`📱 Using provider: ${provider}`);
 
@@ -365,31 +393,52 @@ serve(async (req) => {
 
     // Only deduct credits if at least one account was created successfully
     if (createdCustomers.length > 0) {
-      console.log(`💳 Deducting ${creditsRequired} credits from reseller`);
-      const { error: creditError } = await supabaseClient
-        .from('profiles')
-        .update({ credits: reseller.credits - creditsRequired })
-        .eq('id', resellerId);
+      if (!isAdminOverride) {
+        console.log(`💳 Deducting ${creditsRequired} credits from reseller`);
+        const { error: creditError } = await supabaseClient
+          .from('profiles')
+          .update({ credits: reseller.credits - creditsRequired })
+          .eq('id', resellerId);
 
-      if (creditError) {
-        console.error('Error deducting credits:', creditError);
-      }
+        if (creditError) {
+          console.error('Error deducting credits:', creditError);
+        }
 
-      // Log the credit transaction
-      const { error: logError } = await supabaseClient
-        .from('credit_logs')
-        .insert({
-          reseller_id: resellerId,
-          action: 'account_creation',
-          credits_used: creditsRequired,
-          connections_used: connectionsToCreate,
-          customer_id: createdCustomers[0].id,
-          customer_name: customerData.name,
-          notes: `Created ${createdCustomers.length} M3U accounts with 1 connection each (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''}) - Group: ${customerGroupId} - Ready for consolidation`
-        });
+        // Log the credit transaction
+        const { error: logError } = await supabaseClient
+          .from('credit_logs')
+          .insert({
+            reseller_id: resellerId,
+            action: 'account_creation',
+            credits_used: creditsRequired,
+            connections_used: connectionsToCreate,
+            customer_id: createdCustomers[0].id,
+            customer_name: customerData.name,
+            notes: `Created ${createdCustomers.length} M3U accounts with 1 connection each (${customerData.planDuration} month${customerData.planDuration > 1 ? 's' : ''}) - Group: ${customerGroupId} - Ready for consolidation`
+          });
 
-      if (logError) {
-        console.error('Error logging credit transaction:', logError);
+        if (logError) {
+          console.error('Error logging credit transaction:', logError);
+        }
+      } else {
+        // Admin override - log without credit deduction
+        console.log(`⚡ ADMIN: No credits deducted (admin override)`);
+        
+        const { error: logError } = await supabaseClient
+          .from('credit_logs')
+          .insert({
+            reseller_id: resellerId,
+            action: 'addition',
+            credits_used: 0,
+            connections_used: connectionsToCreate,
+            customer_id: createdCustomers[0].id,
+            customer_name: customerData.name,
+            notes: `ADMIN ACTION: Created ${connectionsToCreate} IPTV M3U account(s) without credit charge`
+          });
+
+        if (logError) {
+          console.error('Error logging admin action:', logError);
+        }
       }
 
       // Perform consolidation if enabled and multiple connections were created
