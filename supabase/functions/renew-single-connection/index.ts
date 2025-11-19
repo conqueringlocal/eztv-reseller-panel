@@ -174,7 +174,8 @@ Deno.serve(async (req) => {
         const result = await response.json();
         console.log('📡 TREX Response Body:', JSON.stringify(result));
         
-        renewalSuccess = result.status === 'success';
+        // TREX API returns status: "true" (string) for success
+        renewalSuccess = result.status === 'success' || result.status === 'true' || result.status === true;
         renewalError = renewalSuccess ? null : (
           result.message || 
           result.error || 
