@@ -1009,6 +1009,10 @@ export type Database = {
       }
       generate_sso_token: { Args: never; Returns: string }
       get_current_user_role: { Args: never; Returns: string }
+      get_earliest_expiration: {
+        Args: { connection_list_param: Json }
+        Returns: string
+      }
       get_or_create_renewal_transaction: {
         Args: {
           p_credits_required: number
