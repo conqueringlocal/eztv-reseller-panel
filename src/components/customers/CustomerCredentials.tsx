@@ -4,10 +4,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Copy, Eye, EyeOff, Mail, MessageSquare, ExternalLink } from 'lucide-react';
+import { Copy, Eye, EyeOff, Mail, MessageSquare, ExternalLink, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Customer } from '@/contexts/AppContext';
 import { ConsolidatedCustomer } from '@/utils/customerGrouping';
+import { RenewSingleConnectionDialog } from './RenewSingleConnectionDialog';
 
 interface CustomerCredentialsProps {
   customer: Customer | ConsolidatedCustomer;
@@ -20,6 +21,11 @@ function isConsolidatedCustomer(customer: Customer | ConsolidatedCustomer): cust
 
 export function CustomerCredentials({ customer, onSendCredentials }: CustomerCredentialsProps) {
   const [showPasswords, setShowPasswords] = useState<Record<number, boolean>>({});
+  const [renewDialogOpen, setRenewDialogOpen] = useState(false);
+  const [selectedConnection, setSelectedConnection] = useState<{
+    connectionNumber: number;
+    expirationDate: string;
+  } | null>(null);
 
   const togglePasswordVisibility = (index: number) => {
     setShowPasswords(prev => ({
@@ -84,6 +90,19 @@ export function CustomerCredentials({ customer, onSendCredentials }: CustomerCre
     }
   };
 
+  const handleRenewConnection = (connectionNumber: number, expirationDate: string) => {
+    setSelectedConnection({ connectionNumber, expirationDate });
+    setRenewDialogOpen(true);
+  };
+
+  const handleRenewalSuccess = () => {
+    // Trigger a refresh of the customer data
+    toast.success("Connection renewed! Refreshing...");
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -133,9 +152,34 @@ export function CustomerCredentials({ customer, onSendCredentials }: CustomerCre
         {isConsolidatedCustomer(customer) ? (
           // Show multiple connections for consolidated customers
           <div className="space-y-6">
-            {customer.connectionDetails.map((connection, index) => (
+            {customer.connectionDetails.map((connection, index) => {
+              // Get expiration date from connection or fallback to customer level
+              const connectionExpirationDate = connection.expirationDate || customer.expirationDate;
+              const connectionList = isConsolidatedCustomer(customer) && Array.isArray((customer as any).connection_list) 
+                ? (customer as any).connection_list 
+                : [];
+              const connectionData = connectionList.find((c: any) => c.connection_number === connection.connectionNumber);
+              const actualExpirationDate = connectionData?.expiration_date || connectionExpirationDate;
+              
+              return (
               <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                <h4 className="font-medium mb-3">Connection {connection.connectionNumber}</h4>
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h4 className="font-medium">Connection {connection.connectionNumber}</h4>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Expires: {new Date(actualExpirationDate).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleRenewConnection(connection.connectionNumber, actualExpirationDate)}
+                    className="text-blue-600 hover:text-blue-700"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Renew
+                  </Button>
+                </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -240,7 +284,8 @@ export function CustomerCredentials({ customer, onSendCredentials }: CustomerCre
                   </div>
                 )}
               </div>
-            ))}
+            )}
+            )}
           </div>
         ) : (
           // Show single connection for regular customers
@@ -343,6 +388,18 @@ export function CustomerCredentials({ customer, onSendCredentials }: CustomerCre
           </p>
         </div>
       </CardContent>
+
+      {isConsolidatedCustomer(customer) && selectedConnection && (
+        <RenewSingleConnectionDialog
+          open={renewDialogOpen}
+          onOpenChange={setRenewDialogOpen}
+          customerId={customer.id}
+          customerName={customer.name}
+          connectionNumber={selectedConnection.connectionNumber}
+          currentExpirationDate={selectedConnection.expirationDate}
+          onSuccess={handleRenewalSuccess}
+        />
+      )}
     </Card>
   );
 }
