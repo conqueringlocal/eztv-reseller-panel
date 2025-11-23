@@ -46,6 +46,11 @@ export function AppSidebar() {
           icon: <Users className="w-5 h-5" />,
         },
         {
+          title: 'Customers',
+          path: '/admin/customers',
+          icon: <Users className="w-5 h-5" />,
+        },
+        {
           title: 'Credits',
           path: '/admin/credits',
           icon: <CreditCard className="w-5 h-5" />,
