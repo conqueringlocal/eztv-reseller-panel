@@ -8,6 +8,7 @@ import { EditCustomerForm } from './EditCustomerForm';
 import { RenewCustomerForm } from './RenewCustomerForm';
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
 import { SyncDeviceDialog } from './SyncDeviceDialog';
+import { AddConnectionDialog } from './AddConnectionDialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -60,6 +61,7 @@ export function CustomerTable({
   const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
   const [viewingCredentials, setViewingCredentials] = useState<any>(null);
   const [syncingCustomer, setSyncingCustomer] = useState<any>(null);
+  const [addingConnectionTo, setAddingConnectionTo] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   // Check if current user is admin
@@ -342,6 +344,16 @@ export function CustomerTable({
                     Renew
                   </Button>
 
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAddingConnectionTo(customer)}
+                    className="flex items-center gap-1"
+                  >
+                    <Users size={14} />
+                    Add Connection
+                  </Button>
+
                   {isAdmin && (
                     <Button
                       variant="outline"
@@ -417,6 +429,15 @@ export function CustomerTable({
           customer={syncingCustomer}
           open={true}
           onOpenChange={(open) => !open && setSyncingCustomer(null)}
+          onSuccess={onRefresh}
+        />
+      )}
+
+      {addingConnectionTo && (
+        <AddConnectionDialog
+          customer={addingConnectionTo}
+          open={true}
+          onOpenChange={(open) => !open && setAddingConnectionTo(null)}
           onSuccess={onRefresh}
         />
       )}
