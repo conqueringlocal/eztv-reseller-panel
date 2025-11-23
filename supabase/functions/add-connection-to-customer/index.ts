@@ -63,12 +63,19 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized to modify this customer');
     }
 
-    // Determine the next connection number
+    // Determine the next connection number and handle migration if needed
     let connectionNumber = 1;
-    if (customer.connection_list && Array.isArray(customer.connection_list)) {
+    let needsMigration = false;
+    
+    if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
+      // Customer already has connections in the list
       connectionNumber = customer.connection_list.length + 1;
+    } else if (customer.username && customer.password) {
+      // Customer has primary credentials but empty/null connection_list - need to migrate
+      needsMigration = true;
+      connectionNumber = 2; // The new connection will be #2 after we migrate the primary
     } else if (customer.connection_sequence) {
-      // Count existing connections in the customer_group
+      // Legacy format - count existing connections in the customer_group
       const { count } = await supabaseClient
         .from('customers')
         .select('*', { count: 'exact', head: true })
@@ -77,7 +84,7 @@ Deno.serve(async (req) => {
       connectionNumber = (count || 0) + 1;
     }
 
-    console.log(`📝 Creating connection #${connectionNumber}`);
+    console.log(`📝 Creating connection #${connectionNumber}${needsMigration ? ' (will migrate primary first)' : ''}`);
 
     // Get API credentials
     const provider = customer.provider || 'trex';
@@ -162,10 +169,28 @@ Deno.serve(async (req) => {
     console.log(`✅ New connection created via provider API`);
 
     // Update database
-    if (customer.connection_list && Array.isArray(customer.connection_list)) {
+    if (customer.connection_list !== undefined && customer.connection_list !== null) {
       // Consolidated customer - append to connection_list
-      const updatedConnectionList = [...customer.connection_list, newCredentials];
-      const newTotalConnections = (customer.total_connections || 0) + 1;
+      let updatedConnectionList = [...(customer.connection_list || [])];
+      
+      // If we need to migrate the primary connection first
+      if (needsMigration) {
+        const primaryConnection = {
+          connection_number: 1,
+          username: customer.username,
+          password: customer.password,
+          mac_address: customer.mac_address || null,
+          m3u_url: customer.m3u_url || null,
+          expiration_date: customer.expiration_date,
+          status: customer.status,
+        };
+        updatedConnectionList.push(primaryConnection);
+        console.log(`🔄 Migrated primary connection to connection_list`);
+      }
+      
+      // Add the new connection
+      updatedConnectionList.push(newCredentials);
+      const newTotalConnections = updatedConnectionList.length;
 
       const { error: updateError } = await supabaseClient
         .from('customers')
@@ -177,7 +202,7 @@ Deno.serve(async (req) => {
 
       if (updateError) throw updateError;
 
-      console.log(`✅ Updated consolidated customer record`);
+      console.log(`✅ Updated consolidated customer record with ${newTotalConnections} connections`);
     } else {
       // Legacy customer - insert new row
       const newCustomer = {
