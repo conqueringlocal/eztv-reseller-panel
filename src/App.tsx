@@ -19,6 +19,7 @@ import PublicSportsUpdate from "./pages/PublicSportsUpdate";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminResellers from "./pages/admin/AdminResellers";
 import AdminResellerDetail from "./pages/admin/AdminResellerDetail";
+import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminCredits from "./pages/admin/AdminCredits";
 import AdminLogs from "./pages/admin/AdminLogs";
 import AdminSettings from "./pages/admin/AdminSettings";
@@ -77,6 +78,14 @@ function App() {
                     element={
                       <ProtectedRoute allowedRoles={["admin"]}>
                         <AdminResellerDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/customers"
+                    element={
+                      <ProtectedRoute allowedRoles={["admin"]}>
+                        <AdminCustomers />
                       </ProtectedRoute>
                     }
                   />
