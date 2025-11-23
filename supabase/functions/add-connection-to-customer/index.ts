@@ -3,6 +3,8 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 const TREX_PANEL_URL = Deno.env.get('TREX_PANEL_URL') || 'https://activationpanel.net/api/api.php';
 const IPTV_PANEL_URL = Deno.env.get('IPTV_PANEL_URL') || Deno.env.get('8K_PANEL_URL') || 'https://my8k.me/api/api.php';
+const TREX_API_KEY = Deno.env.get('TREX_API_KEY') || '';
+const IPTV_API_KEY = Deno.env.get('IPTV_API_KEY') || Deno.env.get('8K_API_KEY') || '';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -94,20 +96,19 @@ Deno.serve(async (req) => {
       // We only create the NEW connection (connection 2)
       console.log(`🔄 Migration mode: will use existing credentials for connection 1, creating NEW connection 2`);
       
-      const provider = customer.provider || 'trex';
-      const isAdmin = user.role === 'admin';
+      const provider = customer.provider || '8k';
       let apiKey: string;
       let panelUrl: string;
 
-      if (isAdmin || reseller.use_admin_api) {
-        apiKey = provider === 'trex' ? trexApiKey : eightKApiKey;
-        panelUrl = provider === 'trex' ? trexPanelUrl : eightKPanelUrl;
+      if (isAdmin || profile.use_admin_api) {
+        apiKey = provider === 'trex' ? TREX_API_KEY : IPTV_API_KEY;
+        panelUrl = provider === 'trex' ? TREX_PANEL_URL : IPTV_PANEL_URL;
       } else {
-        if (!reseller.api_key || !reseller.panel_url) {
+        if (!profile.api_key || !profile.panel_url) {
           throw new Error('Reseller API credentials not configured');
         }
-        apiKey = reseller.api_key;
-        panelUrl = reseller.panel_url;
+        apiKey = profile.api_key;
+        panelUrl = profile.panel_url;
       }
 
       // Generate credentials for the NEW connection (connection 2)
@@ -161,20 +162,19 @@ Deno.serve(async (req) => {
       console.log(`✅ New connection created via provider API`);
     } else {
       // Normal flow - create a new connection
-      const provider = customer.provider || 'trex';
-      const isAdmin = user.role === 'admin';
+      const provider = customer.provider || '8k';
       let apiKey: string;
       let panelUrl: string;
 
-      if (isAdmin || reseller.use_admin_api) {
-        apiKey = provider === 'trex' ? trexApiKey : eightKApiKey;
-        panelUrl = provider === 'trex' ? trexPanelUrl : eightKPanelUrl;
+      if (isAdmin || profile.use_admin_api) {
+        apiKey = provider === 'trex' ? TREX_API_KEY : IPTV_API_KEY;
+        panelUrl = provider === 'trex' ? TREX_PANEL_URL : IPTV_PANEL_URL;
       } else {
-        if (!reseller.api_key || !reseller.panel_url) {
+        if (!profile.api_key || !profile.panel_url) {
           throw new Error('Reseller API credentials not configured');
         }
-        apiKey = reseller.api_key;
-        panelUrl = reseller.panel_url;
+        apiKey = profile.api_key;
+        panelUrl = profile.panel_url;
       }
 
       // Generate credentials for new connection
@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
         provider: customer.provider,
         plan_duration,
         start_date: new Date().toISOString().split('T')[0],
-        expiration_date: expirationDate.split('T')[0],
+        expiration_date: newCredentials.expiration_date,
         status: 'active',
       };
 
