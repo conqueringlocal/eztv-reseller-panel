@@ -111,53 +111,103 @@ Deno.serve(async (req) => {
         panelUrl = profile.panel_url;
       }
 
-      // Generate credentials for the NEW connection (connection 2)
-      const baseUsername = customer.username || customer.name.toLowerCase().replace(/\s+/g, '');
-      const newUsername = `${baseUsername}_${connectionNumber}`;
-      const newPassword = Math.random().toString(36).slice(-8);
-
       console.log(`🔗 Calling ${provider.toUpperCase()} API for new connection`);
 
       // Call provider API to create the NEW connection
       const accountType = customer.device_type === 'mag' ? 'mag' : 'm3u';
-      let apiUrl: string;
-
+      
       if (provider === 'trex') {
         console.log(`🔗 Calling TREX API for ${accountType} account`);
-        if (accountType === 'mag') {
-          apiUrl = `${panelUrl}?action=create&type=mag&mac=${newUsername}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
-        } else {
-          apiUrl = `${panelUrl}?action=create&type=m3u&username=${newUsername}&password=${newPassword}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
+        
+        const baseUrl = panelUrl.replace('/api/api.php', '');
+        const apiUrl = new URL(`${baseUrl}/api/api.php`);
+        
+        apiUrl.searchParams.append('action', 'new');
+        apiUrl.searchParams.append('type', accountType);
+        apiUrl.searchParams.append('sub', plan_duration.toString());
+        apiUrl.searchParams.append('pack', customer.package_id || '');
+        apiUrl.searchParams.append('api_key', apiKey);
+        apiUrl.searchParams.append('note', `Add connection for ${customer.name}`);
+        
+        console.log(`🔗 TREX API URL: ${apiUrl.toString().replace(apiKey, '[REDACTED]')}`);
+        
+        const response = await fetch(apiUrl.toString());
+        const responseText = await response.text();
+
+        console.log(`📡 TREX API Response Status: ${response.status}`);
+        console.log(`📡 TREX API Response: ${responseText}`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
+
+        // Try to parse as JSON first
+        let apiResult;
+        try {
+          apiResult = JSON.parse(responseText);
+        } catch (parseError) {
+          console.log(`📄 Parsing text response`);
+          apiResult = {
+            success: true,
+            response: responseText
+          };
+        }
+
+        // Extract credentials from TREX response
+        const finalUsername = apiResult.username || apiResult.user;
+        const finalPassword = apiResult.password || apiResult.pass;
+        const expirationDate = apiResult.expiration || apiResult.exp_date;
+        const m3uUrl = apiResult.m3u_url || apiResult.url;
+
+        // Validate we got credentials back
+        if (!finalUsername || !finalPassword) {
+          throw new Error(`TREX API did not return credentials: ${responseText}`);
+        }
+
+        newCredentials = {
+          connection_number: connectionNumber,
+          username: accountType === 'mag' ? null : finalUsername,
+          password: accountType === 'mag' ? null : finalPassword,
+          mac_address: accountType === 'mag' ? finalUsername : null,
+          m3u_url: m3uUrl || `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
+          expiration_date: expirationDate || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          status: 'active',
+        };
       } else {
+        // 8K/IPTV API call
         console.log(`🔗 Calling 8K/IPTV API for ${accountType} account`);
+        
+        const baseUsername = customer.username || customer.name.toLowerCase().replace(/\s+/g, '');
+        const newUsername = `${baseUsername}_${connectionNumber}`;
+        const newPassword = Math.random().toString(36).slice(-8);
+        
+        let apiUrl: string;
         if (accountType === 'mag') {
           apiUrl = `${panelUrl}?action=create&type=mag&mac=${newUsername}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
         } else {
           apiUrl = `${panelUrl}?action=create&type=m3u&username=${newUsername}&password=${newPassword}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
         }
+
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+
+        if (!response.ok || !data) {
+          throw new Error(`Provider API error: ${JSON.stringify(data)}`);
+        }
+
+        const expirationDate = data.expiration || data.exp_date || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const m3uUrl = accountType === 'mag' ? null : (data.m3u_url || `${panelUrl.replace('/api/api.php', '')}/get.php?username=${newUsername}&password=${newPassword}&type=m3u_plus&output=ts`);
+
+        newCredentials = {
+          connection_number: connectionNumber,
+          username: accountType === 'mag' ? null : newUsername,
+          password: accountType === 'mag' ? null : newPassword,
+          mac_address: accountType === 'mag' ? newUsername : null,
+          m3u_url: m3uUrl,
+          expiration_date: expirationDate,
+          status: 'active',
+        };
       }
-
-      const response = await fetch(apiUrl);
-      const data = await response.json();
-
-      if (!response.ok || !data) {
-        throw new Error(`Provider API error: ${JSON.stringify(data)}`);
-      }
-
-      // Extract credentials from response
-      const expirationDate = data.expiration || data.exp_date || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const m3uUrl = accountType === 'mag' ? null : (data.m3u_url || `${panelUrl.replace('/api/api.php', '')}/get.php?username=${newUsername}&password=${newPassword}&type=m3u_plus&output=ts`);
-
-      newCredentials = {
-        connection_number: connectionNumber,
-        username: accountType === 'mag' ? null : newUsername,
-        password: accountType === 'mag' ? null : newPassword,
-        mac_address: accountType === 'mag' ? newUsername : null,
-        m3u_url: m3uUrl,
-        expiration_date: expirationDate,
-        status: 'active',
-      };
 
       console.log(`✅ New connection created via provider API`);
     } else {
@@ -177,51 +227,103 @@ Deno.serve(async (req) => {
         panelUrl = profile.panel_url;
       }
 
-      // Generate credentials for new connection
-      const baseUsername = customer.username || customer.name.toLowerCase().replace(/\s+/g, '');
-      const newUsername = `${baseUsername}_${connectionNumber}`;
-      const newPassword = Math.random().toString(36).slice(-8);
-
       console.log(`🔗 Calling ${provider.toUpperCase()} API for ${customer.device_type} account`);
 
       // Call provider API
       const accountType = customer.device_type === 'mag' ? 'mag' : 'm3u';
-      let apiUrl: string;
 
       if (provider === 'trex') {
-        if (accountType === 'mag') {
-          apiUrl = `${panelUrl}?action=create&type=mag&mac=${newUsername}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
-        } else {
-          apiUrl = `${panelUrl}?action=create&type=m3u&username=${newUsername}&password=${newPassword}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
+        console.log(`🔗 Calling TREX API for ${accountType} account`);
+        
+        const baseUrl = panelUrl.replace('/api/api.php', '');
+        const apiUrl = new URL(`${baseUrl}/api/api.php`);
+        
+        apiUrl.searchParams.append('action', 'new');
+        apiUrl.searchParams.append('type', accountType);
+        apiUrl.searchParams.append('sub', plan_duration.toString());
+        apiUrl.searchParams.append('pack', customer.package_id || '');
+        apiUrl.searchParams.append('api_key', apiKey);
+        apiUrl.searchParams.append('note', `Add connection for ${customer.name}`);
+        
+        console.log(`🔗 TREX API URL: ${apiUrl.toString().replace(apiKey, '[REDACTED]')}`);
+        
+        const response = await fetch(apiUrl.toString());
+        const responseText = await response.text();
+
+        console.log(`📡 TREX API Response Status: ${response.status}`);
+        console.log(`📡 TREX API Response: ${responseText}`);
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
+
+        // Try to parse as JSON first
+        let apiResult;
+        try {
+          apiResult = JSON.parse(responseText);
+        } catch (parseError) {
+          console.log(`📄 Parsing text response`);
+          apiResult = {
+            success: true,
+            response: responseText
+          };
+        }
+
+        // Extract credentials from TREX response
+        const finalUsername = apiResult.username || apiResult.user;
+        const finalPassword = apiResult.password || apiResult.pass;
+        const expirationDate = apiResult.expiration || apiResult.exp_date;
+        const m3uUrl = apiResult.m3u_url || apiResult.url;
+
+        // Validate we got credentials back
+        if (!finalUsername || !finalPassword) {
+          throw new Error(`TREX API did not return credentials: ${responseText}`);
+        }
+
+        newCredentials = {
+          connection_number: connectionNumber,
+          username: accountType === 'mag' ? null : finalUsername,
+          password: accountType === 'mag' ? null : finalPassword,
+          mac_address: accountType === 'mag' ? finalUsername : null,
+          m3u_url: m3uUrl || `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
+          expiration_date: expirationDate || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          status: 'active',
+        };
       } else {
+        // 8K/IPTV API call
+        console.log(`🔗 Calling 8K/IPTV API for ${accountType} account`);
+        
+        const baseUsername = customer.username || customer.name.toLowerCase().replace(/\s+/g, '');
+        const newUsername = `${baseUsername}_${connectionNumber}`;
+        const newPassword = Math.random().toString(36).slice(-8);
+        
+        let apiUrl: string;
         if (accountType === 'mag') {
           apiUrl = `${panelUrl}?action=create&type=mag&mac=${newUsername}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
         } else {
           apiUrl = `${panelUrl}?action=create&type=m3u&username=${newUsername}&password=${newPassword}&sub=month_${plan_duration}&bouquet=${customer.package_id || ''}&api_key=${apiKey}`;
         }
+
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+
+        if (!response.ok || !data) {
+          throw new Error(`Provider API error: ${JSON.stringify(data)}`);
+        }
+
+        const expirationDate = data.expiration || data.exp_date || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const m3uUrl = accountType === 'mag' ? null : (data.m3u_url || `${panelUrl.replace('/api/api.php', '')}/get.php?username=${newUsername}&password=${newPassword}&type=m3u_plus&output=ts`);
+
+        newCredentials = {
+          connection_number: connectionNumber,
+          username: accountType === 'mag' ? null : newUsername,
+          password: accountType === 'mag' ? null : newPassword,
+          mac_address: accountType === 'mag' ? newUsername : null,
+          m3u_url: m3uUrl,
+          expiration_date: expirationDate,
+          status: 'active',
+        };
       }
-
-      const response = await fetch(apiUrl);
-      const data = await response.json();
-
-      if (!response.ok || !data) {
-        throw new Error(`Provider API error: ${JSON.stringify(data)}`);
-      }
-
-      // Extract credentials from response
-      const expirationDate = data.expiration || data.exp_date || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const m3uUrl = accountType === 'mag' ? null : (data.m3u_url || `${panelUrl.replace('/api/api.php', '')}/get.php?username=${newUsername}&password=${newPassword}&type=m3u_plus&output=ts`);
-
-      newCredentials = {
-        connection_number: connectionNumber,
-        username: accountType === 'mag' ? null : newUsername,
-        password: accountType === 'mag' ? null : newPassword,
-        mac_address: accountType === 'mag' ? newUsername : null,
-        m3u_url: m3uUrl,
-        expiration_date: expirationDate,
-        status: 'active',
-      };
 
       console.log(`✅ New connection created via provider API`);
     }
