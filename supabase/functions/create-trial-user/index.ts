@@ -278,8 +278,8 @@ serve(async (req) => {
         if (responseText.includes('username') || responseText.includes('password') || responseText.includes('m3u')) {
           // Try to extract credentials from text response
           const lines = responseText.split('\n');
-          let extractedUsername = username; // fallback to generated username
-          let extractedPassword = password; // fallback to generated password
+          let extractedUsername = '';
+          let extractedPassword = '';
           
           // Look for username/password patterns in the response
           for (const line of lines) {
@@ -293,22 +293,24 @@ serve(async (req) => {
             }
           }
           
-          apiResult = {
-            success: true,
-            username: extractedUsername,
-            password: extractedPassword,
-            response: responseText
-          };
+          if (extractedUsername && extractedPassword) {
+            apiResult = {
+              success: true,
+              username: extractedUsername,
+              password: extractedPassword,
+              response: responseText
+            };
+          } else {
+            // Could not extract credentials - DO NOT assume success
+            console.log(`❌ Could not extract credentials from text response for trial`);
+            throw new Error(`API did not return valid credentials. Response: ${responseText.substring(0, 200)}`);
+          }
         } else if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
           throw new Error(`API Error: ${responseText}`);
         } else {
-          // Assume success if no error indicators and use generated credentials
-          apiResult = {
-            success: true,
-            username: username,
-            password: password,
-            response: responseText
-          };
+          // Unknown response - DO NOT assume success, treat as failure
+          console.log(`❌ Unknown API response format for trial, treating as failure`);
+          throw new Error(`Unknown API response format. Cannot verify trial account was created. Response: ${responseText.substring(0, 200)}`);
         }
       }
 
