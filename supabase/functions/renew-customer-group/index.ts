@@ -22,6 +22,90 @@ interface CustomerAccount {
   reseller_id: string;
 }
 
+// Helper function to verify a connection exists in the provider panel
+async function verifyConnectionExists(
+  creds: { username?: string; password?: string; mac_address?: string },
+  provider: string
+): Promise<{ exists: boolean; error?: string }> {
+  try {
+    let apiKey: string | undefined;
+    let panelUrl: string | undefined;
+
+    switch (provider) {
+      case 'trex':
+        apiKey = Deno.env.get('TREX_API_KEY');
+        panelUrl = Deno.env.get('TREX_PANEL_URL');
+        break;
+      case '8k':
+        apiKey = Deno.env.get('8K_API_KEY');
+        panelUrl = Deno.env.get('8K_PANEL_URL');
+        break;
+      default:
+        apiKey = Deno.env.get('IPTV_API_KEY');
+        panelUrl = Deno.env.get('IPTV_PANEL_URL');
+        break;
+    }
+
+    if (!apiKey || !panelUrl) {
+      return { exists: false, error: `Provider ${provider} not configured` };
+    }
+
+    const hasUser = creds.username?.trim();
+    const hasPass = creds.password?.trim();
+    const hasMac = creds.mac_address?.trim();
+
+    if (!hasUser && !hasPass && !hasMac) {
+      return { exists: false, error: 'No credentials to verify' };
+    }
+
+    let verifyUrl = `${panelUrl}?action=device_info&api_key=${apiKey}`;
+    if (hasUser && hasPass) {
+      verifyUrl += `&username=${encodeURIComponent(hasUser)}&password=${encodeURIComponent(hasPass)}`;
+    } else if (hasMac) {
+      verifyUrl += `&mac=${encodeURIComponent(hasMac)}`;
+    }
+
+    console.log(`🔍 Verifying connection exists: ${hasUser || hasMac}`);
+
+    const response = await fetch(verifyUrl, {
+      method: 'GET',
+      headers: { 'User-Agent': 'IPTV-Management-System/1.0' },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      return { exists: false, error: `HTTP ${response.status}` };
+    }
+
+    try {
+      const data = JSON.parse(responseText);
+      
+      // Check various success indicators
+      if (data.status === 'true' || data.status === true || data.success === true || data.user_info) {
+        console.log(`✅ Connection verified: ${hasUser || hasMac}`);
+        return { exists: true };
+      }
+      
+      console.log(`❌ Connection not found: ${hasUser || hasMac}`);
+      return { exists: false, error: 'Account not found in provider panel' };
+    } catch {
+      // Non-JSON response
+      if (responseText.toLowerCase().includes('error') || 
+          responseText.toLowerCase().includes('not found') ||
+          responseText.toLowerCase().includes('invalid')) {
+        return { exists: false, error: 'Account not found in provider panel' };
+      }
+      // Can't verify - treat as not existing for safety
+      return { exists: false, error: 'Could not verify account existence' };
+    }
+  } catch (error) {
+    console.error(`❌ Verification error:`, error.message);
+    return { exists: false, error: error.message };
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -171,7 +255,7 @@ serve(async (req) => {
     // Get reseller profile to check credits and provider
     const { data: reseller, error: resellerError } = await supabaseClient
       .from('profiles')
-      .select('credits, provider')
+      .select('credits, provider, name')
       .eq('id', primaryCustomer.reseller_id)
       .single();
 
@@ -184,6 +268,57 @@ serve(async (req) => {
     }
 
     const creditsRequired = groupCustomers.length * planDuration;
+
+    // ========================================
+    // PREFLIGHT VALIDATION: Check ALL connections exist in provider panel BEFORE renewing
+    // ========================================
+    console.log(`\n🔍 PREFLIGHT VALIDATION: Verifying all ${groupCustomers.length} connections exist in provider panel...`);
+    
+    const missingConnections: Array<{ name: string; username?: string; mac_address?: string; error: string }> = [];
+    
+    for (const customer of groupCustomers) {
+      const provider = customer.provider || '8k';
+      const verification = await verifyConnectionExists(
+        { 
+          username: customer.username, 
+          password: customer.password, 
+          mac_address: customer.mac_address 
+        },
+        provider
+      );
+      
+      if (!verification.exists) {
+        console.log(`❌ PREFLIGHT FAILED: ${customer.name} does not exist in ${provider} panel`);
+        missingConnections.push({
+          name: customer.name,
+          username: customer.username,
+          mac_address: customer.mac_address,
+          error: verification.error || 'Account not found in provider panel'
+        });
+      } else {
+        console.log(`✅ PREFLIGHT PASSED: ${customer.name} exists in panel`);
+      }
+    }
+    
+    // If any connections are missing, BLOCK the renewal entirely
+    if (missingConnections.length > 0) {
+      console.error(`\n🛑 RENEWAL BLOCKED: ${missingConnections.length} of ${groupCustomers.length} connections do not exist in provider panel`);
+      console.error('Missing connections:', missingConnections.map(c => c.name).join(', '));
+      
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Renewal blocked: ${missingConnections.length} connection(s) do not exist in the provider panel. Please contact support to fix these accounts before renewing.`,
+          code: 'MISSING_CONNECTIONS',
+          missingConnections: missingConnections,
+          totalConnections: groupCustomers.length,
+          details: 'These accounts may have been created incorrectly or deleted from the provider panel. Renewal cannot proceed until all connections are valid.'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log(`✅ PREFLIGHT COMPLETE: All ${groupCustomers.length} connections verified in provider panel\n`);
 
     // Enhanced idempotency protection using database-level transaction tracking
     console.log(`🔐 Checking for existing renewal transaction for customer ${customerId}`);
