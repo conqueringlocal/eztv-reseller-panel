@@ -386,6 +386,7 @@ serve(async (req) => {
           email: customerData.email,
           mac_address: null,
           device_type: customerData.deviceType || 'Smart TV',
+          package_id: packageId, // CRITICAL: Save the package_id for future renewals
           plan_duration: 1, // Duration is not relevant for trials, but keep it as 1
           start_date: startDate,
           expiration_date: expirationDate,

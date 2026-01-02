@@ -41,6 +41,77 @@ function mapPlanDurationToSub(planDuration: number): string {
   return mapping[planDuration] || '1'; // Default to 1 month if not found
 }
 
+// Helper function to verify a connection exists in the provider panel
+async function verifyConnectionExists(
+  username: string, 
+  password: string, 
+  panelUrl: string, 
+  apiKey: string
+): Promise<{ exists: boolean; expireDate?: string; m3uUrl?: string }> {
+  try {
+    const baseUrl = panelUrl.replace('/api/api.php', '');
+    const verifyUrl = `${baseUrl}/api/api.php?action=device_info&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&api_key=${apiKey}`;
+    
+    console.log(`🔍 Verifying connection exists: ${username}`);
+    
+    const response = await fetch(verifyUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'IPTV-Management-System/1.0',
+        'Accept': 'application/json, text/plain, */*',
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+    
+    const responseText = await response.text();
+    console.log(`📡 Verification response for ${username}: ${responseText.substring(0, 200)}`);
+    
+    if (!response.ok) {
+      console.log(`❌ Verification HTTP error: ${response.status}`);
+      return { exists: false };
+    }
+    
+    // Try to parse as JSON
+    try {
+      const data = JSON.parse(responseText);
+      
+      // Check various success indicators
+      if (data.status === 'true' || data.status === true || data.success === true) {
+        const expireDate = data.user_info?.exp_date || data.expire || data.expiry;
+        const m3uUrl = data.user_info?.url || data.url;
+        console.log(`✅ Connection verified: ${username}, expires: ${expireDate}`);
+        return { exists: true, expireDate, m3uUrl };
+      }
+      
+      // If we get user_info, consider it exists
+      if (data.user_info) {
+        const expireDate = data.user_info.exp_date || data.expire;
+        const m3uUrl = data.user_info.url;
+        console.log(`✅ Connection verified via user_info: ${username}`);
+        return { exists: true, expireDate, m3uUrl };
+      }
+      
+      console.log(`❌ Connection not found in panel: ${username}`);
+      return { exists: false };
+    } catch (parseError) {
+      // Non-JSON response - check for error indicators
+      if (responseText.toLowerCase().includes('error') || 
+          responseText.toLowerCase().includes('not found') ||
+          responseText.toLowerCase().includes('invalid')) {
+        console.log(`❌ Connection verification failed (text): ${username}`);
+        return { exists: false };
+      }
+      
+      // Can't verify - assume doesn't exist for safety
+      console.log(`⚠️ Could not parse verification response for ${username}, assuming not exists`);
+      return { exists: false };
+    }
+  } catch (error) {
+    console.error(`❌ Verification error for ${username}:`, error.message);
+    return { exists: false };
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -304,8 +375,10 @@ serve(async (req) => {
 
         // Try to parse as JSON first
         let apiResult;
+        let credentialsFromApi = false;
         try {
           apiResult = JSON.parse(responseText);
+          credentialsFromApi = !!(apiResult.username && apiResult.password);
         } catch (parseError) {
           // If it's not JSON, check if it contains credentials in text format
           console.log(`📄 Parsing text response for connection ${i}`);
@@ -314,8 +387,8 @@ serve(async (req) => {
           if (responseText.includes('username') || responseText.includes('password') || responseText.includes('m3u')) {
             // Try to extract credentials from text response
             const lines = responseText.split('\n');
-            let extractedUsername = username; // fallback to generated username
-            let extractedPassword = password; // fallback to generated password
+            let extractedUsername = ''; 
+            let extractedPassword = '';
             
             // Look for username/password patterns in the response
             for (const line of lines) {
@@ -329,22 +402,25 @@ serve(async (req) => {
               }
             }
             
-            apiResult = {
-              success: true,
-              username: extractedUsername,
-              password: extractedPassword,
-              response: responseText
-            };
+            if (extractedUsername && extractedPassword) {
+              credentialsFromApi = true;
+              apiResult = {
+                success: true,
+                username: extractedUsername,
+                password: extractedPassword,
+                response: responseText
+              };
+            } else {
+              // Could not extract credentials - DO NOT assume success
+              console.log(`❌ Could not extract credentials from text response for connection ${i}`);
+              throw new Error(`API did not return valid credentials. Response: ${responseText.substring(0, 200)}`);
+            }
           } else if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
             throw new Error(`API Error: ${responseText}`);
           } else {
-            // Assume success if no error indicators and use generated credentials
-            apiResult = {
-              success: true,
-              username: username,
-              password: password,
-              response: responseText
-            };
+            // Unknown response - DO NOT assume success, treat as failure
+            console.log(`❌ Unknown API response format for connection ${i}, treating as failure`);
+            throw new Error(`Unknown API response format. Cannot verify account was created. Response: ${responseText.substring(0, 200)}`);
           }
         }
 
@@ -353,13 +429,32 @@ serve(async (req) => {
           throw new Error(apiResult.error || apiResult.result || 'Failed to create Trex IPTV user');
         }
 
-        // Use credentials from API response or fallback to generated ones
-        const finalUsername = apiResult.username || username;
-        const finalPassword = apiResult.password || password;
+        // Use credentials from API response - require them
+        const finalUsername = apiResult.username;
+        const finalPassword = apiResult.password;
+        
+        if (!finalUsername || !finalPassword) {
+          console.log(`❌ API did not return username/password for connection ${i}`);
+          throw new Error('API did not return valid credentials (username/password)');
+        }
 
-        // Use M3U URL from API response if available, otherwise construct from base URL
+        // CRITICAL: Verify the connection actually exists in the panel before storing
+        console.log(`🔍 Verifying connection ${i} exists in panel after creation...`);
+        const verification = await verifyConnectionExists(finalUsername, finalPassword, PANEL_URL, API_KEY);
+        
+        if (!verification.exists) {
+          console.log(`❌ Connection ${i} verification FAILED - account does not exist in panel`);
+          throw new Error(`Connection was not created in panel. Verification failed for username: ${finalUsername}`);
+        }
+        
+        console.log(`✅ Connection ${i} verified - account exists in panel`);
+
+        // Use M3U URL from verification or API response, otherwise construct from base URL
         let m3uUrl;
-        if (apiResult.url) {
+        if (verification.m3uUrl) {
+          m3uUrl = verification.m3uUrl;
+          console.log(`🔗 Using M3U URL from verification: ${m3uUrl}`);
+        } else if (apiResult.url) {
           // Use the URL provided by the Trex API response
           m3uUrl = apiResult.url;
           console.log(`🔗 Using M3U URL from API response: ${m3uUrl}`);
@@ -367,6 +462,13 @@ serve(async (req) => {
           // Fallback to constructing URL from base URL if not provided in response
           m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
           console.log(`🔧 Constructed M3U URL from base URL: ${m3uUrl}`);
+        }
+
+        // Use expiration from verification if available
+        let expirationDate = customerData.expirationDate;
+        if (verification.expireDate) {
+          expirationDate = verification.expireDate;
+          console.log(`📅 Using expiration from verification: ${expirationDate}`);
         }
 
         // Create customer record in database
@@ -387,7 +489,7 @@ serve(async (req) => {
             current_connections: 0,
             connection_details: [],
             start_date: customerData.startDate,
-            expiration_date: customerData.expirationDate,
+            expiration_date: expirationDate,
             status: customerData.status,
             is_deactivated: customerData.isDeactivated,
             provider: 'trex',
@@ -419,7 +521,7 @@ serve(async (req) => {
           }
         });
 
-        console.log(`✅ Successfully created Trex connection ${i} with credentials: ${finalUsername}/${finalPassword}`);
+        console.log(`✅ Successfully created and verified Trex connection ${i} with credentials: ${finalUsername}/${finalPassword}`);
 
       } catch (error) {
         console.error(`❌ Failed to create Trex connection ${i}:`, error);
@@ -432,11 +534,14 @@ serve(async (req) => {
 
     // Only deduct credits if at least one account was created successfully
     if (createdCustomers.length > 0) {
+      // Calculate actual credits used based on successfully created accounts
+      const actualCreditsUsed = createdCustomers.length * customerData.planDuration;
+      
       if (!isAdminOverride) {
-        console.log(`💳 Deducting ${creditsRequired} credits from reseller`);
+        console.log(`💳 Deducting ${actualCreditsUsed} credits from reseller (${createdCustomers.length} accounts created)`);
         const { error: creditError } = await supabaseClient
           .from('profiles')
-          .update({ credits: reseller.credits - creditsRequired })
+          .update({ credits: reseller.credits - actualCreditsUsed })
           .eq('id', resellerId);
 
         if (creditError) {
@@ -450,11 +555,11 @@ serve(async (req) => {
           .insert({
             reseller_id: resellerId,
             action: 'account_creation',
-            credits_used: creditsRequired,
-            connections_used: connectionsToCreate,
+            credits_used: actualCreditsUsed,
+            connections_used: createdCustomers.length,
             customer_id: createdCustomers[0].id, // Use first customer ID as reference
             customer_name: customerData.name,
-            notes: `${customerData.name} | ${reseller.name}`
+            notes: `${customerData.name} | ${reseller.name} | ${createdCustomers.length} of ${connectionsToCreate} connections created`
           });
 
         if (logError) {
@@ -470,10 +575,10 @@ serve(async (req) => {
             reseller_id: resellerId,
             action: 'addition',
             credits_used: 0,
-            connections_used: connectionsToCreate,
+            connections_used: createdCustomers.length,
             customer_id: createdCustomers[0].id,
             customer_name: customerData.name,
-            notes: `ADMIN ACTION: Created ${connectionsToCreate} Trex ${customerData.accountType.toUpperCase()} account(s) without credit charge`
+            notes: `ADMIN ACTION: Created ${createdCustomers.length} Trex ${customerData.accountType.toUpperCase()} account(s) without credit charge`
           });
 
         if (logError) {
@@ -520,7 +625,7 @@ serve(async (req) => {
           customerGroup: customerGroupId
         },
         provider: 'trex',
-        creditsUsed: totalCreated > 0 ? creditsRequired : 0
+        creditsUsed: totalCreated > 0 ? (totalCreated * customerData.planDuration) : 0
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
