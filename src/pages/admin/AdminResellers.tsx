@@ -9,6 +9,9 @@ import { Input } from '@/components/ui/input';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { AddResellerForm } from '@/components/resellers/AddResellerForm';
+import { Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Table,
   TableBody,
@@ -24,6 +27,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function AdminResellers() {
   const { resellers, customers, refreshData } = useApp();
@@ -33,6 +46,9 @@ export default function AdminResellers() {
   const [creditAction, setCreditAction] = useState<'add' | 'remove'>('add');
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
   const [isAddResellerModalOpen, setIsAddResellerModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [resellerToDelete, setResellerToDelete] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Filter resellers based on search
   const filteredResellers = resellers.filter(
@@ -67,6 +83,40 @@ export default function AdminResellers() {
   const handleAddResellerSuccess = () => {
     setIsAddResellerModalOpen(false);
     refreshData();
+  };
+
+  // Handle delete reseller click
+  const handleDeleteClick = (reseller: { id: string; name: string; email: string }) => {
+    setResellerToDelete(reseller);
+    setIsDeleteDialogOpen(true);
+  };
+
+  // Handle delete confirmation
+  const handleDeleteConfirm = async () => {
+    if (!resellerToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-reseller', {
+        body: { resellerId: resellerToDelete.id }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(`Reseller "${resellerToDelete.name}" has been deleted`);
+        setIsDeleteDialogOpen(false);
+        setResellerToDelete(null);
+        refreshData();
+      } else {
+        toast.error(data?.error || 'Failed to delete reseller');
+      }
+    } catch (error: any) {
+      console.error('Error deleting reseller:', error);
+      toast.error(error.message || 'Failed to delete reseller');
+    } finally {
+      setIsDeleting(false);
+    }
   };
   
   return (
@@ -158,30 +208,36 @@ export default function AdminResellers() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="space-x-2">
-                          <div className="flex gap-1">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleManageCredits(reseller.id, 'add')}
-                              className="text-green-600 border-green-200 hover:bg-green-50"
-                            >
-                              Add Credits
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleManageCredits(reseller.id, 'remove')}
-                              className="text-red-600 border-red-200 hover:bg-red-50"
-                            >
-                              Remove Credits
-                            </Button>
-                          </div>
+                        <div className="flex flex-wrap gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleManageCredits(reseller.id, 'add')}
+                            className="text-green-600 border-green-200 hover:bg-green-50"
+                          >
+                            Add Credits
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleManageCredits(reseller.id, 'remove')}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            Remove Credits
+                          </Button>
                           <Button
                             size="sm"
                             onClick={() => navigate(`/admin/resellers/${reseller.id}`)}
                           >
                             Details
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteClick({ id: reseller.id, name: reseller.name, email: reseller.email })}
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -233,6 +289,35 @@ export default function AdminResellers() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Reseller</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Are you sure you want to permanently delete the reseller{' '}
+                <strong>{resellerToDelete?.name}</strong> ({resellerToDelete?.email})?
+              </p>
+              <p className="text-destructive font-medium">
+                This action cannot be undone. All associated data including credit logs, 
+                API keys, SSO tokens, and funnels will be permanently deleted.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Reseller'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
