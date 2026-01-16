@@ -36,3 +36,6 @@ verify_jwt = false
 
 [functions.auto-post-sports-update]
 verify_jwt = false
+
+[functions.delete-reseller]
+verify_jwt = false
