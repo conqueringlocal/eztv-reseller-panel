@@ -12,14 +12,27 @@ import { CustomerTable } from '@/components/customers/CustomerTable';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
 import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
 import { SingleResellerSsoManager } from '@/components/sso/SingleResellerSsoManager';
-import { ArrowLeft, Users, DollarSign, Activity, Calendar, Settings, Key } from 'lucide-react';
+import { ArrowLeft, Users, DollarSign, Activity, Calendar, Key, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function AdminResellerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { resellers, customers, creditLogs, addCredits, removeCredits, refreshData } = useApp();
   const [showCreditForm, setShowCreditForm] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const reseller = resellers.find(r => r.id === id);
   const resellerCustomers = customers.filter(c => c.resellerId === id);
@@ -62,6 +75,32 @@ export default function AdminResellerDetail() {
     }
   };
 
+  const handleDeleteConfirm = async () => {
+    if (!id || !reseller) return;
+
+    setIsDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-reseller', {
+        body: { resellerId: id }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(`Reseller "${reseller.name}" has been deleted`);
+        navigate('/admin/resellers');
+      } else {
+        toast.error(data?.error || 'Failed to delete reseller');
+      }
+    } catch (error: any) {
+      console.error('Error deleting reseller:', error);
+      toast.error(error.message || 'Failed to delete reseller');
+    } finally {
+      setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
   if (!reseller) {
     return (
       <DashboardLayout>
@@ -92,10 +131,18 @@ export default function AdminResellerDetail() {
             <h1 className="text-2xl font-bold mb-2">{reseller.name}</h1>
             <p className="text-gray-500">Manage reseller account and monitor activity</p>
           </div>
-          <div>
+          <div className="flex items-center gap-2">
             <Badge variant="secondary">
               Reseller ID: {reseller.id}
             </Badge>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={() => setIsDeleteDialogOpen(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Reseller
+            </Button>
           </div>
         </div>
       </div>
@@ -237,6 +284,35 @@ export default function AdminResellerDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Reseller</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Are you sure you want to permanently delete the reseller{' '}
+                <strong>{reseller.name}</strong> ({reseller.email})?
+              </p>
+              <p className="text-destructive font-medium">
+                This action cannot be undone. All associated data including credit logs, 
+                API keys, SSO tokens, and funnels will be permanently deleted.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Reseller'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
