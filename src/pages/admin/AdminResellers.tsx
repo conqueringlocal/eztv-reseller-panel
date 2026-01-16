@@ -101,7 +101,13 @@ export default function AdminResellers() {
         body: { resellerId: resellerToDelete.id }
       });
 
-      if (error) throw error;
+      // Handle edge function errors - the error object contains the response body
+      if (error) {
+        // Try to extract error message from the response
+        const errorMessage = data?.error || error.message || 'Failed to delete reseller';
+        toast.error(errorMessage);
+        return;
+      }
 
       if (data?.success) {
         toast.success(`Reseller "${resellerToDelete.name}" has been deleted`);
@@ -109,6 +115,7 @@ export default function AdminResellers() {
         setResellerToDelete(null);
         refreshData();
       } else {
+        // Edge function returned success: false
         toast.error(data?.error || 'Failed to delete reseller');
       }
     } catch (error: any) {
@@ -116,6 +123,7 @@ export default function AdminResellers() {
       toast.error(error.message || 'Failed to delete reseller');
     } finally {
       setIsDeleting(false);
+      setIsDeleteDialogOpen(false);
     }
   };
   
