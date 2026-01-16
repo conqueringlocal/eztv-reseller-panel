@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -12,9 +12,18 @@ import { CustomerTable } from '@/components/customers/CustomerTable';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
 import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
 import { SingleResellerSsoManager } from '@/components/sso/SingleResellerSsoManager';
-import { ArrowLeft, Users, DollarSign, Activity, Calendar, Key, Trash2 } from 'lucide-react';
+import { ArrowLeft, Users, DollarSign, Activity, Calendar, Key, Trash2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,10 +42,17 @@ export default function AdminResellerDetail() {
   const [showCreditForm, setShowCreditForm] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteAction, setDeleteAction] = useState<'transfer' | 'delete'>('transfer');
+  const [targetResellerId, setTargetResellerId] = useState<string>('');
 
   const reseller = resellers.find(r => r.id === id);
   const resellerCustomers = customers.filter(c => c.resellerId === id);
   const resellerCreditLogs = creditLogs.filter(log => log.reseller_id === id);
+
+  // Get other resellers for transfer dropdown
+  const otherResellers = useMemo(() => {
+    return resellers.filter(r => r.id !== id);
+  }, [resellers, id]);
 
   useEffect(() => {
     if (!id) {
@@ -78,26 +94,100 @@ export default function AdminResellerDetail() {
   const handleDeleteConfirm = async () => {
     if (!id || !reseller) return;
 
-    setIsDeleting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('delete-reseller', {
-        body: { resellerId: id }
-      });
+    const customerCount = resellerCustomers.length;
 
-      if (error) throw error;
+    // If there are customers, we need to either transfer or delete them
+    if (customerCount > 0) {
+      if (deleteAction === 'transfer') {
+        if (!targetResellerId) {
+          toast.error('Please select a reseller to transfer customers to');
+          return;
+        }
 
-      if (data?.success) {
-        toast.success(`Reseller "${reseller.name}" has been deleted`);
-        navigate('/admin/resellers');
+        setIsDeleting(true);
+        try {
+          const { data, error } = await supabase.functions.invoke('transfer-customers', {
+            body: { 
+              sourceResellerId: id,
+              targetResellerId,
+              deleteSourceReseller: true
+            }
+          });
+
+          if (error) {
+            const errorMessage = data?.error || error.message || 'Failed to transfer customers';
+            toast.error(errorMessage);
+            return;
+          }
+
+          if (data?.success) {
+            toast.success(data.message || `Transferred ${data.customersTransferred} customers and deleted reseller`);
+            navigate('/admin/resellers');
+          } else {
+            toast.error(data?.error || 'Failed to transfer customers');
+          }
+        } catch (error: any) {
+          console.error('Error transferring customers:', error);
+          toast.error(error.message || 'Failed to transfer customers');
+        } finally {
+          setIsDeleting(false);
+        }
       } else {
-        toast.error(data?.error || 'Failed to delete reseller');
+        // Delete all customers then delete reseller
+        setIsDeleting(true);
+        try {
+          const { data, error } = await supabase.functions.invoke('admin-cleanup-customers', {
+            body: { 
+              resellerId: id,
+              deleteReseller: true
+            }
+          });
+
+          if (error) {
+            const errorMessage = data?.error || error.message || 'Failed to delete customers';
+            toast.error(errorMessage);
+            return;
+          }
+
+          if (data?.success) {
+            toast.success(data.message || `Deleted ${data.customersDeleted} customers and reseller`);
+            navigate('/admin/resellers');
+          } else {
+            toast.error(data?.error || 'Failed to delete');
+          }
+        } catch (error: any) {
+          console.error('Error deleting:', error);
+          toast.error(error.message || 'Failed to delete');
+        } finally {
+          setIsDeleting(false);
+        }
       }
-    } catch (error: any) {
-      console.error('Error deleting reseller:', error);
-      toast.error(error.message || 'Failed to delete reseller');
-    } finally {
-      setIsDeleting(false);
-      setIsDeleteDialogOpen(false);
+    } else {
+      // No customers, just delete the reseller directly
+      setIsDeleting(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('delete-reseller', {
+          body: { resellerId: id }
+        });
+
+        if (error) {
+          const errorMessage = data?.error || error.message || 'Failed to delete reseller';
+          toast.error(errorMessage);
+          return;
+        }
+
+        if (data?.success) {
+          toast.success(`Reseller "${reseller.name}" has been deleted`);
+          navigate('/admin/resellers');
+        } else {
+          toast.error(data?.error || 'Failed to delete reseller');
+        }
+      } catch (error: any) {
+        console.error('Error deleting reseller:', error);
+        toast.error(error.message || 'Failed to delete reseller');
+      } finally {
+        setIsDeleting(false);
+      }
     }
   };
 
@@ -287,28 +377,90 @@ export default function AdminResellerDetail() {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Reseller</AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>
-                Are you sure you want to permanently delete the reseller{' '}
-                <strong>{reseller.name}</strong> ({reseller.email})?
-              </p>
-              <p className="text-destructive font-medium">
-                This action cannot be undone. All associated data including credit logs, 
-                API keys, SSO tokens, and funnels will be permanently deleted.
-              </p>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>
+                  You are about to delete <strong>{reseller.name}</strong> ({reseller.email}).
+                </p>
+                
+                {resellerCustomers.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-md p-3">
+                    <p className="text-amber-800 font-medium">
+                      This reseller has {resellerCustomers.length} customer(s).
+                    </p>
+                    <p className="text-amber-700 text-sm mt-1">
+                      Choose what to do with their customers:
+                    </p>
+                  </div>
+                )}
+
+                {resellerCustomers.length > 0 && (
+                  <RadioGroup value={deleteAction} onValueChange={(v) => setDeleteAction(v as 'transfer' | 'delete')}>
+                    <div className="flex items-start space-x-2 p-3 rounded-md border hover:bg-muted/50">
+                      <RadioGroupItem value="transfer" id="transfer" className="mt-1" />
+                      <div className="flex-1">
+                        <Label htmlFor="transfer" className="font-medium cursor-pointer">
+                          Transfer customers to another reseller
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Move all customers to a different reseller before deletion
+                        </p>
+                        {deleteAction === 'transfer' && (
+                          <div className="mt-2">
+                            <Select value={targetResellerId} onValueChange={setTargetResellerId}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select target reseller" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {otherResellers.map((r) => (
+                                  <SelectItem key={r.id} value={r.id}>
+                                    <span className="flex items-center gap-2">
+                                      {r.name}
+                                      <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                      <span className="text-muted-foreground text-xs">
+                                        {customers.filter(c => c.resellerId === r.id).length} existing customers
+                                      </span>
+                                    </span>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start space-x-2 p-3 rounded-md border border-destructive/30 hover:bg-destructive/5">
+                      <RadioGroupItem value="delete" id="delete" className="mt-1" />
+                      <div>
+                        <Label htmlFor="delete" className="font-medium cursor-pointer text-destructive">
+                          Delete all customers permanently
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          This will permanently delete all customer data
+                        </p>
+                      </div>
+                    </div>
+                  </RadioGroup>
+                )}
+
+                <p className="text-destructive text-sm font-medium">
+                  This action cannot be undone. All reseller data (credit logs, API keys, SSO tokens, funnels) will be permanently deleted.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
-              disabled={isDeleting}
+              disabled={isDeleting || (deleteAction === 'transfer' && !targetResellerId && resellerCustomers.length > 0)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeleting ? 'Deleting...' : 'Delete Reseller'}
+              {isDeleting ? 'Processing...' : deleteAction === 'transfer' && resellerCustomers.length > 0 ? 'Transfer & Delete' : 'Delete All'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -39,3 +39,9 @@ verify_jwt = false
 
 [functions.delete-reseller]
 verify_jwt = false
+
+[functions.admin-cleanup-customers]
+verify_jwt = false
+
+[functions.transfer-customers]
+verify_jwt = false
