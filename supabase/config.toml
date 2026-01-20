@@ -45,3 +45,6 @@ verify_jwt = false
 
 [functions.transfer-customers]
 verify_jwt = false
+
+[functions.merge-customer-into-group]
+verify_jwt = false
