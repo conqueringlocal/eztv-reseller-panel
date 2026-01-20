@@ -10,7 +10,7 @@ function = "catch-all"
 verify_jwt = false
 
 # Default handler for custom domains
-[functions._default]
+[functions.default]
 verify_jwt = false
 
 [functions.create-role-type]
