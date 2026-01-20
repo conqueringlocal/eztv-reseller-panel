@@ -173,7 +173,35 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Delete the source customer
+    // Clean up related records before deleting source customer
+    
+    // 1. Delete renewal_transactions for the source customer
+    const { error: renewalDeleteError } = await supabase
+      .from('renewal_transactions')
+      .delete()
+      .eq('customer_id', sourceCustomerId);
+
+    if (renewalDeleteError) {
+      console.error('Warning: Error deleting renewal transactions:', renewalDeleteError);
+      // Continue anyway - these are historical records
+    }
+
+    // 2. Update credit_logs to reference target customer (preserve history)
+    const { error: creditLogUpdateError } = await supabase
+      .from('credit_logs')
+      .update({ 
+        customer_id: targetCustomerId,
+        customer_name: targetCustomer.name,
+        notes: `Merged from ${sourceCustomer.name}`
+      })
+      .eq('customer_id', sourceCustomerId);
+
+    if (creditLogUpdateError) {
+      console.error('Warning: Error updating credit logs:', creditLogUpdateError);
+      // Continue anyway - credit logs can remain orphaned
+    }
+
+    // 3. Now delete the source customer
     const { error: deleteError } = await supabase
       .from('customers')
       .delete()
@@ -181,7 +209,13 @@ Deno.serve(async (req) => {
 
     if (deleteError) {
       console.error('Error deleting source customer:', deleteError);
-      // Don't fail the whole operation, but log the issue
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Merge completed but failed to delete source customer: ${deleteError.message}. You may need to manually delete this record.`
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Log the merge in security audit
