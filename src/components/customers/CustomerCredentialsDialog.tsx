@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Eye, EyeOff, ExternalLink, RefreshCw } from 'lucide-react';
+import { Copy, Eye, EyeOff, ExternalLink, RefreshCw, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   getConnectionCredentials,
@@ -19,6 +19,8 @@ import {
   getTotalConnections
 } from '@/utils/customerConsolidation';
 import { RenewSingleConnectionDialog } from './RenewSingleConnectionDialog';
+import { EditConnectionCredentialsDialog } from './credentials/EditConnectionCredentialsDialog';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CustomerCredentialsDialogProps {
   customer: any;
@@ -26,13 +28,17 @@ interface CustomerCredentialsDialogProps {
 }
 
 export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredentialsDialogProps) {
+  const { user } = useAuth();
   const [showPasswords, setShowPasswords] = useState<{ [key: number]: boolean }>({});
   const [renewDialogOpen, setRenewDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedConnection, setSelectedConnection] = useState<{
     connectionNumber: number;
     expirationDate: string;
   } | null>(null);
+  const [editingConnection, setEditingConnection] = useState<any>(null);
   
+  const isAdmin = user?.role === 'admin';
   const customerName = getCustomerDisplayName(customer);
   const totalConnections = getTotalConnections(customer);
   const connectionCredentials = getConnectionCredentials(customer);
@@ -79,6 +85,32 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
   const handleRenewalSuccess = () => {
     toast.success("Connection renewed! Refreshing...");
     setTimeout(() => window.location.reload(), 1000);
+  };
+
+  const handleEditConnection = (credential: any) => {
+    setEditingConnection(credential);
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSuccess = () => {
+    toast.success("Credentials updated! Refreshing...");
+    setTimeout(() => window.location.reload(), 1000);
+  };
+
+  // Build connection list for editing
+  const getConnectionListForEditing = (): any[] => {
+    if (customer.connection_list && Array.isArray(customer.connection_list)) {
+      return customer.connection_list;
+    }
+    // For single connection customers, create a list from primary credentials
+    return [{
+      connection_number: 1,
+      username: customer.username,
+      password: customer.password,
+      m3u_url: customer.m3u_url,
+      expiration_date: customer.expiration_date || customer.expirationDate,
+      status: customer.status || 'active',
+    }];
   };
 
   return (
@@ -139,15 +171,28 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
                         Expires: {new Date(getConnectionExpirationDate(credential.connection_number)).toLocaleDateString()}
                       </p>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRenewConnection(credential.connection_number)}
-                      className="shrink-0"
-                    >
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Renew
-                    </Button>
+                    <div className="flex gap-2">
+                      {isAdmin && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditConnection(credential)}
+                          className="shrink-0"
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRenewConnection(credential.connection_number)}
+                        className="shrink-0"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Renew
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -254,6 +299,18 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
             connectionNumber={selectedConnection.connectionNumber}
             currentExpirationDate={selectedConnection.expirationDate}
             onSuccess={handleRenewalSuccess}
+          />
+        )}
+
+        {editingConnection && (
+          <EditConnectionCredentialsDialog
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            customerId={customer.id}
+            customerName={customerName}
+            connection={editingConnection}
+            connectionList={getConnectionListForEditing()}
+            onSuccess={handleEditSuccess}
           />
         )}
       </DialogContent>

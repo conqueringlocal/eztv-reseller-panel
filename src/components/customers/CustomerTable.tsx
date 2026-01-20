@@ -3,12 +3,13 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Edit, Trash2, RotateCcw, Eye, Users, RefreshCw } from 'lucide-react';
+import { Edit, Trash2, RotateCcw, Eye, Users, RefreshCw, Merge } from 'lucide-react';
 import { EditCustomerForm } from './EditCustomerForm';
 import { RenewCustomerForm } from './RenewCustomerForm';
 import { CustomerCredentialsDialog } from './CustomerCredentialsDialog';
 import { SyncDeviceDialog } from './SyncDeviceDialog';
 import { AddConnectionDialog } from './AddConnectionDialog';
+import { ConvertToMultiConnectionDialog } from './ConvertToMultiConnectionDialog';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,6 +63,7 @@ export function CustomerTable({
   const [viewingCredentials, setViewingCredentials] = useState<any>(null);
   const [syncingCustomer, setSyncingCustomer] = useState<any>(null);
   const [addingConnectionTo, setAddingConnectionTo] = useState<any>(null);
+  const [mergingCustomer, setMergingCustomer] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   // Check if current user is admin
@@ -344,15 +346,28 @@ export function CustomerTable({
                     Renew
                   </Button>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAddingConnectionTo(customer)}
-                    className="flex items-center gap-1"
-                  >
-                    <Users size={14} />
-                    Add Connection
-                  </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAddingConnectionTo(customer)}
+                      className="flex items-center gap-1"
+                    >
+                      <Users size={14} />
+                      Add Connection
+                    </Button>
+
+                    {/* Merge button - for single connection or trial customers */}
+                    {(getTotalConnections(customer) === 1 || getFieldValue(customer, 'is_trial', 'isTrial')) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setMergingCustomer(customer)}
+                        className="flex items-center gap-1"
+                      >
+                        <Merge size={14} />
+                        Merge
+                      </Button>
+                    )}
 
                   {isAdmin && (
                     <Button
@@ -438,6 +453,16 @@ export function CustomerTable({
           customer={addingConnectionTo}
           open={true}
           onOpenChange={(open) => !open && setAddingConnectionTo(null)}
+          onSuccess={onRefresh}
+        />
+      )}
+
+      {mergingCustomer && (
+        <ConvertToMultiConnectionDialog
+          open={true}
+          onOpenChange={(open) => !open && setMergingCustomer(null)}
+          sourceCustomer={mergingCustomer}
+          allCustomers={processedCustomers}
           onSuccess={onRefresh}
         />
       )}
