@@ -27,14 +27,17 @@ Deno.serve(async (req) => {
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
       
-      // Extract subdomain from path, handling both direct and _default routing
+      // Extract subdomain from path, handling both direct and legacy routing
       let subdomain = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
-      
-      // Remove _default/ prefix if present (when called via edge function URL)
+
+      // Remove legacy prefixes if present (when called via edge function URL)
       if (subdomain.startsWith('_default/')) {
         subdomain = subdomain.replace('_default/', '');
       }
-      
+      if (subdomain.startsWith('default/')) {
+        subdomain = subdomain.replace('default/', '');
+      }
+
       const actualSubdomain = subdomain.split('/')[0];
       
       console.log(`[Default Router] Extracted subdomain: "${actualSubdomain}"`);
