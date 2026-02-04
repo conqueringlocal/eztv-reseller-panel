@@ -115,7 +115,7 @@ async function syncHighLevelContact(
   resellerId: string,
   contactId: string | undefined,
   success: boolean,
-  credentials?: { username?: string; password?: string; m3u_url?: string },
+  credentialsList?: Array<{ username?: string; password?: string; m3u_url?: string }>,
   expirationDate?: string,
   errorMessage?: string
 ): Promise<void> {
@@ -136,10 +136,31 @@ async function syncHighLevelContact(
       provision_status: success ? 'success' : 'failed'
     };
 
-    if (success && credentials) {
-      fields.service_username = credentials.username;
-      fields.service_password = credentials.password;
-      fields.service_m3u_url = credentials.m3u_url;
+    // Build per-connection fields (cap at 3)
+    if (success && credentialsList && credentialsList.length > 0) {
+      const maxConnections = Math.min(credentialsList.length, 3);
+      fields.total_connections = String(maxConnections);
+      
+      // Connection 1
+      if (credentialsList[0]) {
+        fields.service_username_1 = credentialsList[0].username;
+        fields.service_password_1 = credentialsList[0].password;
+        fields.service_m3u_url_1 = credentialsList[0].m3u_url;
+      }
+      
+      // Connection 2
+      if (credentialsList[1]) {
+        fields.service_username_2 = credentialsList[1].username;
+        fields.service_password_2 = credentialsList[1].password;
+        fields.service_m3u_url_2 = credentialsList[1].m3u_url;
+      }
+      
+      // Connection 3
+      if (credentialsList[2]) {
+        fields.service_username_3 = credentialsList[2].username;
+        fields.service_password_3 = credentialsList[2].password;
+        fields.service_m3u_url_3 = credentialsList[2].m3u_url;
+      }
     }
 
     if (success && expirationDate) {
@@ -443,17 +464,19 @@ async function createConsolidatedAccount(
     }
 
     // Sync to HighLevel after successful provisioning (non-blocking)
+    // Pass FULL credentials list (up to 3)
     if (payload.contact_id) {
       const expirationDateStr = expirationDate.toISOString().split('T')[0];
+      const credentialsList = consolidatedConnectionDetails.slice(0, 3).map((cred: any) => ({
+        username: cred.username,
+        password: cred.password,
+        m3u_url: cred.m3u_url
+      }));
       await syncHighLevelContact(
         resellerId,
         payload.contact_id,
         true,
-        {
-          username: consolidatedConnectionDetails[0]?.username,
-          password: consolidatedConnectionDetails[0]?.password,
-          m3u_url: consolidatedConnectionDetails[0]?.m3u_url
-        },
+        credentialsList,
         expirationDateStr
       );
     }
@@ -542,17 +565,32 @@ async function renewCustomerGroup(
     newExpiry.setMonth(newExpiry.getMonth() + planDuration);
 
     // Sync to HighLevel after successful renewal (non-blocking)
+    // Build credentials list from connection_list or legacy fields
     const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
     if (contactIdToUse) {
+      let credentialsList: Array<{ username?: string; password?: string; m3u_url?: string }> = [];
+      
+      if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
+        // Use connection_list (up to 3)
+        credentialsList = customer.connection_list.slice(0, 3).map((conn: any) => ({
+          username: conn.username,
+          password: conn.password,
+          m3u_url: conn.m3u_url
+        }));
+      } else if (customer.username || customer.password) {
+        // Legacy single-connection fallback
+        credentialsList = [{
+          username: customer.username,
+          password: customer.password,
+          m3u_url: customer.m3u_url
+        }];
+      }
+      
       await syncHighLevelContact(
         resellerId,
         contactIdToUse,
         true,
-        {
-          username: customer.username || customer.connection_list?.[0]?.username,
-          password: customer.password || customer.connection_list?.[0]?.password,
-          m3u_url: customer.m3u_url || customer.connection_list?.[0]?.m3u_url
-        },
+        credentialsList,
         newExpiry.toISOString().split('T')[0]
       );
     }

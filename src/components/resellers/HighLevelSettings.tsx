@@ -178,11 +178,15 @@ export function HighLevelSettings({ resellerId }: HighLevelSettingsProps) {
             <strong>Required Custom Fields in HighLevel:</strong>
             <ul className="mt-2 ml-4 list-disc text-sm">
               <li><code>provision_status</code> - Success or failed status</li>
-              <li><code>service_username</code> - IPTV username</li>
-              <li><code>service_password</code> - IPTV password</li>
-              <li><code>service_m3u_url</code> - M3U streaming URL</li>
               <li><code>service_expiration</code> - Expiration date (YYYY-MM-DD)</li>
               <li><code>provision_error</code> - Error message if failed</li>
+              <li><code>total_connections</code> - Number of connections (1-3)</li>
+              <li className="mt-1"><strong>Connection 1:</strong></li>
+              <li className="ml-4"><code>service_username_1</code>, <code>service_password_1</code>, <code>service_m3u_url_1</code></li>
+              <li><strong>Connection 2:</strong></li>
+              <li className="ml-4"><code>service_username_2</code>, <code>service_password_2</code>, <code>service_m3u_url_2</code></li>
+              <li><strong>Connection 3:</strong></li>
+              <li className="ml-4"><code>service_username_3</code>, <code>service_password_3</code>, <code>service_m3u_url_3</code></li>
             </ul>
           </AlertDescription>
         </Alert>

@@ -10,11 +10,21 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 export interface HighLevelContactFields {
   provision_status: 'success' | 'failed';
-  service_username?: string;
-  service_password?: string;
-  service_m3u_url?: string;
   service_expiration?: string; // YYYY-MM-DD
   provision_error?: string;
+  total_connections?: string;
+  // Connection 1
+  service_username_1?: string;
+  service_password_1?: string;
+  service_m3u_url_1?: string;
+  // Connection 2
+  service_username_2?: string;
+  service_password_2?: string;
+  service_m3u_url_2?: string;
+  // Connection 3
+  service_username_3?: string;
+  service_password_3?: string;
+  service_m3u_url_3?: string;
 }
 
 export interface HighLevelUpdateResult {
@@ -72,11 +82,12 @@ async function getCustomFieldMappings(
   
   const requiredFields = [
     'provision_status',
-    'service_username', 
-    'service_password',
-    'service_m3u_url',
     'service_expiration',
-    'provision_error'
+    'provision_error',
+    'total_connections',
+    'service_username_1', 'service_password_1', 'service_m3u_url_1',
+    'service_username_2', 'service_password_2', 'service_m3u_url_2',
+    'service_username_3', 'service_password_3', 'service_m3u_url_3'
   ];
   
   // Check if cache has all required fields
@@ -115,19 +126,39 @@ async function getCustomFieldMappings(
       const fieldId = field.id;
       
       if (fieldId) {
-        // Match by fieldKey or normalized name
+        // Core fields
         if (fieldKey === 'provision_status' || fieldName === 'provision_status') {
           mapping['provision_status'] = fieldId;
-        } else if (fieldKey === 'service_username' || fieldName === 'service_username') {
-          mapping['service_username'] = fieldId;
-        } else if (fieldKey === 'service_password' || fieldName === 'service_password') {
-          mapping['service_password'] = fieldId;
-        } else if (fieldKey === 'service_m3u_url' || fieldName === 'service_m3u_url') {
-          mapping['service_m3u_url'] = fieldId;
         } else if (fieldKey === 'service_expiration' || fieldName === 'service_expiration') {
           mapping['service_expiration'] = fieldId;
         } else if (fieldKey === 'provision_error' || fieldName === 'provision_error') {
           mapping['provision_error'] = fieldId;
+        } else if (fieldKey === 'total_connections' || fieldName === 'total_connections') {
+          mapping['total_connections'] = fieldId;
+        }
+        // Connection 1
+        else if (fieldKey === 'service_username_1' || fieldName === 'service_username_1') {
+          mapping['service_username_1'] = fieldId;
+        } else if (fieldKey === 'service_password_1' || fieldName === 'service_password_1') {
+          mapping['service_password_1'] = fieldId;
+        } else if (fieldKey === 'service_m3u_url_1' || fieldName === 'service_m3u_url_1') {
+          mapping['service_m3u_url_1'] = fieldId;
+        }
+        // Connection 2
+        else if (fieldKey === 'service_username_2' || fieldName === 'service_username_2') {
+          mapping['service_username_2'] = fieldId;
+        } else if (fieldKey === 'service_password_2' || fieldName === 'service_password_2') {
+          mapping['service_password_2'] = fieldId;
+        } else if (fieldKey === 'service_m3u_url_2' || fieldName === 'service_m3u_url_2') {
+          mapping['service_m3u_url_2'] = fieldId;
+        }
+        // Connection 3
+        else if (fieldKey === 'service_username_3' || fieldName === 'service_username_3') {
+          mapping['service_username_3'] = fieldId;
+        } else if (fieldKey === 'service_password_3' || fieldName === 'service_password_3') {
+          mapping['service_password_3'] = fieldId;
+        } else if (fieldKey === 'service_m3u_url_3' || fieldName === 'service_m3u_url_3') {
+          mapping['service_m3u_url_3'] = fieldId;
         }
       }
     }
@@ -173,12 +204,26 @@ function buildCustomFieldsPayload(
     customFields.push(fieldPayload);
   };
 
+  // Core fields
   addField('provision_status', fields.provision_status);
-  addField('service_username', fields.service_username);
-  addField('service_password', fields.service_password);
-  addField('service_m3u_url', fields.service_m3u_url);
   addField('service_expiration', fields.service_expiration);
   addField('provision_error', fields.provision_error);
+  addField('total_connections', fields.total_connections);
+  
+  // Connection 1
+  addField('service_username_1', fields.service_username_1);
+  addField('service_password_1', fields.service_password_1);
+  addField('service_m3u_url_1', fields.service_m3u_url_1);
+  
+  // Connection 2
+  addField('service_username_2', fields.service_username_2);
+  addField('service_password_2', fields.service_password_2);
+  addField('service_m3u_url_2', fields.service_m3u_url_2);
+  
+  // Connection 3
+  addField('service_username_3', fields.service_username_3);
+  addField('service_password_3', fields.service_password_3);
+  addField('service_m3u_url_3', fields.service_m3u_url_3);
 
   return customFields;
 }
@@ -197,7 +242,10 @@ export async function updateHighLevelContact(
     hasToken: !!token,
     tokenLength: token?.length || 0,
     provision_status: fields.provision_status,
-    hasUsername: !!fields.service_username,
+    totalConnections: fields.total_connections,
+    hasUsername1: !!fields.service_username_1,
+    hasUsername2: !!fields.service_username_2,
+    hasUsername3: !!fields.service_username_3,
     hasExpiration: !!fields.service_expiration,
     hasError: !!fields.provision_error
   });
