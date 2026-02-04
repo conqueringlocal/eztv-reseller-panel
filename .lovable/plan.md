@@ -1,116 +1,130 @@
 
 
-## Fix: Renewal Showing "0 accounts and 0 credits"
+## Fix: Revenue and Sales Tracking Not Working
 
-### Root Cause
+### Problem Summary
 
-The SQL function `calculate_renewal_credits_required` has a bug in its connection counting logic. For single-connection customers (like "Alex (Connection 1)") who have:
-- `total_connections: NULL`
-- `connection_list: []` (empty array, not NULL)
-- Valid top-level credentials (`username`, `password`)
+Revenue tracking stopped working after August 2025. The admin dashboard shows $0 revenue because:
+1. The Stripe webhook does not record the actual purchase amount when logging credit purchases
+2. The verify-checkout function also omits the revenue amount
+3. The monthly revenue summary table is not being updated
 
-The function checks:
-1. `total_connections IS NOT NULL` → FALSE (it's NULL)
-2. `connection_list IS NOT NULL` → **TRUE** (empty array `[]` is NOT null!)
-3. Returns `jsonb_array_length([])` → **0 connections**
+### Root Cause Analysis
 
-This causes the UI to show "0 accounts and 0 credits" and the renewal to fail because it tries to process 0 accounts.
+When a reseller purchases credits via Stripe:
+1. **Current flow**: Credit log is created with `credits_used` but `revenue_amount` is left as default (0.00)
+2. **Expected flow**: Credit log should include `revenue_amount` from the Stripe session's `amount_total`
+
+The `revenue_amount` field exists in the `credit_logs` table but is never populated for real transactions.
 
 ---
 
 ### Solution
 
-Update the `calculate_renewal_credits_required` function to check if `connection_list` has **at least one element**, not just that it exists:
+#### 1. Fix Stripe Webhook (`supabase/functions/stripe-webhook/index.ts`)
 
-```sql
--- BEFORE (buggy):
-ELSIF customer_record.connection_list IS NOT NULL THEN
-  connections_count := jsonb_array_length(customer_record.connection_list);
+Add revenue tracking when logging credit purchases:
 
--- AFTER (fixed):
-ELSIF customer_record.connection_list IS NOT NULL 
-      AND jsonb_array_length(customer_record.connection_list) > 0 THEN
-  connections_count := jsonb_array_length(customer_record.connection_list);
+```typescript
+// Current code (line 133-140):
+const { error: logError } = await supabaseAdmin
+  .from("credit_logs")
+  .insert({
+    reseller_id: userId,
+    action: "addition",
+    credits_used: creditsToAdd,
+    notes: `Credits purchased via Stripe. Session ID: ${session.id}`,
+  });
+
+// Fixed code:
+const revenueAmount = (session.amount_total || 0) / 100; // Convert cents to dollars
+
+const { error: logError } = await supabaseAdmin
+  .from("credit_logs")
+  .insert({
+    reseller_id: userId,
+    action: "addition",
+    credits_used: creditsToAdd,
+    revenue_amount: revenueAmount,
+    notes: `Credits purchased via Stripe. Session ID: ${session.id}`,
+  });
 ```
 
-This ensures that empty arrays fall through to the group counting logic, which correctly returns 1 for single-connection customers.
+#### 2. Fix Verify Checkout (`supabase/functions/verify-checkout/index.ts`)
 
----
+Add revenue tracking to the backup checkout verification:
 
-### Technical Implementation
+```typescript
+// Current code (line 200-207):
+const { error: logError } = await adminClient
+  .from("credit_logs")
+  .insert({
+    reseller_id: user.id,
+    action: "addition",
+    credits_used: creditsToAdd,
+    notes: `Credits purchased via Stripe. Session ID: ${sessionId}. Amount: $${(session.amount_total || 0) / 100}`,
+  });
 
-**Database Migration**
-Create a new migration to replace the `calculate_renewal_credits_required` function with the fixed version:
+// Fixed code:
+const revenueAmount = (session.amount_total || 0) / 100;
+
+const { error: logError } = await adminClient
+  .from("credit_logs")
+  .insert({
+    reseller_id: user.id,
+    action: "addition",
+    credits_used: creditsToAdd,
+    revenue_amount: revenueAmount,
+    notes: `Credits purchased via Stripe. Session ID: ${sessionId}`,
+  });
+```
+
+#### 3. Backfill Historical Revenue Data (Database Migration)
+
+Create a migration to update past Stripe purchases with estimated revenue:
 
 ```sql
-CREATE OR REPLACE FUNCTION public.calculate_renewal_credits_required(
-  customer_id_param uuid, 
-  duration_months integer
-)
-RETURNS TABLE(
-  credits_required integer, 
-  accounts_count integer, 
-  customer_group_name text
-)
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-  customer_record RECORD;
-  connections_count integer;
-BEGIN
-  SELECT * INTO customer_record
-  FROM public.customers
-  WHERE id = customer_id_param;
-  
-  IF customer_record.id IS NULL THEN
-    RAISE EXCEPTION 'Customer not found';
-  END IF;
-  
-  -- Determine actual number of connections
-  IF customer_record.total_connections IS NOT NULL 
-     AND customer_record.total_connections > 0 THEN
-    connections_count := customer_record.total_connections;
-    
-  ELSIF customer_record.connection_list IS NOT NULL 
-        AND jsonb_array_length(customer_record.connection_list) > 0 THEN
-    -- Only use connection_list if it has actual entries
-    connections_count := jsonb_array_length(customer_record.connection_list);
-    
-  ELSE
-    -- Fall back to counting rows in customer_group
-    SELECT COUNT(*) INTO connections_count
-    FROM public.customers
-    WHERE customer_group = customer_record.customer_group
-    AND status != 'cancelled';
-  END IF;
-  
-  RETURN QUERY SELECT 
-    (connections_count * duration_months)::integer as credits_required,
-    connections_count::integer as accounts_count,
-    customer_record.customer_group as customer_group_name;
-END;
-$$;
+-- Update credit_logs for Stripe purchases that have revenue_amount = 0
+-- Using a default rate of $1.25 per credit (adjust as needed for your pricing)
+UPDATE public.credit_logs
+SET revenue_amount = credits_used * 1.25
+WHERE action = 'addition'
+  AND notes LIKE '%Credits purchased via Stripe%'
+  AND revenue_amount = 0
+  AND date > '2025-08-31';
+
+-- Refresh the monthly revenue summary
+SELECT public.update_monthly_revenue_summary();
+```
+
+#### 4. Verify Trigger Exists for Monthly Summary
+
+Confirm the `update_monthly_revenue_summary` trigger is properly attached to the `credit_logs` table. If not, create it:
+
+```sql
+CREATE OR REPLACE TRIGGER update_revenue_summary_trigger
+  AFTER INSERT ON public.credit_logs
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_monthly_revenue_summary();
 ```
 
 ---
 
-### Files to Create/Modify
+### Files to Modify
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `supabase/migrations/[timestamp]_fix_renewal_credits_empty_array.sql` | Create | Fix the connection counting logic |
+| File | Change |
+|------|--------|
+| `supabase/functions/stripe-webhook/index.ts` | Add `revenue_amount` field to credit log insert |
+| `supabase/functions/verify-checkout/index.ts` | Add `revenue_amount` field to credit log insert |
+| `supabase/migrations/[timestamp]_backfill_revenue.sql` | Backfill historical revenue and ensure trigger exists |
 
 ---
 
-### Expected Result After Fix
+### Expected Results After Fix
 
-For "Alex (Connection 1)":
-- Function will check `total_connections` → NULL, skip
-- Function will check `connection_list` → `[]` empty, **now skips** because length is 0
-- Function falls back to counting group members → finds 1 active customer
-- Returns `credits_required: 1`, `accounts_count: 1`
-- UI shows "This will renew 1 account and consume 1 credit"
-- Renewal proceeds successfully
+- New Stripe purchases will record actual revenue amounts
+- Dashboard will show accurate current month revenue
+- Historical data (Sept 2025 - Feb 2026) will have estimated revenue based on credits purchased
+- Monthly revenue summary will auto-update on new transactions
+- MRR projections and growth rate will be calculated correctly
 
