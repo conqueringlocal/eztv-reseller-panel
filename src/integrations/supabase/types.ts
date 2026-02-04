@@ -647,28 +647,34 @@ export type Database = {
       reseller_highlevel_settings: {
         Row: {
           created_at: string
+          custom_field_mappings: Json | null
           id: string
           is_active: boolean
           location_api_key: string | null
           location_id: string
+          private_integration_token: string | null
           reseller_id: string
           updated_at: string
         }
         Insert: {
           created_at?: string
+          custom_field_mappings?: Json | null
           id?: string
           is_active?: boolean
           location_api_key?: string | null
           location_id: string
+          private_integration_token?: string | null
           reseller_id: string
           updated_at?: string
         }
         Update: {
           created_at?: string
+          custom_field_mappings?: Json | null
           id?: string
           is_active?: boolean
           location_api_key?: string | null
           location_id?: string
+          private_integration_token?: string | null
           reseller_id?: string
           updated_at?: string
         }
@@ -924,7 +930,41 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      reseller_highlevel_status: {
+        Row: {
+          created_at: string | null
+          is_active: boolean | null
+          is_connected: boolean | null
+          location_id: string | null
+          reseller_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          is_active?: boolean | null
+          is_connected?: never
+          location_id?: string | null
+          reseller_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          is_active?: boolean | null
+          is_connected?: never
+          location_id?: string | null
+          reseller_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reseller_highlevel_settings_reseller_id_fkey"
+            columns: ["reseller_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       calculate_credits_required: {
@@ -1012,6 +1052,15 @@ export type Database = {
       get_earliest_expiration: {
         Args: { connection_list_param: Json }
         Returns: string
+      }
+      get_highlevel_status: {
+        Args: { p_reseller_id: string }
+        Returns: {
+          is_active: boolean
+          is_connected: boolean
+          location_id: string
+          reseller_id: string
+        }[]
       }
       get_or_create_renewal_transaction: {
         Args: {

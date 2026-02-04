@@ -283,7 +283,7 @@ export default function AdminResellerDetail() {
       </div>
 
       <div className="mb-6">
-        <HighLevelSettings resellerId={id!} isAdminView={true} />
+        <HighLevelSettings resellerId={id!} />
       </div>
 
       <div className="mb-6">
