@@ -195,15 +195,18 @@ serve(async (req) => {
       });
     }
 
-    // Log the transaction
+    // Log the transaction with revenue amount
     console.log('Logging credit transaction...');
+    const revenueAmount = (session.amount_total || 0) / 100; // Convert cents to dollars
+    
     const { error: logError } = await adminClient
       .from("credit_logs")
       .insert({
         reseller_id: user.id,
         action: "addition",
         credits_used: creditsToAdd,
-        notes: `Credits purchased via Stripe. Session ID: ${sessionId}. Amount: $${(session.amount_total || 0) / 100}`,
+        revenue_amount: revenueAmount,
+        notes: `Credits purchased via Stripe. Session ID: ${sessionId}`,
       });
 
     if (logError) {
