@@ -1,5 +1,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { updateHighLevelContact, getHighLevelSettings, HighLevelContactFields } from '../_shared/highlevel-api.ts';
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -105,6 +106,68 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
   } catch (error) {
     console.error('💥 Error getting reseller by API key:', error);
     return null;
+  }
+}
+
+// Sync provisioning result to HighLevel contact (NON-BLOCKING)
+// Never logs tokens, passwords, or m3u_url
+async function syncHighLevelContact(
+  resellerId: string,
+  contactId: string | undefined,
+  success: boolean,
+  credentials?: { username?: string; password?: string; m3u_url?: string },
+  expirationDate?: string,
+  errorMessage?: string
+): Promise<void> {
+  if (!contactId) {
+    console.log('⏭️ No contact_id provided, skipping HighLevel sync');
+    return;
+  }
+
+  try {
+    const hlSettings = await getHighLevelSettings(resellerId);
+    
+    if (!hlSettings) {
+      console.log('⏭️ HighLevel not configured or inactive for reseller, skipping sync');
+      return;
+    }
+
+    const fields: HighLevelContactFields = {
+      provision_status: success ? 'success' : 'failed'
+    };
+
+    if (success && credentials) {
+      fields.service_username = credentials.username;
+      fields.service_password = credentials.password;
+      fields.service_m3u_url = credentials.m3u_url;
+    }
+
+    if (success && expirationDate) {
+      fields.service_expiration = expirationDate;
+    }
+
+    if (!success && errorMessage) {
+      fields.provision_error = errorMessage;
+    }
+
+    const result = await updateHighLevelContact(
+      contactId,
+      hlSettings.token,
+      hlSettings.locationId,
+      resellerId,
+      fields
+    );
+
+    if (result.success) {
+      console.log('✅ HighLevel contact synced successfully:', { contactId });
+    } else {
+      console.log('⚠️ HighLevel sync failed (non-blocking):', { contactId, error: result.error });
+    }
+  } catch (error) {
+    // NON-BLOCKING - log and continue
+    console.error('⚠️ HighLevel sync exception (non-blocking):', 
+      error instanceof Error ? error.message : 'Unknown error'
+    );
   }
 }
 
@@ -214,6 +277,16 @@ async function createConsolidatedAccount(
 
     // Check credits
     if (resellerData.credits < creditsRequired) {
+      // Sync failure to HighLevel (non-blocking)
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        false,
+        undefined,
+        undefined,
+        `Insufficient credits. Required: ${creditsRequired}, Available: ${resellerData.credits}`
+      );
+      
       return {
         success: false,
         message: `Insufficient credits. Required: ${creditsRequired}, Available: ${resellerData.credits}`,
@@ -369,6 +442,22 @@ async function createConsolidatedAccount(
       response.m3u_url = consolidatedConnectionDetails[0].m3u_url;
     }
 
+    // Sync to HighLevel after successful provisioning (non-blocking)
+    if (payload.contact_id) {
+      const expirationDateStr = expirationDate.toISOString().split('T')[0];
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        true,
+        {
+          username: consolidatedConnectionDetails[0]?.username,
+          password: consolidatedConnectionDetails[0]?.password,
+          m3u_url: consolidatedConnectionDetails[0]?.m3u_url
+        },
+        expirationDateStr
+      );
+    }
+
     return response;
   } catch (error) {
     console.error('💥 Error creating consolidated account:', error);
@@ -402,6 +491,16 @@ async function renewCustomerGroup(
       .limit(1);
 
     if (findError || !customers || customers.length === 0) {
+      // Sync failure to HighLevel (non-blocking)
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        false,
+        undefined,
+        undefined,
+        `No customer found with name "${payload.customer.name}" and email "${payload.customer.email}"`
+      );
+      
       return {
         success: false,
         message: `No customer found with name "${payload.customer.name}" and email "${payload.customer.email}"`,
@@ -410,6 +509,14 @@ async function renewCustomerGroup(
     }
 
     const customer = customers[0];
+
+    // Persist contact_id if provided via webhook
+    if (payload.contact_id && customer.id) {
+      await supabase
+        .from('customers')
+        .update({ highlevel_contact_id: payload.contact_id })
+        .eq('id', customer.id);
+    }
 
     // Use the renew-customer-group function
     const { data, error } = await supabase.functions.invoke('renew-customer-group', {
@@ -433,6 +540,22 @@ async function renewCustomerGroup(
     const currentExpiry = new Date(customer.expiration_date);
     const newExpiry = new Date(currentExpiry);
     newExpiry.setMonth(newExpiry.getMonth() + planDuration);
+
+    // Sync to HighLevel after successful renewal (non-blocking)
+    const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
+    if (contactIdToUse) {
+      await syncHighLevelContact(
+        resellerId,
+        contactIdToUse,
+        true,
+        {
+          username: customer.username || customer.connection_list?.[0]?.username,
+          password: customer.password || customer.connection_list?.[0]?.password,
+          m3u_url: customer.m3u_url || customer.connection_list?.[0]?.m3u_url
+        },
+        newExpiry.toISOString().split('T')[0]
+      );
+    }
 
     return {
       success: true,

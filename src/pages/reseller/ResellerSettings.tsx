@@ -9,7 +9,7 @@ import { AccountUpdateForm } from '@/components/reseller/AccountUpdateForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText, Upload, Users, Link, KeyRound } from 'lucide-react';
 import { ResellerApiCredentialsForm } from '@/components/reseller/ResellerApiCredentialsForm';
-import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
+import { HighLevelStatusBadge } from '@/components/resellers/HighLevelStatusBadge';
 
 
 export default function ResellerSettings() {
@@ -186,7 +186,7 @@ export default function ResellerSettings() {
           {user?.id && <ResellerApiCredentialsForm userId={user.id} />}
         </DashboardCard>
 
-        {user?.id && <HighLevelSettings resellerId={user.id} />}
+        {user?.id && <HighLevelStatusBadge resellerId={user.id} />}
 
         <DashboardCard
           title="Account Management"
