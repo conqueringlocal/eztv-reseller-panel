@@ -367,7 +367,7 @@ async function createConsolidatedAccount(
     // Create the consolidated customer record
     const { data: consolidatedCustomer, error: consolidateError } = await supabase
       .from('customers')
-      .insert({
+      .insert([{
         reseller_id: resellerId,
         name: payload.customer.name,
         email: payload.customer.email,
@@ -387,7 +387,7 @@ async function createConsolidatedAccount(
         customer_group: customerGroupId,
         customer_group_id: null,
         highlevel_contact_id: payload.contact_id
-      })
+      }])
       .select()
       .single();
 
@@ -665,7 +665,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
     return {
       success: false,
       message: 'Internal server error processing webhook',
-      errors: [error.message]
+      errors: [error instanceof Error ? error.message : 'Unknown error']
     };
   }
 };

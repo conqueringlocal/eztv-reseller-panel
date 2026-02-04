@@ -102,13 +102,13 @@ export function HighLevelSettings({ resellerId }: HighLevelSettingsProps) {
       } else {
         const { error } = await supabase
           .from('reseller_highlevel_settings')
-          .insert({
+          .insert([{
             reseller_id: resellerId,
             location_id: data.locationId,
             private_integration_token: data.privateIntegrationToken,
             is_active: true,
             custom_field_mappings: {}
-          });
+          }]);
 
         if (error) throw error;
         setHasSettings(true);
