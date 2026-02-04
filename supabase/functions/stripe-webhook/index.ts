@@ -129,13 +129,16 @@ serve(async (req) => {
         });
       }
 
-      // Log the transaction
+      // Log the transaction with revenue amount
+      const revenueAmount = (session.amount_total || 0) / 100; // Convert cents to dollars
+      
       const { error: logError } = await supabaseAdmin
         .from("credit_logs")
         .insert({
           reseller_id: userId,
           action: "addition",
           credits_used: creditsToAdd,
+          revenue_amount: revenueAmount,
           notes: `Credits purchased via Stripe. Session ID: ${session.id}`,
         });
 
