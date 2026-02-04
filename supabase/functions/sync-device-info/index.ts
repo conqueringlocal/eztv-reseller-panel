@@ -122,9 +122,13 @@ serve(async (req) => {
         try {
           const res = await fetch(url);
           const dat = await res.json();
+          console.log('Connection sync response:', { connectionNumber: connNum, status: dat.status, hasUserInfo: !!dat.user_info });
           
-          if (!res.ok || dat.status !== 'true') {
-            return { success: false, error: 'API error', connectionNumber: connNum };
+          // Check for various success status formats (providers return different formats)
+          const isSuccess = res.ok && (dat.status === 'true' || dat.status === true || dat.status === 'success' || dat.user_info);
+          if (!isSuccess) {
+            console.log('Connection sync failed:', { status: dat.status, error: dat.error || dat.message });
+            return { success: false, error: dat.error || dat.message || 'API error', connectionNumber: connNum };
           }
           
           return {
@@ -229,10 +233,15 @@ serve(async (req) => {
 
     const response = await fetch(apiUrl);
     const data = await response.json();
+    
+    console.log('Single sync response:', { status: data.status, hasUserInfo: !!data.user_info, rawResponse: JSON.stringify(data).substring(0, 200) });
 
-    if (!response.ok || data.status !== 'true') {
+    // Check for various success status formats (providers return different formats)
+    const isSuccess = response.ok && (data.status === 'true' || data.status === true || data.status === 'success' || data.user_info);
+    if (!isSuccess) {
+      console.error('Device info fetch failed:', { status: data.status, error: data.error || data.message || data.result });
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch device info' }),
+        JSON.stringify({ error: data.error || data.message || data.result || 'Failed to fetch device info' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
