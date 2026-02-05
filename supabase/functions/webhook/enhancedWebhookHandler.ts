@@ -117,7 +117,8 @@ async function syncHighLevelContact(
   success: boolean,
   credentialsList?: Array<{ username?: string; password?: string; m3u_url?: string }>,
   expirationDate?: string,
-  errorMessage?: string
+  errorMessage?: string,
+  successTags?: string[]
 ): Promise<void> {
   if (!contactId) {
     console.log('⏭️ No contact_id provided, skipping HighLevel sync');
@@ -171,8 +172,13 @@ async function syncHighLevelContact(
       fields.provision_error = errorMessage;
     }
 
-    // Add provision_failed tag only on failure
-    const tagsToAdd = !success ? ['provision_failed'] : undefined;
+    // Add provision_failed tag on failure, or successTags (like trial_activated) on success
+    let tagsToAdd: string[] | undefined = undefined;
+    if (!success) {
+      tagsToAdd = ['provision_failed'];
+    } else if (successTags && successTags.length > 0) {
+      tagsToAdd = successTags;
+    }
 
     const result = await updateHighLevelContact(
       contactId,
@@ -248,6 +254,17 @@ async function createTrialAccount(
 
     if (error || !data?.success) {
       console.error('❌ Failed to create trial account:', error || data);
+
+      // Sync failure to HighLevel (non-blocking)
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        false,
+        undefined,
+        undefined,
+        'Failed to create trial account'
+      );
+
       return {
         success: false,
         message: 'Failed to create trial account',
@@ -257,6 +274,25 @@ async function createTrialAccount(
     }
 
     console.log('✅ Trial account created successfully');
+
+    // Sync to HighLevel after successful trial provisioning (non-blocking)
+    // Add trial_activated tag on success
+    if (payload.contact_id && data.customer) {
+      const credentialsList = [{
+        username: data.customer.username,
+        password: data.customer.password,
+        m3u_url: data.customer.m3uUrl
+      }];
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        true,
+        credentialsList,
+        expirationDate.toISOString().split('T')[0],
+        undefined,
+        ['trial_activated']
+      );
+    }
 
     return {
       success: true,
