@@ -6,6 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// M3U streaming domain for Trex provider
+const TREX_M3U_DOMAIN = 'vpn.eztvclub.online';
+
 interface CreateUserRequest {
   resellerId: string;
   serviceCall?: boolean; // New parameter to indicate internal service calls
@@ -449,20 +452,9 @@ serve(async (req) => {
         
         console.log(`✅ Connection ${i} verified - account exists in panel`);
 
-        // Use M3U URL from verification or API response, otherwise construct from base URL
-        let m3uUrl;
-        if (verification.m3uUrl) {
-          m3uUrl = verification.m3uUrl;
-          console.log(`🔗 Using M3U URL from verification: ${m3uUrl}`);
-        } else if (apiResult.url) {
-          // Use the URL provided by the Trex API response
-          m3uUrl = apiResult.url;
-          console.log(`🔗 Using M3U URL from API response: ${m3uUrl}`);
-        } else {
-          // Fallback to constructing URL from base URL if not provided in response
-          m3uUrl = `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
-          console.log(`🔧 Constructed M3U URL from base URL: ${m3uUrl}`);
-        }
+        // Always construct M3U URL with correct domain (provider returns malformed URLs)
+        const m3uUrl = `http://${TREX_M3U_DOMAIN}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
+        console.log(`🔗 Constructed M3U URL: ${m3uUrl}`);
 
         // Use expiration from verification if available
         let expirationDate = customerData.expirationDate;

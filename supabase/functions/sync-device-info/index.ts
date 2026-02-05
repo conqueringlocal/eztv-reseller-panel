@@ -6,6 +6,27 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// M3U streaming domain for Trex provider
+const TREX_M3U_DOMAIN = 'vpn.eztvclub.online';
+
+// Helper to fix malformed M3U URLs from provider
+function fixM3uUrl(url: string | undefined, username: string, password: string, provider: string): string | undefined {
+  if (!username || !password) return url;
+  
+  // For Trex provider, always construct correct URL
+  if (provider === 'trex') {
+    return `http://${TREX_M3U_DOMAIN}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`;
+  }
+  
+  // For other providers, check if URL is malformed (starts with http:///)
+  if (url && url.startsWith('http:///')) {
+    // URL is malformed - return undefined so it won't be used
+    return undefined;
+  }
+  
+  return url;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -134,7 +155,7 @@ serve(async (req) => {
           return {
             success: true,
             expire: dat.user_info?.exp_date || dat.expire,
-            m3uUrl: dat.user_info?.url || dat.url,
+            m3uUrl: fixM3uUrl(dat.user_info?.url || dat.url, creds.username, creds.password, customer.provider),
             connectionNumber: connNum
           };
         } catch (err: any) {
@@ -250,8 +271,9 @@ serve(async (req) => {
     if (data.expire || data.user_info?.exp_date) {
       updates.expiration_date = data.user_info?.exp_date || data.expire;
     }
-    if (data.url || data.user_info?.url) {
-      updates.m3u_url = data.user_info?.url || data.url;
+    const syncedM3uUrl = fixM3uUrl(data.user_info?.url || data.url, customer.username, customer.password, customer.provider);
+    if (syncedM3uUrl) {
+      updates.m3u_url = syncedM3uUrl;
     }
 
     if (Object.keys(updates).length > 0) {
