@@ -1,6 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.7';
 import { corsHeaders } from '../_shared/cors.ts';
 
+// M3U streaming domain for Trex provider
+const TREX_M3U_DOMAIN = 'vpn.eztvclub.online';
+
 const TREX_PANEL_URL = Deno.env.get('TREX_PANEL_URL') || 'https://activationpanel.net/api/api.php';
 const IPTV_PANEL_URL = Deno.env.get('IPTV_PANEL_URL') || Deno.env.get('8K_PANEL_URL') || 'https://my8k.me/api/api.php';
 const TREX_API_KEY = Deno.env.get('TREX_API_KEY') || '';
@@ -169,7 +172,7 @@ Deno.serve(async (req) => {
           username: accountType === 'mag' ? null : finalUsername,
           password: accountType === 'mag' ? null : finalPassword,
           mac_address: accountType === 'mag' ? finalUsername : null,
-          m3u_url: m3uUrl || `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
+          m3u_url: accountType === 'mag' ? null : `http://${TREX_M3U_DOMAIN}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
           expiration_date: expirationDate || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           status: 'active',
         };
@@ -285,7 +288,7 @@ Deno.serve(async (req) => {
           username: accountType === 'mag' ? null : finalUsername,
           password: accountType === 'mag' ? null : finalPassword,
           mac_address: accountType === 'mag' ? finalUsername : null,
-          m3u_url: m3uUrl || `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
+          m3u_url: accountType === 'mag' ? null : `http://${TREX_M3U_DOMAIN}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
           expiration_date: expirationDate || new Date(Date.now() + plan_duration * 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           status: 'active',
         };
