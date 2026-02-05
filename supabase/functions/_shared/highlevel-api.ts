@@ -32,6 +32,9 @@ export interface HighLevelUpdateResult {
   error?: string;
 }
 
+// Tags to add on failure
+const PROVISION_FAILED_TAG = 'provision_failed';
+
 interface CustomFieldMapping {
   [key: string]: string; // key -> field ID
 }
@@ -234,7 +237,8 @@ export async function updateHighLevelContact(
   token: string,
   locationId: string,
   resellerId: string,
-  fields: HighLevelContactFields
+  fields: HighLevelContactFields,
+  addTags?: string[]
 ): Promise<HighLevelUpdateResult> {
   // SANITIZED LOGGING - never log token, password, or m3u_url
   console.log('🔗 HighLevel Update Request:', {
@@ -247,7 +251,8 @@ export async function updateHighLevelContact(
     hasUsername2: !!fields.service_username_2,
     hasUsername3: !!fields.service_username_3,
     hasExpiration: !!fields.service_expiration,
-    hasError: !!fields.provision_error
+    hasError: !!fields.provision_error,
+    tagsToAdd: addTags?.length || 0
   });
 
   try {
@@ -263,8 +268,17 @@ export async function updateHighLevelContact(
     console.log('📤 Sending custom fields update:', {
       fieldsCount: customFields.length,
       fieldKeys: customFields.map(f => f.key),
-      hasFieldIds: customFields.filter(f => f.id).length
+      hasFieldIds: customFields.filter(f => f.id).length,
+      tagsToAdd: addTags
     });
+
+    // Build the request body
+    const requestBody: { customFields: typeof customFields; tags?: string[] } = { customFields };
+    
+    // Add tags if provided (additive - HighLevel API adds to existing tags)
+    if (addTags && addTags.length > 0) {
+      requestBody.tags = addTags;
+    }
 
     const response = await fetch(
       `https://services.leadconnectorhq.com/contacts/${contactId}`,
@@ -275,7 +289,7 @@ export async function updateHighLevelContact(
           'Version': '2021-07-28',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ customFields })
+        body: JSON.stringify(requestBody)
       }
     );
 

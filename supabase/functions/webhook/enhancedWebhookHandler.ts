@@ -171,12 +171,16 @@ async function syncHighLevelContact(
       fields.provision_error = errorMessage;
     }
 
+    // Add provision_failed tag only on failure
+    const tagsToAdd = !success ? ['provision_failed'] : undefined;
+
     const result = await updateHighLevelContact(
       contactId,
       hlSettings.token,
       hlSettings.locationId,
       resellerId,
-      fields
+      fields,
+      tagsToAdd
     );
 
     if (result.success) {
