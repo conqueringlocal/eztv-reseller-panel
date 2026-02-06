@@ -11,10 +11,11 @@ export interface EnhancedWebhookPayload {
   api_key?: string;
   resellerId?: string;
   contact_id?: string;
-  action: 'create' | 'renew' | 'trial';
+  action: 'create' | 'renew' | 'trial' | 'upgrade';
   connections?: number;
   is_trial?: boolean;
   trial_duration_hours?: number;
+  plan_duration_months?: number; // Root-level for flexibility
   customer: {
     name: string;
     email: string;
@@ -718,6 +719,387 @@ async function renewCustomerGroup(
   }
 }
 
+// Upgrade customer connections function (increase from N to M connections, max 3)
+async function upgradeCustomerConnections(
+  payload: EnhancedWebhookPayload, 
+  resellerId: string, 
+  resellerData: any
+): Promise<EnhancedWebhookResult> {
+  try {
+    console.log('⬆️ Upgrading customer connections');
+
+    // 1. Extract plan_duration_months (REQUIRED)
+    const planDurationMonths = payload.customer.plan_duration_months || payload.plan_duration_months;
+    if (!planDurationMonths || planDurationMonths < 1) {
+      console.log('❌ Missing or invalid plan_duration_months');
+      
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        false,
+        undefined,
+        undefined,
+        'Missing plan_duration_months in upgrade request'
+      );
+      
+      return {
+        success: false,
+        message: 'Missing plan_duration_months. Required for upgrade billing calculation.',
+        errors: ['missing_plan_duration']
+      };
+    }
+
+    // 2. Validate requested connections (must be 2 or 3)
+    const requestedConnections = payload.connections || 1;
+    if (requestedConnections < 1 || requestedConnections > 3) {
+      console.log(`❌ Invalid requested connections: ${requestedConnections}`);
+      
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        false,
+        undefined,
+        undefined,
+        `Invalid connections: ${requestedConnections}. Must be 1-3.`
+      );
+      
+      return {
+        success: false,
+        message: `Invalid connections: ${requestedConnections}. Must be between 1 and 3.`,
+        errors: ['invalid_connections']
+      };
+    }
+
+    // 3. Find existing customer - priority: contact_id lookup, then name+email fallback
+    let customer: any = null;
+
+    // 3a. First try to find by highlevel_contact_id if contact_id is provided
+    if (payload.contact_id) {
+      console.log(`🔍 Looking up customer by highlevel_contact_id: ${payload.contact_id}`);
+      const { data: contactCustomers, error: contactError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('reseller_id', resellerId)
+        .eq('highlevel_contact_id', payload.contact_id)
+        .in('status', ['active', 'expired', 'expiring_soon'])
+        .limit(1);
+
+      if (!contactError && contactCustomers && contactCustomers.length > 0) {
+        customer = contactCustomers[0];
+        console.log(`✅ Found customer by highlevel_contact_id: ${customer.name}`);
+      } else {
+        console.log('⏭️ No customer found by highlevel_contact_id, trying name+email fallback');
+      }
+    }
+
+    // 3b. Fallback to name + email lookup if not found by contact_id
+    if (!customer && payload.customer.name && payload.customer.email) {
+      console.log(`🔍 Looking up customer by name+email: ${payload.customer.name} / ${payload.customer.email}`);
+      const { data: nameEmailCustomers, error: findError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('reseller_id', resellerId)
+        .eq('name', payload.customer.name)
+        .eq('email', payload.customer.email)
+        .in('status', ['active', 'expired', 'expiring_soon'])
+        .limit(1);
+
+      if (!findError && nameEmailCustomers && nameEmailCustomers.length > 0) {
+        customer = nameEmailCustomers[0];
+        console.log(`✅ Found customer by name+email: ${customer.name}`);
+      }
+    }
+
+    // 3c. If still not found, return error
+    if (!customer) {
+      const errorMsg = payload.contact_id 
+        ? `No customer found matching contact_id "${payload.contact_id}" or name/email provided`
+        : `No customer found with name "${payload.customer.name}" and email "${payload.customer.email}"`;
+      
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        false,
+        undefined,
+        undefined,
+        errorMsg
+      );
+      
+      return {
+        success: false,
+        message: errorMsg,
+        errors: ['customer_not_found']
+      };
+    }
+
+    // 4. Persist contact_id if provided but customer lacks it
+    if (payload.contact_id && customer.id && customer.highlevel_contact_id !== payload.contact_id) {
+      await supabase
+        .from('customers')
+        .update({ highlevel_contact_id: payload.contact_id })
+        .eq('id', customer.id);
+      console.log(`🔗 Linked highlevel_contact_id to customer: ${payload.contact_id}`);
+    }
+
+    // 5. Determine current connection count
+    let currentConnections = 0;
+    let existingConnectionList: any[] = [];
+
+    if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
+      currentConnections = customer.connection_list.length;
+      existingConnectionList = [...customer.connection_list];
+      console.log(`📊 Current connections (from connection_list): ${currentConnections}`);
+    } else if (customer.total_connections && customer.total_connections > 0) {
+      currentConnections = customer.total_connections;
+      console.log(`📊 Current connections (from total_connections): ${currentConnections}`);
+    } else if (customer.username) {
+      // Legacy single-connection customer
+      currentConnections = 1;
+      console.log(`📊 Current connections (legacy single): ${currentConnections}`);
+    }
+
+    if (currentConnections === 0) {
+      console.log('❌ Could not determine current connection count');
+      return {
+        success: false,
+        message: 'Unable to determine current connection count for customer',
+        errors: ['upgrade_failed']
+      };
+    }
+
+    // 6. Validate upgrade is possible
+    if (requestedConnections <= currentConnections) {
+      console.log(`⚠️ No upgrade needed: requested=${requestedConnections}, current=${currentConnections}`);
+      return {
+        success: false,
+        message: `Customer already has ${currentConnections} connection(s). No upgrade needed. Use 'renew' to extend subscription.`,
+        errors: ['no_upgrade_needed']
+      };
+    }
+
+    // 7. Calculate delta and credits required
+    const delta = requestedConnections - currentConnections;
+    const creditsRequired = delta * planDurationMonths;
+    console.log(`💰 Credits calculation: delta=${delta} × duration=${planDurationMonths} = ${creditsRequired} credits`);
+
+    // 8. Check reseller credits
+    if (resellerData.credits < creditsRequired) {
+      const errorMsg = `Insufficient credits. Required: ${creditsRequired}, Available: ${resellerData.credits}`;
+      console.log(`❌ ${errorMsg}`);
+      
+      await syncHighLevelContact(
+        resellerId,
+        payload.contact_id,
+        false,
+        undefined,
+        undefined,
+        errorMsg
+      );
+      
+      return {
+        success: false,
+        message: errorMsg,
+        errors: ['insufficient_credits']
+      };
+    }
+
+    // 9. Migrate primary connection if connection_list is empty
+    if (existingConnectionList.length === 0 && customer.username && customer.password) {
+      console.log('📦 Migrating primary connection to connection_list');
+      existingConnectionList.push({
+        connection_number: 1,
+        username: customer.username,
+        password: customer.password,
+        m3u_url: customer.m3u_url,
+        expiration_date: customer.expiration_date,
+        status: 'active'
+      });
+    }
+
+    // 10. Create additional connections (delta) using create-iptv-user
+    const newConnections: any[] = [];
+    const packageId = customer.package_id || payload.customer.package_id || 'default';
+    const deviceType = customer.device_type || payload.customer.device_type || 'Smart TV';
+
+    for (let i = 0; i < delta; i++) {
+      const connectionNumber = existingConnectionList.length + newConnections.length + 1;
+      console.log(`🔧 Creating connection ${connectionNumber} of ${requestedConnections}`);
+
+      const { data: createResult, error: createError } = await supabase.functions.invoke('create-iptv-user', {
+        body: {
+          resellerId: resellerId,
+          serviceCall: true,
+          skipCredits: true, // We handle credits manually for upgrade
+          customerData: {
+            name: customer.name,
+            email: customer.email,
+            macAddress: null, // M3U connections don't need MAC
+            deviceType: deviceType,
+            packageId: packageId,
+            planDuration: planDurationMonths,
+            connections: 1, // Create one at a time
+            maxConnections: 1,
+            startDate: new Date().toISOString().split('T')[0],
+            expirationDate: customer.expiration_date, // Match existing expiration
+            accountType: 'm3u',
+            status: 'active',
+            isDeactivated: false
+          }
+        }
+      });
+
+      if (createError || !createResult?.success) {
+        console.error(`❌ Failed to create connection ${connectionNumber}:`, createError || createResult);
+        
+        // Partial failure - we created some but not all
+        if (newConnections.length > 0) {
+          console.log(`⚠️ Partial upgrade: created ${newConnections.length} of ${delta} connections`);
+        }
+        
+        await syncHighLevelContact(
+          resellerId,
+          payload.contact_id,
+          false,
+          undefined,
+          undefined,
+          `Failed to create connection ${connectionNumber}: ${createResult?.message || createError?.message || 'Unknown error'}`
+        );
+        
+        return {
+          success: false,
+          message: `Failed to create connection ${connectionNumber}. ${newConnections.length} connection(s) were created before failure.`,
+          errors: ['upgrade_failed']
+        };
+      }
+
+      // Extract credentials from response
+      const createdCreds = createResult.connectionList?.[0] || createResult.customer || {};
+      newConnections.push({
+        connection_number: connectionNumber,
+        username: createdCreds.username,
+        password: createdCreds.password,
+        m3u_url: createdCreds.m3u_url,
+        expiration_date: customer.expiration_date, // Keep existing expiration
+        status: 'active'
+      });
+
+      // Clean up the individual customer record created by create-iptv-user
+      if (createResult.customers && createResult.customers.length > 0) {
+        const customerIds = createResult.customers.map((c: any) => c.id);
+        await supabase.from('customers').delete().in('id', customerIds);
+      } else if (createResult.customer?.id) {
+        await supabase.from('customers').delete().eq('id', createResult.customer.id);
+      }
+
+      console.log(`✅ Connection ${connectionNumber} created successfully`);
+    }
+
+    // 11. Update database with new connection_list
+    const updatedConnectionList = [...existingConnectionList, ...newConnections];
+    
+    const { error: updateError } = await supabase
+      .from('customers')
+      .update({
+        connection_list: updatedConnectionList,
+        total_connections: requestedConnections,
+        max_connections: requestedConnections
+        // NOTE: expiration_date is NOT changed during upgrade
+      })
+      .eq('id', customer.id);
+
+    if (updateError) {
+      console.error('❌ Failed to update customer record:', updateError);
+      return {
+        success: false,
+        message: 'Failed to update customer record with new connections',
+        errors: ['upgrade_failed']
+      };
+    }
+
+    // 12. Deduct credits from reseller
+    const { error: creditError } = await supabase
+      .from('profiles')
+      .update({ credits: resellerData.credits - creditsRequired })
+      .eq('id', resellerId);
+
+    if (creditError) {
+      console.error('⚠️ Failed to deduct credits (non-blocking):', creditError);
+    }
+
+    // 13. Log credit usage
+    await supabase.from('credit_logs').insert({
+      reseller_id: resellerId,
+      action: 'account_creation',
+      credits_used: creditsRequired,
+      customer_id: customer.id,
+      customer_name: customer.name,
+      notes: `Upgrade from ${currentConnections} to ${requestedConnections} connections (${delta} new × ${planDurationMonths} months)`
+    });
+
+    console.log(`✅ Upgrade completed: ${currentConnections} → ${requestedConnections} connections, ${creditsRequired} credits used`);
+
+    // 14. Sync to HighLevel (non-blocking)
+    const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
+    if (contactIdToUse) {
+      const credentialsList = updatedConnectionList.slice(0, 3).map((conn: any) => ({
+        username: conn.username,
+        password: conn.password,
+        m3u_url: conn.m3u_url
+      }));
+      
+      // Use existing expiration (no change during upgrade)
+      await syncHighLevelContact(
+        resellerId,
+        contactIdToUse,
+        true,
+        credentialsList,
+        customer.expiration_date,
+        undefined,
+        ['upgrade_success']
+      );
+    }
+
+    // 15. Build response with all credentials
+    const response: EnhancedWebhookResult = {
+      success: true,
+      message: `Upgraded from ${currentConnections} to ${requestedConnections} connections`,
+      name: customer.name,
+      email: customer.email,
+      device_type: customer.device_type || 'Smart TV',
+      start_date: customer.start_date,
+      end_date: customer.expiration_date, // No change during upgrade
+      account_type: 'm3u',
+      credits_used: creditsRequired,
+      total_connections: requestedConnections,
+      credentials: updatedConnectionList
+    };
+
+    // Add individual credential fields for backwards compatibility (up to 3)
+    updatedConnectionList.slice(0, 3).forEach((cred: any, index: number) => {
+      const num = index + 1;
+      response[`username_${num}` as keyof EnhancedWebhookResult] = cred.username;
+      response[`password_${num}` as keyof EnhancedWebhookResult] = cred.password;
+      response[`m3u_url_${num}` as keyof EnhancedWebhookResult] = cred.m3u_url;
+    });
+
+    // Set primary credentials to first connection
+    if (updatedConnectionList.length > 0) {
+      response.username = updatedConnectionList[0].username;
+      response.password = updatedConnectionList[0].password;
+      response.m3u_url = updatedConnectionList[0].m3u_url;
+    }
+
+    return response;
+  } catch (error) {
+    console.error('💥 Error upgrading customer:', error);
+    return {
+      success: false,
+      message: 'Internal error during upgrade',
+      errors: [error instanceof Error ? error.message : 'Unknown error']
+    };
+  }
+}
+
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
     console.log('🚀 Processing enhanced webhook payload with consolidated multi-connection support:', JSON.stringify(payload, null, 2));
@@ -792,10 +1174,13 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
       case 'renew':
         return await renewCustomerGroup(payload, resellerData.resellerId, resellerData);
       
+      case 'upgrade':
+        return await upgradeCustomerConnections(payload, resellerData.resellerId, resellerData);
+      
       default:
         return {
           success: false,
-          message: `Unsupported action: ${payload.action}. Supported actions: create, renew, trial`,
+          message: `Unsupported action: ${payload.action}. Supported actions: create, renew, trial, upgrade`,
           errors: ['unsupported_action']
         };
     }

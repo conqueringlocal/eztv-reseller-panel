@@ -60,7 +60,7 @@ serve(async (req) => {
       const url = new URL(req.url)
       const searchParams = url.searchParams
       
-      const action = searchParams.get('action') as 'create' | 'renew' | 'trial' || 'create';
+      const action = searchParams.get('action') as 'create' | 'renew' | 'trial' | 'upgrade' || 'create';
       const isTrial = searchParams.get('is_trial') === 'true' || action === 'trial';
       
       payload = {
@@ -121,7 +121,7 @@ serve(async (req) => {
     let result;
     
     // Check if this is an enhanced webhook (has action field and connections support)
-    if (payload.action && ['create', 'renew', 'trial'].includes(payload.action)) {
+    if (payload.action && ['create', 'renew', 'trial', 'upgrade'].includes(payload.action)) {
       console.log('🚀 Using enhanced webhook processor')
       result = await processEnhancedWebhook(payload as EnhancedWebhookPayload)
     } else {
