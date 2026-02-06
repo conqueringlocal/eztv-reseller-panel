@@ -10,6 +10,7 @@ import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CustomerTable } from '@/components/customers/CustomerTable';
 import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
+import { M3UDomainSettings } from '@/components/resellers/M3UDomainSettings';
 import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
 import { SingleResellerSsoManager } from '@/components/sso/SingleResellerSsoManager';
 import { ArrowLeft, Users, DollarSign, Activity, Calendar, Key, Trash2, ArrowRight } from 'lucide-react';
@@ -284,6 +285,10 @@ export default function AdminResellerDetail() {
 
       <div className="mb-6">
         <HighLevelSettings resellerId={id!} />
+      </div>
+
+      <div className="mb-6">
+        <M3UDomainSettings resellerId={id!} />
       </div>
 
       <div className="mb-6">
