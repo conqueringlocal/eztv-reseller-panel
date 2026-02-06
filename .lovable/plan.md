@@ -1,165 +1,221 @@
 
-# Fix Malformed M3U URL Issue - Use vpn.eztvclub.online Domain
+# Renewal by HighLevel Contact ID + Success Tag
 
-## Problem
+## Overview
 
-The Trex provider API returns M3U URLs with missing domain:
-```
-http:///get.php?username=04695d1e80&password=6b378d8755&type=m3u_plus&output=ts
-```
-
-The correct format should be:
-```
-http://vpn.eztvclub.online/get.php?username=04695d1e80&password=6b378d8755&type=m3u_plus&output=ts
-```
+Add the ability to renew customers using only their HighLevel `contact_id`, and add a `renewal_success` tag on successful renewals to trigger HighLevel workflows.
 
 ---
 
-## Solution Overview
+## Simplified Webhook Payload
 
-Add a constant for the M3U streaming domain and update all edge functions to:
-1. Detect malformed URLs from the provider (those starting with `http:///` or missing domain)
-2. Always construct proper M3U URLs using `vpn.eztvclub.online`
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `supabase/functions/create-trex-user/index.ts` | Add M3U domain constant, fix URL construction |
-| `supabase/functions/add-connection-to-customer/index.ts` | Add M3U domain constant, fix URL construction |
-| `supabase/functions/sync-device-info/index.ts` | Fix M3U URL when syncing from provider |
-| `supabase/functions/renew-trex-user/index.ts` | No changes needed (doesn't update M3U URLs) |
-| `supabase/functions/renew-single-connection/index.ts` | No changes needed (doesn't update M3U URLs) |
-
----
-
-## Detailed Changes
-
-### 1. create-trex-user/index.ts
-
-**Add constant at top of file (around line 30):**
-```typescript
-// M3U streaming domain for Trex provider
-const TREX_M3U_DOMAIN = 'vpn.eztvclub.online';
-```
-
-**Update M3U URL construction (lines 452-465):**
-
-Replace the current logic that trusts the provider URL with logic that always constructs the correct URL:
-
-```typescript
-// Always construct M3U URL with correct domain
-const m3uUrl = `http://${TREX_M3U_DOMAIN}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
-console.log(`🔗 Constructed M3U URL: ${m3uUrl}`);
-```
-
-This removes the dependency on the provider's potentially malformed URL.
-
----
-
-### 2. add-connection-to-customer/index.ts
-
-**Add constant at top of file (around line 8):**
-```typescript
-// M3U streaming domain for Trex provider
-const TREX_M3U_DOMAIN = 'vpn.eztvclub.online';
-```
-
-**Fix M3U URL in migration path (line 172):**
-
-Change from:
-```typescript
-m3u_url: m3uUrl || `${baseUrl}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
-```
-
-To:
-```typescript
-m3u_url: `http://${TREX_M3U_DOMAIN}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`,
-```
-
-**Fix M3U URL in normal flow (line 288):**
-
-Same change - always construct with correct domain.
-
----
-
-### 3. sync-device-info/index.ts
-
-**Add constant and helper function at top of file:**
-```typescript
-// M3U streaming domain for Trex provider
-const TREX_M3U_DOMAIN = 'vpn.eztvclub.online';
-
-// Helper to fix malformed M3U URLs
-function fixM3uUrl(url: string | undefined, username: string, password: string, provider: string): string | undefined {
-  if (!username || !password) return url;
-  
-  // For Trex provider, always construct correct URL
-  if (provider === 'trex') {
-    return `http://${TREX_M3U_DOMAIN}/get.php?username=${username}&password=${password}&type=m3u_plus&output=ts`;
+**Minimal Renewal (Contact ID Lookup):**
+```json
+{
+  "api_key": "{{custom_values.iptv_reseller_api_key}}",
+  "contact_id": "{{contact.id}}",
+  "action": "renew",
+  "customer": {
+    "plan_duration_months": 1
   }
-  
-  // For other providers, check if URL is malformed (starts with http:///)
-  if (url && url.startsWith('http:///')) {
-    // URL is malformed - return undefined so it won't be used
-    return undefined;
-  }
-  
-  return url;
 }
 ```
 
-**Update sync response handling (lines 134-139):**
-
-Change from:
-```typescript
-return {
-  success: true,
-  expire: dat.user_info?.exp_date || dat.expire,
-  m3uUrl: dat.user_info?.url || dat.url,
-  connectionNumber: connNum
-};
+**Full Renewal (Backwards Compatible with Fallback):**
+```json
+{
+  "api_key": "{{custom_values.iptv_reseller_api_key}}",
+  "contact_id": "{{contact.id}}",
+  "action": "renew",
+  "customer": {
+    "name": "{{contact.first_name}} {{contact.last_name}}",
+    "email": "{{contact.email}}",
+    "plan_duration_months": 1
+  }
+}
 ```
 
-To:
-```typescript
-return {
-  success: true,
-  expire: dat.user_info?.exp_date || dat.expire,
-  m3uUrl: fixM3uUrl(dat.user_info?.url || dat.url, creds.username, creds.password, customer.provider),
-  connectionNumber: connNum
-};
+No need to specify connections - the system automatically renews ALL connections in the customer's `connection_list`.
+
+---
+
+## How It Works
+
+```text
+Webhook Received
+       │
+       ▼
+┌──────────────────────────────┐
+│  Has contact_id?             │
+└──────────────────────────────┘
+       │ Yes              │ No
+       ▼                  │
+┌────────────────────┐    │
+│ Query customers by │    │
+│ highlevel_contact_id│   │
+└────────────────────┘    │
+       │                  │
+   Found?                 │
+       │ No               │
+       ▼                  ▼
+┌─────────────────────────────┐
+│ Query by name + email       │
+│ (backwards compatible)      │
+└─────────────────────────────┘
+       │
+   Found?
+       │ No ────▶ Return Error + provision_failed tag
+       │
+       ▼
+┌─────────────────────────────┐
+│ renew-customer-group        │
+│ (renews ALL connections)    │
+└─────────────────────────────┘
+       │
+   Success?
+       │ Yes
+       ▼
+┌─────────────────────────────┐
+│ Sync to HighLevel:          │
+│ • provision_status: success │
+│ • service_expiration        │
+│ • All credentials (1-3)     │
+│ • renewal_success tag       │
+└─────────────────────────────┘
 ```
 
-Apply similar fix to single connection sync (lines 253-254).
+---
+
+## What Gets Synced to HighLevel
+
+**On Success:**
+| Field | Value |
+|-------|-------|
+| `provision_status` | `success` |
+| `service_expiration` | New expiry date (YYYY-MM-DD) |
+| `total_connections` | Number of connections (1-3) |
+| `service_username_1..3` | Credentials for each connection |
+| `service_password_1..3` | Credentials for each connection |
+| `service_m3u_url_1..3` | M3U URLs for each connection |
+| **Tag Added** | `renewal_success` |
+
+**On Failure:**
+| Field | Value |
+|-------|-------|
+| `provision_status` | `failed` |
+| `provision_error` | Error message |
+| **Tag Added** | `provision_failed` |
 
 ---
 
-## Why This Approach
+## Technical Changes
 
-1. **Reliability**: Always constructing the URL ensures consistent, correct M3U URLs regardless of what the provider returns
-2. **Simple**: Single domain constant makes future updates easy
-3. **Backward Compatible**: Existing customer records with correct URLs won't be affected
-4. **HighLevel Sync**: Fixed URLs will be synced to HighLevel with correct format
+### File to Modify
+
+`supabase/functions/webhook/enhancedWebhookHandler.ts`
+
+### Changes
+
+**1. Update Customer Lookup (lines 546-572)**
+
+Add contact_id lookup before name+email:
+
+```typescript
+// First try to find by highlevel_contact_id if contact_id is provided
+let customer = null;
+if (payload.contact_id) {
+  const { data: contactCustomers } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('reseller_id', resellerId)
+    .eq('highlevel_contact_id', payload.contact_id)
+    .in('status', ['active', 'expired', 'expiring_soon'])
+    .limit(1);
+  
+  if (contactCustomers && contactCustomers.length > 0) {
+    customer = contactCustomers[0];
+    console.log(`✅ Found customer by highlevel_contact_id: ${customer.name}`);
+  }
+}
+
+// Fallback to name + email lookup
+if (!customer && payload.customer.name && payload.customer.email) {
+  const { data: nameEmailCustomers } = await supabase
+    .from('customers')
+    .select('*')
+    .eq('reseller_id', resellerId)
+    .eq('name', payload.customer.name)
+    .eq('email', payload.customer.email)
+    .in('status', ['active', 'expired', 'expiring_soon'])
+    .limit(1);
+  
+  if (nameEmailCustomers && nameEmailCustomers.length > 0) {
+    customer = nameEmailCustomers[0];
+  }
+}
+
+if (!customer) {
+  // Sync failure to HighLevel
+  await syncHighLevelContact(resellerId, payload.contact_id, false, undefined, undefined, 
+    'No customer found matching the provided contact_id, name, or email');
+  return { success: false, message: 'Customer not found', errors: ['customer_not_found'] };
+}
+```
+
+**2. Add renewal_success Tag on Success (line 629-635)**
+
+Update the HighLevel sync call to include the success tag:
+
+```typescript
+await syncHighLevelContact(
+  resellerId,
+  contactIdToUse,
+  true,
+  credentialsList,
+  newExpiry.toISOString().split('T')[0],
+  undefined,
+  ['renewal_success']  // NEW: Tag for workflow triggers
+);
+```
 
 ---
 
-## Testing Steps
+## Multi-Connection Handling
 
-After deployment:
+No changes needed - the existing `renew-customer-group` function already:
 
-1. Create a new Trex customer via webhook or UI
-2. Verify the M3U URL in the database shows: `http://vpn.eztvclub.online/get.php?username=...`
-3. Check HighLevel custom fields receive the correct URL format
-4. Test "Add Connection" for existing customer - verify new connection has correct URL
-5. Test "Sync Device" - verify it doesn't overwrite with malformed URL
+1. Retrieves the customer's `connection_list` JSONB array
+2. Validates all connections exist in the provider panel (pre-flight check)
+3. Iterates through each connection and renews individually
+4. Updates all expiration dates in the database
+5. Deducts credits based on total connections x duration
 
 ---
 
-## Edge Functions to Redeploy
+## Edge Function to Redeploy
 
-- `create-trex-user`
-- `add-connection-to-customer`
-- `sync-device-info`
+- `webhook`
+
+---
+
+## Testing After Deployment
+
+1. **Test Contact ID Lookup:**
+   - Send renewal with only `contact_id` and `plan_duration_months`
+   - Verify customer is found and renewed
+
+2. **Test Backwards Compatibility:**
+   - Send renewal with `name`, `email`, and `plan_duration_months`
+   - Verify existing flow still works
+
+3. **Test Multi-Connection Renewal:**
+   - Renew a customer with 2-3 connections
+   - Verify all connections get extended
+
+4. **Test HighLevel Sync:**
+   - Check contact has `renewal_success` tag
+   - Verify credentials and expiration are updated
+
+5. **Test Failure Scenario:**
+   - Send renewal with non-existent `contact_id`
+   - Verify `provision_failed` tag is added
