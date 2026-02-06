@@ -1,83 +1,122 @@
 
 
-# Add M3U Domain Settings UI Component
+# Backfill M3U Domain Override Implementation
 
-## Problem
-The M3U Domain Override feature backend was implemented, but the frontend component to manage it was never created. The `M3UDomainSettings.tsx` component is missing from the codebase.
-
-## Current State
-- Database column `m3u_domain_override` exists on `profiles` table
-- Edge function correctly uses the domain override
-- **Missing:** Frontend component to edit the setting
-- **Missing:** Import and placement in AdminResellerDetail page
-
----
-
-## Implementation
-
-### 1. Create M3UDomainSettings Component
-
-**New File:** `src/components/resellers/M3UDomainSettings.tsx`
-
-A simple admin-only card component with:
-- Text input for the domain override
-- Helper text explaining the feature
-- Save button to update `profiles.m3u_domain_override`
-- Clear button to remove the override
-- Loads existing value on mount
-
-```text
-+------------------------------------------+
-| M3U Domain Override Settings             |
-| ---------------------------------------- |
-| Configure custom domain for M3U URLs     |
-| ---------------------------------------- |
-|                                          |
-| Custom M3U Domain (optional)             |
-| [_________________________]              |
-|                                          |
-| Helper: "Used for M3U URLs and customer  |
-| login links. Leave empty to use default  |
-| platform domain (vpn.eztvclub.online)"   |
-|                                          |
-| [Save Settings]  [Clear Override]        |
-+------------------------------------------+
-```
-
-### 2. Add Import and Component to AdminResellerDetail
-
-**File:** `src/pages/admin/AdminResellerDetail.tsx`
-
-Add import:
-```typescript
-import { M3UDomainSettings } from '@/components/resellers/M3UDomainSettings';
-```
-
-Insert component after HighLevelSettings (after line 287):
-```tsx
-<div className="mb-6">
-  <M3UDomainSettings resellerId={id!} />
-</div>
-```
-
----
-
-## Location in Admin UI
-
-The M3U Domain Override settings will appear on the **individual reseller detail page**:
-
-**Path:** Admin Dashboard → Resellers → Click on a reseller → M3U Domain Override Settings card
-
-It will be positioned between:
-- CRM Integration Settings (HighLevelSettings)
-- API Key Manager
+## Overview
+Implementing the complete M3U domain backfill feature that updates all existing customer M3U URLs when a reseller's domain override is saved or cleared.
 
 ---
 
 ## Files to Create/Modify
 
-| File | Action |
-|------|--------|
-| `src/components/resellers/M3UDomainSettings.tsx` | CREATE |
-| `src/pages/admin/AdminResellerDetail.tsx` | ADD import + component |
+| File | Action | Purpose |
+|------|--------|---------|
+| `supabase/functions/_shared/m3u-domain.ts` | CREATE | Shared M3U URL rewrite utility |
+| `supabase/functions/_shared/highlevel-api.ts` | MODIFY | Add `updateHighLevelContactPartial` function |
+| `supabase/functions/webhook/enhancedWebhookHandler.ts` | MODIFY | Import shared helper, remove inline code |
+| `supabase/functions/backfill-m3u-domains/index.ts` | CREATE | New edge function for backfill |
+| `supabase/config.toml` | MODIFY | Add function config entry |
+| `src/components/resellers/M3UDomainSettings.tsx` | MODIFY | Trigger backfill after save/clear |
+
+---
+
+## Detailed Changes
+
+### 1. CREATE: `supabase/functions/_shared/m3u-domain.ts`
+
+New shared utility with:
+- `DEFAULT_M3U_DOMAIN` constant
+- `rewriteM3uDomain()` function for URL host rewriting
+
+### 2. MODIFY: `supabase/functions/_shared/highlevel-api.ts`
+
+Add after line 324:
+- `HighLevelPartialFields` interface (only URL fields + total_connections)
+- `updateHighLevelContactPartial()` function that does NOT require `provision_status`
+- Sanitized logging with masked contact IDs
+
+### 3. MODIFY: `supabase/functions/webhook/enhancedWebhookHandler.ts`
+
+- **Line 3**: Add import from shared m3u-domain.ts
+- **Line 11**: Remove inline `DEFAULT_M3U_DOMAIN` constant
+- **Lines 49-82**: Remove inline `rewriteM3uDomain` function
+
+### 4. CREATE: `supabase/functions/backfill-m3u-domains/index.ts`
+
+New edge function that:
+1. Validates JWT and admin role
+2. Loads reseller domain override
+3. Loads HighLevel settings via `getHighLevelSettings()`
+4. Processes customers in batches of 200
+5. Rewrites `connection_list[].m3u_url` and legacy `m3u_url`
+6. Updates DB only if changed
+7. Syncs to HighLevel using `updateHighLevelContactPartial()` (ONLY m3u_url fields + total_connections)
+8. Returns summary counts
+
+**Key logic corrections applied:**
+- `total_connections = String(Math.min(rewrittenConnectionList.length, 3))` or `"1"` if legacy
+- `hlEnabled = !!hlSettings?.token && !!hlSettings?.locationId && !!hlSettings?.isActive`
+- Sanitized logging (no URLs, passwords, tokens; masked contact IDs)
+
+### 5. MODIFY: `supabase/config.toml`
+
+Add after line 56:
+```toml
+[functions.backfill-m3u-domains]
+verify_jwt = false
+```
+
+### 6. MODIFY: `src/components/resellers/M3UDomainSettings.tsx`
+
+- Add `isBackfilling` state
+- Add `runBackfill()` function calling the edge function
+- Call backfill after successful save/clear
+- Update button states (disabled during backfill)
+- Show toast with counts on completion
+
+---
+
+## HighLevel Settings Shape (Verified)
+
+```typescript
+interface HighLevelSettings {
+  token: string;      // private_integration_token
+  locationId: string; // location_id
+  isActive: boolean;  // is_active
+}
+```
+
+---
+
+## Deployment
+
+Functions will auto-deploy on save:
+- `backfill-m3u-domains` (NEW)
+- `webhook` (updated imports)
+
+---
+
+## Test cURL
+
+```bash
+curl -X POST "https://hddnqgggjjlildufirof.supabase.co/functions/v1/backfill-m3u-domains" \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT" \
+  -H "Content-Type: application/json" \
+  -d '{"reseller_id": "uuid-here"}'
+```
+
+---
+
+## Expected Response
+
+```json
+{
+  "success": true,
+  "customersProcessed": 150,
+  "customersUpdated": 145,
+  "highLevelUpdated": 120,
+  "highLevelFailed": 2,
+  "highLevelSkipped": 23
+}
+```
 
