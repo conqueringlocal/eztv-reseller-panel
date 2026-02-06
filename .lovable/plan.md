@@ -1,353 +1,83 @@
 
 
-# Surgical Implementation: Reseller M3U Domain Override
+# Add M3U Domain Settings UI Component
 
-This implementation adds the M3U domain override feature to the webhook handler. All changes are surgical - no refactoring or behavior changes outside explicitly listed items.
+## Problem
+The M3U Domain Override feature backend was implemented, but the frontend component to manage it was never created. The `M3UDomainSettings.tsx` component is missing from the codebase.
+
+## Current State
+- Database column `m3u_domain_override` exists on `profiles` table
+- Edge function correctly uses the domain override
+- **Missing:** Frontend component to edit the setting
+- **Missing:** Import and placement in AdminResellerDetail page
 
 ---
 
-## File to Modify
+## Implementation
 
-`supabase/functions/webhook/enhancedWebhookHandler.ts`
+### 1. Create M3UDomainSettings Component
 
----
+**New File:** `src/components/resellers/M3UDomainSettings.tsx`
 
-## Change 1: Add DEFAULT_M3U_DOMAIN Constant
+A simple admin-only card component with:
+- Text input for the domain override
+- Helper text explaining the feature
+- Save button to update `profiles.m3u_domain_override`
+- Clear button to remove the override
+- Loads existing value on mount
 
-**Location:** Line 9 (after Supabase client initialization)
-
-**Add:**
-```typescript
-const DEFAULT_M3U_DOMAIN = Deno.env.get('DEFAULT_M3U_DOMAIN') || 'vpn.eztvclub.online';
+```text
++------------------------------------------+
+| M3U Domain Override Settings             |
+| ---------------------------------------- |
+| Configure custom domain for M3U URLs     |
+| ---------------------------------------- |
+|                                          |
+| Custom M3U Domain (optional)             |
+| [_________________________]              |
+|                                          |
+| Helper: "Used for M3U URLs and customer  |
+| login links. Leave empty to use default  |
+| platform domain (vpn.eztvclub.online)"   |
+|                                          |
+| [Save Settings]  [Clear Override]        |
++------------------------------------------+
 ```
 
----
+### 2. Add Import and Component to AdminResellerDetail
 
-## Change 2: Add rewriteM3uDomain Helper Function
+**File:** `src/pages/admin/AdminResellerDetail.tsx`
 
-**Location:** After line 44 (after `maskIdentifier` helper)
-
-**Add exact code:**
+Add import:
 ```typescript
-// Rewrite M3U URL to use reseller's custom domain (or platform default)
-// Always enforces DEFAULT_M3U_DOMAIN if no override is provided
-function rewriteM3uDomain(
-  originalUrl: string | undefined | null,
-  domainOverride: string | null | undefined,
-  defaultDomain: string
-): string | undefined {
-  if (!originalUrl) return undefined;
+import { M3UDomainSettings } from '@/components/resellers/M3UDomainSettings';
+```
 
-  try {
-    const url = new URL(originalUrl);
-
-    const targetDomainRaw =
-      domainOverride && domainOverride.trim() !== ''
-        ? domainOverride.trim()
-        : defaultDomain;
-
-    // Normalize override (supports with or without protocol)
-    const targetHost = targetDomainRaw
-      .replace(/^https?:\/\//i, '')
-      .split('/')[0]
-      .trim();
-
-    if (!targetHost) return originalUrl;
-
-    // Replace ONLY host — preserve protocol, path, query, port
-    url.host = targetHost;
-
-    return url.toString();
-  } catch {
-    console.log('⚠️ M3U URL rewrite failed (using original)');
-    return originalUrl;
-  }
-}
+Insert component after HighLevelSettings (after line 287):
+```tsx
+<div className="mb-6">
+  <M3UDomainSettings resellerId={id!} />
+</div>
 ```
 
 ---
 
-## Change 3: Update getResellerByApiKey to Include m3uDomainOverride
+## Location in Admin UI
 
-**Location:** Lines 209-230
+The M3U Domain Override settings will appear on the **individual reseller detail page**:
 
-**Before:**
-```typescript
-const { data: apiKeyData, error: apiKeyError } = await supabase
-  .from('reseller_api_keys')
-  .select(`
-    reseller_id,
-    is_active,
-    profiles!inner(credits, name, provider)
-  `)
-  .eq('api_key', apiKey)
-  .eq('is_active', true)
-  .single();
+**Path:** Admin Dashboard → Resellers → Click on a reseller → M3U Domain Override Settings card
 
-...
-
-return {
-  resellerId: apiKeyData.reseller_id,
-  credits: apiKeyData.profiles.credits,
-  name: apiKeyData.profiles.name,
-  provider: 'trex' // Trex-only mode
-};
-```
-
-**After:**
-```typescript
-const { data: apiKeyData, error: apiKeyError } = await supabase
-  .from('reseller_api_keys')
-  .select(`
-    reseller_id,
-    is_active,
-    profiles!inner(credits, name, provider, m3u_domain_override)
-  `)
-  .eq('api_key', apiKey)
-  .eq('is_active', true)
-  .single();
-
-...
-
-return {
-  resellerId: apiKeyData.reseller_id,
-  credits: apiKeyData.profiles.credits,
-  name: apiKeyData.profiles.name,
-  provider: 'trex',
-  m3uDomainOverride: apiKeyData.profiles.m3u_domain_override || null
-};
-```
+It will be positioned between:
+- CRM Integration Settings (HighLevelSettings)
+- API Key Manager
 
 ---
 
-## Change 4: Update Legacy Reseller Lookup
+## Files to Create/Modify
 
-**Location:** Lines 1331-1350
-
-**Before:**
-```typescript
-const { data: reseller, error: resellerError } = await supabase
-  .from('profiles')
-  .select('id, credits, name, provider')
-  .eq('id', payload.resellerId)
-  .single();
-
-...
-
-resellerData = {
-  resellerId: reseller.id,
-  credits: reseller.credits,
-  name: reseller.name,
-  provider: reseller.provider || 'trex'
-};
-```
-
-**After:**
-```typescript
-const { data: reseller, error: resellerError } = await supabase
-  .from('profiles')
-  .select('id, credits, name, provider, m3u_domain_override')
-  .eq('id', payload.resellerId)
-  .single();
-
-...
-
-resellerData = {
-  resellerId: reseller.id,
-  credits: reseller.credits,
-  name: reseller.name,
-  provider: reseller.provider || 'trex',
-  m3uDomainOverride: reseller.m3u_domain_override || null
-};
-```
-
----
-
-## Change 5: Update createTrialAccount to Apply Domain Rewrite
-
-**Location:** Lines 405-439
-
-Apply rewrite before syncing to HighLevel and in response. Update the credentials list and response to use rewritten URLs.
-
-**Insert after line 400 (before HighLevel sync):**
-```typescript
-// Rewrite M3U URL for domain override (uses reseller's custom domain or platform default)
-const resellerM3uDomainOverride = resellerData?.m3uDomainOverride || null;
-const rewrittenM3uUrl = rewriteM3uDomain(
-  data.customer?.m3uUrl,
-  resellerM3uDomainOverride,
-  DEFAULT_M3U_DOMAIN
-);
-console.log('🔗 M3U domain override applied:', !!resellerM3uDomainOverride);
-```
-
-**Update HighLevel sync (lines 406-420):**
-```typescript
-const credentialsList = [{
-  username: data.customer.username,
-  password: data.customer.password,
-  m3u_url: rewrittenM3uUrl
-}];
-```
-
-**Update response (lines 422-439) to use rewrittenM3uUrl:**
-```typescript
-m3u_url: rewrittenM3uUrl,
-...
-m3u_url_1: rewrittenM3uUrl,
-```
-
-Note: This requires passing `resellerData` to `createTrialAccount` function signature.
-
----
-
-## Change 6: Update createConsolidatedAccount to Apply Domain Rewrite
-
-**Location:** Lines 543-648
-
-**After line 551, add rewrite logic:**
-```typescript
-// Rewrite M3U URLs for all connections (uses reseller's custom domain or platform default)
-const rewrittenConnectionDetails = consolidatedConnectionDetails.map((cred: any) => ({
-  ...cred,
-  m3u_url: rewriteM3uDomain(cred.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
-}));
-console.log('🔗 M3U domain override applied:', !!resellerData.m3uDomainOverride);
-```
-
-**Use `rewrittenConnectionDetails` everywhere instead of `consolidatedConnectionDetails`:**
-- Database insert (`connection_list`, `connection_details`)
-- Response (`credentials`, individual `m3u_url_N` fields)
-- HighLevel sync
-
----
-
-## Change 7: Update renewCustomerGroup to Apply Domain Rewrite
-
-**Location:** Lines 783-810
-
-**Replace credentials building logic:**
-```typescript
-let credentialsList: Array<{ username?: string; password?: string; m3u_url?: string }> = [];
-
-if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
-  credentialsList = customer.connection_list.slice(0, 3).map((conn: any) => ({
-    username: conn.username,
-    password: conn.password,
-    m3u_url: rewriteM3uDomain(conn.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
-  }));
-} else if (customer.username || customer.password) {
-  credentialsList = [{
-    username: customer.username,
-    password: customer.password,
-    m3u_url: rewriteM3uDomain(customer.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
-  }];
-}
-
-console.log('🔗 M3U domain override applied for renewal:', !!resellerData.m3uDomainOverride);
-```
-
----
-
-## Change 8: Update upgradeCustomerConnections to Apply Domain Rewrite
-
-**Location:** Lines 1191-1285
-
-**Step 1: Before database update (after line 1192), rewrite all URLs in updatedConnectionList:**
-```typescript
-// Rewrite M3U URLs for persistence and downstream use
-const rewrittenConnectionList = updatedConnectionList.map((conn: any) => ({
-  ...conn,
-  m3u_url: rewriteM3uDomain(conn.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
-}));
-console.log('🔗 M3U domain override applied for upgrade:', !!resellerData.m3uDomainOverride);
-```
-
-**Step 2: Use `rewrittenConnectionList` in database update (line 1197):**
-```typescript
-connection_list: rewrittenConnectionList,
-```
-
-**Step 3: Use `rewrittenConnectionList` in HighLevel sync (lines 1239-1243):**
-```typescript
-const credentialsList = rewrittenConnectionList.slice(0, 3).map((conn: any) => ({
-  username: conn.username,
-  password: conn.password,
-  m3u_url: conn.m3u_url
-}));
-```
-
-**Step 4: Use `rewrittenConnectionList` in response (lines 1269-1285):**
-```typescript
-credentials: rewrittenConnectionList
-...
-rewrittenConnectionList.slice(0, 3).forEach((cred: any, index: number) => {
-  ...
-});
-```
-
----
-
-## Change 9: Update createTrialAccount Function Signature
-
-**Current (line 331-336):**
-```typescript
-async function createTrialAccount(
-  payload: EnhancedWebhookPayload, 
-  resellerId: string, 
-  resellerName: string, 
-  provider: string
-): Promise<EnhancedWebhookResult>
-```
-
-**Updated:**
-```typescript
-async function createTrialAccount(
-  payload: EnhancedWebhookPayload, 
-  resellerId: string, 
-  resellerName: string, 
-  provider: string,
-  resellerData: any
-): Promise<EnhancedWebhookResult>
-```
-
-**Also update the call site (line 1364):**
-```typescript
-return await createTrialAccount(payload, resellerData.resellerId, resellerData.name, resellerData.provider, resellerData);
-```
-
----
-
-## Summary of Changes
-
-| Location | Change |
-|----------|--------|
-| Line 9 | Add `DEFAULT_M3U_DOMAIN` constant |
-| After line 44 | Add `rewriteM3uDomain` helper |
-| Lines 209-230 | Update `getResellerByApiKey` to include `m3u_domain_override` |
-| Lines 1331-1350 | Update legacy reseller lookup to include `m3u_domain_override` |
-| Lines 331-449 | Update `createTrialAccount` for domain rewrite |
-| Lines 543-648 | Update `createConsolidatedAccount` for domain rewrite |
-| Lines 783-810 | Update `renewCustomerGroup` for domain rewrite |
-| Lines 1191-1285 | Update `upgradeCustomerConnections` for domain rewrite |
-| Line 1364 | Update trial function call |
-
----
-
-## Edge Function to Redeploy
-
-- `webhook`
-
----
-
-## Expected Behavior After Implementation
-
-| Scenario | Result |
-|----------|--------|
-| No override configured | M3U URLs use `vpn.eztvclub.online` |
-| Override = `custom.domain.com` | M3U URLs use `custom.domain.com` |
-| Override = `https://custom.domain.com` | M3U URLs use `custom.domain.com` |
-| Override = `custom.domain.com:8443` | M3U URLs use `custom.domain.com:8443` |
-| Parse failure | Original URL returned (no breakage) |
-| All flows (create/renew/upgrade/trial) | Rewritten URLs in DB, HighLevel, response |
+| File | Action |
+|------|--------|
+| `src/components/resellers/M3UDomainSettings.tsx` | CREATE |
+| `src/pages/admin/AdminResellerDetail.tsx` | ADD import + component |
 
