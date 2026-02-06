@@ -615,11 +615,12 @@ async function renewCustomerGroup(
       console.log(`🔗 Linked highlevel_contact_id to customer: ${payload.contact_id}`);
     }
 
-    // Use the renew-customer-group function
+    // Use the renew-customer-group function with service call pattern
     const { data, error } = await supabase.functions.invoke('renew-customer-group', {
       body: {
         customerId: customer.id,
         planDuration: planDuration,
+        serviceCall: true,  // Bypass JWT verification - webhook already validated API key
         resellerId: resellerId
       }
     });
