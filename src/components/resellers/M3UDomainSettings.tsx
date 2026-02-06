@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Globe, Save, X } from 'lucide-react';
+import { Globe, Save, X, Loader2 } from 'lucide-react';
 
 interface M3UDomainSettingsProps {
   resellerId: string;
@@ -16,6 +16,7 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
   const [originalDomain, setOriginalDomain] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -29,7 +30,7 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
 
         if (error) throw error;
 
-        const currentDomain = (data as any)?.m3u_domain_override || '';
+        const currentDomain = (data as Record<string, unknown>)?.m3u_domain_override as string || '';
         setDomain(currentDomain);
         setOriginalDomain(currentDomain);
       } catch (error) {
@@ -42,18 +43,45 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
     loadSettings();
   }, [resellerId]);
 
+  const runBackfill = async () => {
+    setIsBackfilling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('backfill-m3u-domains', {
+        body: { reseller_id: resellerId }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success(
+          `Updated ${data.customersUpdated} customer(s). HighLevel: ${data.highLevelUpdated} synced, ${data.highLevelFailed} failed, ${data.highLevelSkipped} skipped.`
+        );
+      } else {
+        toast.error(data?.error || 'Backfill failed');
+      }
+    } catch (error) {
+      console.error('Backfill error:', error);
+      toast.error('Failed to update existing customers');
+    } finally {
+      setIsBackfilling(false);
+    }
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ m3u_domain_override: domain.trim() || null } as any)
+        .update({ m3u_domain_override: domain.trim() || null } as Record<string, unknown>)
         .eq('id', resellerId);
 
       if (error) throw error;
 
       setOriginalDomain(domain.trim());
       toast.success('M3U domain settings saved');
+      
+      // Trigger backfill after successful save
+      await runBackfill();
     } catch (error) {
       console.error('Error saving M3U domain settings:', error);
       toast.error('Failed to save M3U domain settings');
@@ -67,7 +95,7 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ m3u_domain_override: null } as any)
+        .update({ m3u_domain_override: null } as Record<string, unknown>)
         .eq('id', resellerId);
 
       if (error) throw error;
@@ -75,6 +103,9 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
       setDomain('');
       setOriginalDomain('');
       toast.success('M3U domain override cleared');
+      
+      // Trigger backfill after successful clear
+      await runBackfill();
     } catch (error) {
       console.error('Error clearing M3U domain:', error);
       toast.error('Failed to clear M3U domain');
@@ -84,6 +115,7 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
   };
 
   const hasChanges = domain.trim() !== originalDomain;
+  const isDisabled = isLoading || isSaving || isBackfilling;
 
   return (
     <Card>
@@ -116,21 +148,39 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
         <div className="flex gap-2">
           <Button
             onClick={handleSave}
-            disabled={isLoading || isSaving || !hasChanges}
+            disabled={isDisabled || !hasChanges}
             className="bg-eztv-700 hover:bg-eztv-800"
           >
-            <Save className="h-4 w-4 mr-2" />
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            {isBackfilling ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Updating customers...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                {isSaving ? 'Saving...' : 'Save Settings'}
+              </>
+            )}
           </Button>
 
           {originalDomain && (
             <Button
               variant="outline"
               onClick={handleClear}
-              disabled={isLoading || isSaving}
+              disabled={isDisabled}
             >
-              <X className="h-4 w-4 mr-2" />
-              Clear Override
+              {isBackfilling ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  <X className="h-4 w-4 mr-2" />
+                  Clear Override
+                </>
+              )}
             </Button>
           )}
         </div>

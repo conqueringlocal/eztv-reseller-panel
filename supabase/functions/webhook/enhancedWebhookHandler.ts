@@ -1,14 +1,12 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { updateHighLevelContact, getHighLevelSettings, HighLevelContactFields } from '../_shared/highlevel-api.ts';
+import { rewriteM3uDomain, DEFAULT_M3U_DOMAIN } from '../_shared/m3u-domain.ts';
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
-// Default M3U domain for URL rewrites (reseller can override)
-const DEFAULT_M3U_DOMAIN = Deno.env.get('DEFAULT_M3U_DOMAIN') || 'vpn.eztvclub.online';
 
 // Helper to calculate expiration date, matching SQL interval behavior for month-end handling
 function calculateNewExpirationDate(monthsToAdd: number): string {
@@ -43,41 +41,6 @@ function maskIdentifier(value: string | undefined, isMac: boolean): string {
       return value;
     }
     return value.substring(0, 2) + '***' + value.substring(value.length - 2);
-  }
-}
-
-// Rewrite M3U URL to use reseller's custom domain (or platform default)
-// Always enforces DEFAULT_M3U_DOMAIN if no override is provided
-function rewriteM3uDomain(
-  originalUrl: string | undefined | null,
-  domainOverride: string | null | undefined,
-  defaultDomain: string
-): string | undefined {
-  if (!originalUrl) return undefined;
-
-  try {
-    const url = new URL(originalUrl);
-
-    const targetDomainRaw =
-      domainOverride && domainOverride.trim() !== ''
-        ? domainOverride.trim()
-        : defaultDomain;
-
-    // Normalize override (supports with or without protocol)
-    const targetHost = targetDomainRaw
-      .replace(/^https?:\/\//i, '')
-      .split('/')[0]
-      .trim();
-
-    if (!targetHost) return originalUrl;
-
-    // Replace ONLY host — preserve protocol, path, query, port
-    url.host = targetHost;
-
-    return url.toString();
-  } catch {
-    console.log('⚠️ M3U URL rewrite failed (using original)');
-    return originalUrl;
   }
 }
 

@@ -54,3 +54,6 @@ verify_jwt = false
 
 [functions.renew-mag-user]
 verify_jwt = false
+
+[functions.backfill-m3u-domains]
+verify_jwt = false
