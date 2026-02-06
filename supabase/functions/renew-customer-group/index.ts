@@ -10,6 +10,8 @@ const corsHeaders = {
 interface RenewGroupRequest {
   customerId: string;
   planDuration: number;
+  serviceCall?: boolean;  // Skip JWT verification for internal service calls (e.g., webhook)
+  resellerId?: string;    // Required when serviceCall=true, already validated by caller
 }
 
 interface CustomerAccount {
@@ -118,45 +120,63 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Get the authorization header - we need to preserve this for forwarding
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      console.error('❌ No authorization header provided');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Authentication required. Please ensure you are logged in.',
-          code: 'MISSING_AUTH_HEADER'
-        }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const { customerId, planDuration, serviceCall = false, resellerId: providedResellerId }: RenewGroupRequest = await req.json();
 
-    // Verify the JWT token
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    
-    if (authError || !user) {
-      console.error('❌ Auth verification failed:', {
-        error: authError?.message,
-        hasToken: !!token,
-        tokenLength: token?.length
-      });
+    // Determine authentication context
+    let verifiedUserId: string | null = null;
+    let isServiceCall = false;
+    let authHeader: string | null = null;
+
+    if (!serviceCall) {
+      // Normal path: Verify JWT token
+      authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        console.error('❌ No authorization header provided');
+        return new Response(
+          JSON.stringify({ 
+            error: 'Authentication required. Please ensure you are logged in.',
+            code: 'MISSING_AUTH_HEADER'
+          }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
       
-      return new Response(
-        JSON.stringify({ 
-          error: authError?.message?.includes('expired') 
-            ? 'Your session has expired. Please log in again.'
-            : 'Invalid authentication token. Please log in again.',
-          code: 'INVALID_TOKEN',
-          details: authError?.message
-        }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (authError || !user) {
+        console.error('❌ Auth verification failed:', {
+          error: authError?.message,
+          hasToken: !!token,
+          tokenLength: token?.length
+        });
+        
+        return new Response(
+          JSON.stringify({ 
+            error: authError?.message?.includes('expired') 
+              ? 'Your session has expired. Please log in again.'
+              : 'Invalid authentication token. Please log in again.',
+            code: 'INVALID_TOKEN',
+            details: authError?.message
+          }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      verifiedUserId = user.id;
+      console.log(`✅ User authenticated: ${user.email} (ID: ${user.id})`);
+    } else {
+      // Service call path: Skip JWT, trust the provided resellerId
+      console.log('🔐 Bypassing JWT authentication for service call');
+      
+      if (!providedResellerId) {
+        return new Response(
+          JSON.stringify({ error: 'resellerId is required for service calls' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      isServiceCall = true;
     }
-
-    console.log(`✅ User authenticated: ${user.email} (ID: ${user.id})`);
-
-    const { customerId, planDuration }: RenewGroupRequest = await req.json();
 
     console.log(`🔄 Starting group renewal process for customer: ${customerId}, duration: ${planDuration} months`);
 
@@ -184,53 +204,71 @@ serve(async (req) => {
       );
     }
 
-    // Fetch user profile for logging
-    const { data: userProfile, error: profileError } = await supabaseClient
-      .from('profiles')
-      .select('id, name, email')
-      .eq('id', user.id)
-      .single();
+    // Authorization differs for service calls vs user calls
+    let isAdmin = false;
+    let userEmail = 'service-call';
 
-    if (profileError || !userProfile) {
-      console.error('❌ Failed to fetch user profile:', profileError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to verify user permissions' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!isServiceCall) {
+      // Fetch user profile for logging
+      const { data: userProfile, error: profileError } = await supabaseClient
+        .from('profiles')
+        .select('id, name, email')
+        .eq('id', verifiedUserId)
+        .single();
+
+      if (profileError || !userProfile) {
+        console.error('❌ Failed to fetch user profile:', profileError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to verify user permissions' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      userEmail = userProfile.email;
+
+      // Check if user is admin using secure function
+      const { data: isAdminData, error: roleError } = await supabaseClient
+        .rpc('has_role', { 
+          _user_id: verifiedUserId, 
+          _role: 'admin' 
+        });
+
+      if (roleError) {
+        console.error('❌ Failed to check user role:', roleError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to verify user permissions' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      isAdmin = isAdminData === true;
+
+      // Authorization: Admin can renew any customer, resellers can only renew their own
+      if (!isAdmin && primaryCustomer.reseller_id !== verifiedUserId) {
+        console.error(`❌ Authorization failed: User ${verifiedUserId} (${userEmail}) attempted to renew customer ${customerId} owned by ${primaryCustomer.reseller_id}`);
+        
+        return new Response(
+          JSON.stringify({ 
+            error: 'You do not have permission to renew this customer subscription.',
+            code: 'UNAUTHORIZED_CUSTOMER',
+            details: `Customer belongs to a different reseller`
+          }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log(`✅ Authorization passed: User ${userEmail} ${isAdmin ? '(ADMIN)' : '(RESELLER)'} can renew customer ${primaryCustomer.name}`);
+    } else {
+      // Service call - verify the provided resellerId matches the customer's reseller
+      if (primaryCustomer.reseller_id !== providedResellerId) {
+        console.error(`❌ Service call reseller mismatch: provided ${providedResellerId} != customer ${primaryCustomer.reseller_id}`);
+        return new Response(
+          JSON.stringify({ error: 'Reseller ID mismatch' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      console.log(`✅ Service call authorized for reseller: ${providedResellerId}`);
     }
-
-    // Check if user is admin using secure function
-    const { data: isAdminData, error: roleError } = await supabaseClient
-      .rpc('has_role', { 
-        _user_id: user.id, 
-        _role: 'admin' 
-      });
-
-    if (roleError) {
-      console.error('❌ Failed to check user role:', roleError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to verify user permissions' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const isAdmin = isAdminData === true;
-
-    // Authorization: Admin can renew any customer, resellers can only renew their own
-    if (!isAdmin && primaryCustomer.reseller_id !== user.id) {
-      console.error(`❌ Authorization failed: User ${user.id} (${user.email}) attempted to renew customer ${customerId} owned by ${primaryCustomer.reseller_id}`);
-      
-      return new Response(
-        JSON.stringify({ 
-          error: 'You do not have permission to renew this customer subscription.',
-          code: 'UNAUTHORIZED_CUSTOMER',
-          details: `Customer belongs to a different reseller`
-        }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`✅ Authorization passed: User ${user.email} ${isAdmin ? '(ADMIN)' : '(RESELLER)'} can renew customer ${primaryCustomer.name}`);
 
     // Set admin override flag for credit bypass
     const isAdminOverride = isAdmin;
@@ -421,18 +459,21 @@ serve(async (req) => {
 
     let renewalResults: Array<{account: CustomerAccount, success: boolean, error?: string}> = [];
 
-    // Create a new Supabase client with proper auth headers for function invocations
-    const clientWithAuth = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '', // Use anon key for client operations
-      {
-        global: {
-          headers: {
-            Authorization: authHeader, // Forward the original auth header
+    // Create a client for sub-function invocations
+    // For service calls, use service role key; for user calls, forward auth header
+    const clientWithAuth = isServiceCall
+      ? supabaseClient  // Service role client - already has proper auth
+      : createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          {
+            global: {
+              headers: {
+                Authorization: authHeader!, // Forward the original auth header
+              }
+            }
           }
-        }
-      }
-    );
+        );
 
     // Renew MAG customers
     console.log(`\n🔄 Starting MAG Customer Renewals (${magCustomers.length} accounts)...`);
