@@ -7,6 +7,9 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+// Default M3U domain for URL rewrites (reseller can override)
+const DEFAULT_M3U_DOMAIN = Deno.env.get('DEFAULT_M3U_DOMAIN') || 'vpn.eztvclub.online';
+
 // Helper to calculate expiration date, matching SQL interval behavior for month-end handling
 function calculateNewExpirationDate(monthsToAdd: number): string {
   const now = new Date();
@@ -40,6 +43,41 @@ function maskIdentifier(value: string | undefined, isMac: boolean): string {
       return value;
     }
     return value.substring(0, 2) + '***' + value.substring(value.length - 2);
+  }
+}
+
+// Rewrite M3U URL to use reseller's custom domain (or platform default)
+// Always enforces DEFAULT_M3U_DOMAIN if no override is provided
+function rewriteM3uDomain(
+  originalUrl: string | undefined | null,
+  domainOverride: string | null | undefined,
+  defaultDomain: string
+): string | undefined {
+  if (!originalUrl) return undefined;
+
+  try {
+    const url = new URL(originalUrl);
+
+    const targetDomainRaw =
+      domainOverride && domainOverride.trim() !== ''
+        ? domainOverride.trim()
+        : defaultDomain;
+
+    // Normalize override (supports with or without protocol)
+    const targetHost = targetDomainRaw
+      .replace(/^https?:\/\//i, '')
+      .split('/')[0]
+      .trim();
+
+    if (!targetHost) return originalUrl;
+
+    // Replace ONLY host — preserve protocol, path, query, port
+    url.host = targetHost;
+
+    return url.toString();
+  } catch {
+    console.log('⚠️ M3U URL rewrite failed (using original)');
+    return originalUrl;
   }
 }
 
@@ -211,7 +249,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       .select(`
         reseller_id,
         is_active,
-        profiles!inner(credits, name, provider)
+        profiles!inner(credits, name, provider, m3u_domain_override)
       `)
       .eq('api_key', apiKey)
       .eq('is_active', true)
@@ -226,7 +264,8 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       resellerId: apiKeyData.reseller_id,
       credits: apiKeyData.profiles.credits,
       name: apiKeyData.profiles.name,
-      provider: 'trex' // Trex-only mode
+      provider: 'trex', // Trex-only mode
+      m3uDomainOverride: apiKeyData.profiles.m3u_domain_override || null
     };
   } catch (error) {
     console.error('💥 Error getting reseller by API key:', error);
@@ -332,7 +371,8 @@ async function createTrialAccount(
   payload: EnhancedWebhookPayload, 
   resellerId: string, 
   resellerName: string, 
-  provider: string
+  provider: string,
+  resellerData: any
 ): Promise<EnhancedWebhookResult> {
   try {
     console.log('🆓 Creating trial account via create-trial-user function');
@@ -400,13 +440,22 @@ async function createTrialAccount(
 
     console.log('✅ Trial account created successfully');
 
+    // Rewrite M3U URL for domain override (uses reseller's custom domain or platform default)
+    const resellerM3uDomainOverride = resellerData?.m3uDomainOverride || null;
+    const rewrittenM3uUrl = rewriteM3uDomain(
+      data.customer?.m3uUrl,
+      resellerM3uDomainOverride,
+      DEFAULT_M3U_DOMAIN
+    );
+    console.log('🔗 M3U domain override applied:', !!resellerM3uDomainOverride);
+
     // Sync to HighLevel after successful trial provisioning (non-blocking)
     // Add trial_activated tag on success
     if (payload.contact_id && data.customer) {
       const credentialsList = [{
         username: data.customer.username,
         password: data.customer.password,
-        m3u_url: data.customer.m3uUrl
+        m3u_url: rewrittenM3uUrl
       }];
       await syncHighLevelContact(
         resellerId,
@@ -432,10 +481,10 @@ async function createTrialAccount(
       total_connections: connections,
       username: data.customer?.username,
       password: data.customer?.password,
-      m3u_url: data.customer?.m3uUrl,
+      m3u_url: rewrittenM3uUrl,
       username_1: data.customer?.username,
       password_1: data.customer?.password,
-      m3u_url_1: data.customer?.m3uUrl,
+      m3u_url_1: rewrittenM3uUrl,
       raw_api_response: data
     };
   } catch (error) {
@@ -542,13 +591,16 @@ async function createConsolidatedAccount(
 
     // Now manually consolidate the created connections
     const connectionList = createResult.connectionList || [];
-    const consolidatedConnectionDetails = connectionList.map((conn: any, index: number) => ({
+    
+    // Rewrite M3U URLs for all connections (uses reseller's custom domain or platform default)
+    const rewrittenConnectionDetails = connectionList.map((conn: any, index: number) => ({
       connection_number: index + 1,
       username: conn.username,
       password: conn.password,
-      m3u_url: conn.m3u_url,
+      m3u_url: rewriteM3uDomain(conn.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN),
       status: 'active'
     }));
+    console.log('🔗 M3U domain override applied:', !!resellerData.m3uDomainOverride);
 
     // Create the consolidated customer record
     const { data: consolidatedCustomer, error: consolidateError } = await supabase
@@ -563,8 +615,8 @@ async function createConsolidatedAccount(
         max_connections: connections,
         total_connections: connections,
         current_connections: 0,
-        connection_details: consolidatedConnectionDetails,
-        connection_list: consolidatedConnectionDetails,
+        connection_details: rewrittenConnectionDetails,
+        connection_list: rewrittenConnectionDetails,
         start_date: startDate.toISOString().split('T')[0],
         expiration_date: expirationDate.toISOString().split('T')[0],
         status: 'active',
@@ -609,12 +661,12 @@ async function createConsolidatedAccount(
       account_type: 'm3u',
       credits_used: creditsRequired,
       total_connections: connections,
-      credentials: consolidatedConnectionDetails,
+      credentials: rewrittenConnectionDetails,
       raw_api_response: createResult
     };
 
     // Add individual credential fields for backwards compatibility
-    consolidatedConnectionDetails.forEach((cred: any, index: number) => {
+    rewrittenConnectionDetails.forEach((cred: any, index: number) => {
       const num = index + 1;
       response[`username_${num}` as keyof EnhancedWebhookResult] = cred.username;
       response[`password_${num}` as keyof EnhancedWebhookResult] = cred.password;
@@ -622,17 +674,17 @@ async function createConsolidatedAccount(
     });
 
     // Set primary credentials to first connection
-    if (consolidatedConnectionDetails.length > 0) {
-      response.username = consolidatedConnectionDetails[0].username;
-      response.password = consolidatedConnectionDetails[0].password;
-      response.m3u_url = consolidatedConnectionDetails[0].m3u_url;
+    if (rewrittenConnectionDetails.length > 0) {
+      response.username = rewrittenConnectionDetails[0].username;
+      response.password = rewrittenConnectionDetails[0].password;
+      response.m3u_url = rewrittenConnectionDetails[0].m3u_url;
     }
 
     // Sync to HighLevel after successful provisioning (non-blocking)
     // Pass FULL credentials list (up to 3)
     if (payload.contact_id) {
       const expirationDateStr = expirationDate.toISOString().split('T')[0];
-      const credentialsList = consolidatedConnectionDetails.slice(0, 3).map((cred: any) => ({
+      const credentialsList = rewrittenConnectionDetails.slice(0, 3).map((cred: any) => ({
         username: cred.username,
         password: cred.password,
         m3u_url: cred.m3u_url
@@ -777,26 +829,28 @@ async function renewCustomerGroup(
     newExpiry.setMonth(newExpiry.getMonth() + planDuration);
 
     // Sync to HighLevel after successful renewal (non-blocking)
-    // Build credentials list from connection_list or legacy fields
+    // Build credentials list from connection_list or legacy fields WITH domain rewrite
     const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
     if (contactIdToUse) {
       let credentialsList: Array<{ username?: string; password?: string; m3u_url?: string }> = [];
       
       if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
-        // Use connection_list (up to 3)
+        // Use connection_list (up to 3) with domain rewrite
         credentialsList = customer.connection_list.slice(0, 3).map((conn: any) => ({
           username: conn.username,
           password: conn.password,
-          m3u_url: conn.m3u_url
+          m3u_url: rewriteM3uDomain(conn.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
         }));
       } else if (customer.username || customer.password) {
-        // Legacy single-connection fallback
+        // Legacy single-connection fallback with domain rewrite
         credentialsList = [{
           username: customer.username,
           password: customer.password,
-          m3u_url: customer.m3u_url
+          m3u_url: rewriteM3uDomain(customer.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
         }];
       }
+      
+      console.log('🔗 M3U domain override applied for renewal:', !!resellerData.m3uDomainOverride);
       
       // Add renewal_success tag on successful renewal
       await syncHighLevelContact(
@@ -1188,13 +1242,18 @@ async function upgradeCustomerConnections(
       console.log(`✅ Connection ${connectionNumber} created successfully`);
     }
 
-    // 12. Update database with new connection_list
+    // 12. Rewrite M3U URLs for persistence and downstream use
     const updatedConnectionList = [...existingConnectionList, ...newConnections];
+    const rewrittenConnectionList = updatedConnectionList.map((conn: any) => ({
+      ...conn,
+      m3u_url: rewriteM3uDomain(conn.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
+    }));
+    console.log('🔗 M3U domain override applied for upgrade:', !!resellerData.m3uDomainOverride);
     
     const { error: updateError } = await supabase
       .from('customers')
       .update({
-        connection_list: updatedConnectionList,
+        connection_list: rewrittenConnectionList,
         total_connections: requestedConnections,
         max_connections: requestedConnections,
         expiration_date: newExpirationDateStr,
@@ -1233,10 +1292,10 @@ async function upgradeCustomerConnections(
 
     console.log(`✅ Upgrade completed: ${currentConnections} → ${requestedConnections} connections, ${creditsRequired} credits used`);
 
-    // 15. Sync to HighLevel (non-blocking)
+    // 15. Sync to HighLevel (non-blocking) - use rewritten URLs
     const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
     if (contactIdToUse) {
-      const credentialsList = updatedConnectionList.slice(0, 3).map((conn: any) => ({
+      const credentialsList = rewrittenConnectionList.slice(0, 3).map((conn: any) => ({
         username: conn.username,
         password: conn.password,
         m3u_url: conn.m3u_url
@@ -1254,7 +1313,7 @@ async function upgradeCustomerConnections(
       );
     }
 
-    // 16. Build response with all credentials
+    // 16. Build response with all credentials (use rewritten URLs)
     const response: EnhancedWebhookResult = {
       success: true,
       message: `Upgraded from ${currentConnections} to ${requestedConnections} connections`,
@@ -1266,11 +1325,11 @@ async function upgradeCustomerConnections(
       account_type: 'm3u',
       credits_used: creditsRequired,
       total_connections: requestedConnections,
-      credentials: updatedConnectionList
+      credentials: rewrittenConnectionList
     };
 
     // Add individual credential fields for backwards compatibility (up to 3)
-    updatedConnectionList.slice(0, 3).forEach((cred: any, index: number) => {
+    rewrittenConnectionList.slice(0, 3).forEach((cred: any, index: number) => {
       const num = index + 1;
       response[`username_${num}` as keyof EnhancedWebhookResult] = cred.username;
       response[`password_${num}` as keyof EnhancedWebhookResult] = cred.password;
@@ -1278,10 +1337,10 @@ async function upgradeCustomerConnections(
     });
 
     // Set primary credentials to first connection
-    if (updatedConnectionList.length > 0) {
-      response.username = updatedConnectionList[0].username;
-      response.password = updatedConnectionList[0].password;
-      response.m3u_url = updatedConnectionList[0].m3u_url;
+    if (rewrittenConnectionList.length > 0) {
+      response.username = rewrittenConnectionList[0].username;
+      response.password = rewrittenConnectionList[0].password;
+      response.m3u_url = rewrittenConnectionList[0].m3u_url;
     }
 
     return response;
@@ -1330,7 +1389,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
       // Legacy support
       const { data: reseller, error: resellerError } = await supabase
         .from('profiles')
-        .select('id, credits, name, provider')
+        .select('id, credits, name, provider, m3u_domain_override')
         .eq('id', payload.resellerId)
         .single();
       
@@ -1346,7 +1405,8 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
         resellerId: reseller.id,
         credits: reseller.credits,
         name: reseller.name,
-        provider: reseller.provider || 'trex'
+        provider: reseller.provider || 'trex',
+        m3uDomainOverride: reseller.m3u_domain_override || null
       };
     } else {
       return {
@@ -1361,7 +1421,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
     // Route to appropriate handler based on action
     switch (payload.action) {
       case 'trial':
-        return await createTrialAccount(payload, resellerData.resellerId, resellerData.name, resellerData.provider);
+        return await createTrialAccount(payload, resellerData.resellerId, resellerData.name, resellerData.provider, resellerData);
       
       case 'create':
         return await createConsolidatedAccount(payload, resellerData.resellerId, resellerData);
