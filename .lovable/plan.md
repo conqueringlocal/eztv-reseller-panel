@@ -1,253 +1,257 @@
 
-# Upgrade Action Implementation (Corrected)
+
+# Upgrade = Renew + Add Connections Implementation
 
 ## Overview
 
-Add a new webhook action `upgrade` that increases an existing customer's connection count from N to M (where M > N, max 3). This uses the same provisioning path as `createConsolidatedAccount`.
+Modify the `upgradeCustomerConnections()` function to:
+1. Charge for ALL connections (not just delta)
+2. Calculate a unified expiration date for all connections
+3. Renew existing connections to the new expiration
+4. Create additional connections with the same expiration
+5. Sync all credentials to HighLevel with the unified date
 
 ---
 
-## Corrected Payload Structure
+## File to Modify
 
-```json
-{
-  "api_key": "{{custom_values.iptv_reseller_api_key}}",
-  "contact_id": "{{contact.id}}",
-  "action": "upgrade",
-  "connections": 3,
-  "customer": {
-    "name": "{{contact.first_name}} {{contact.last_name}}",
-    "email": "{{contact.email}}",
-    "device_type": "{{contact.device_type}}",
-    "plan_duration_months": 6
-  }
+**`supabase/functions/webhook/enhancedWebhookHandler.ts`**
+
+---
+
+## Technical Changes
+
+### Change 1: Update Credits Calculation (Lines 881-883)
+
+Current:
+```typescript
+const creditsRequired = delta * planDurationMonths;
+console.log(`💰 Credits calculation: delta=${delta} × duration=${planDurationMonths} = ${creditsRequired} credits`);
+```
+
+Updated:
+```typescript
+const creditsRequired = requestedConnections * planDurationMonths;
+console.log(`💰 Credits calculation: connections=${requestedConnections} × duration=${planDurationMonths} = ${creditsRequired} credits (upgrade+renew)`);
+```
+
+---
+
+### Change 2: Add Helper Function for Date Calculation
+
+Add a helper function after the imports (around line 9) that matches SQL's interval behavior for robust month-end handling:
+
+```typescript
+// Helper to calculate expiration date, matching SQL interval behavior
+function calculateNewExpirationDate(monthsToAdd: number): string {
+  const now = new Date();
+  const targetMonth = now.getMonth() + monthsToAdd;
+  const targetYear = now.getFullYear() + Math.floor(targetMonth / 12);
+  const actualMonth = targetMonth % 12;
+  
+  // Get the last day of the target month
+  const lastDayOfTargetMonth = new Date(targetYear, actualMonth + 1, 0).getDate();
+  
+  // Use current day or last day of month if current day exceeds it
+  const targetDay = Math.min(now.getDate(), lastDayOfTargetMonth);
+  
+  const result = new Date(targetYear, actualMonth, targetDay);
+  return result.toISOString().split('T')[0];
 }
 ```
 
-**OR** with top-level plan_duration:
-```json
-{
-  "api_key": "...",
-  "action": "upgrade",
-  "connections": 3,
-  "plan_duration_months": 6,
-  "customer": { ... }
+---
+
+### Change 3: Calculate Unified Expiration Date (After credits check, around line 905)
+
+Insert after the credits check:
+```typescript
+// Calculate unified expiration date for all connections (upgrade = renew + add)
+const newExpirationDateStr = calculateNewExpirationDate(planDurationMonths);
+console.log(`📅 Unified expiration date: ${newExpirationDateStr} (now + ${planDurationMonths} months)`);
+```
+
+---
+
+### Change 4: Update Existing Connection Expirations (Lines 906-917)
+
+Current:
+```typescript
+// 9. Migrate primary connection if connection_list is empty
+if (existingConnectionList.length === 0 && customer.username && customer.password) {
+  console.log('📦 Migrating primary connection to connection_list');
+  existingConnectionList.push({
+    connection_number: 1,
+    username: customer.username,
+    password: customer.password,
+    m3u_url: customer.m3u_url,
+    expiration_date: customer.expiration_date,
+    status: 'active'
+  });
+}
+```
+
+Updated:
+```typescript
+// 9. Migrate primary connection if connection_list is empty
+if (existingConnectionList.length === 0 && customer.username && customer.password) {
+  console.log('📦 Migrating primary connection to connection_list');
+  existingConnectionList.push({
+    connection_number: 1,
+    username: customer.username,
+    password: customer.password,
+    m3u_url: customer.m3u_url,
+    expiration_date: newExpirationDateStr, // Use new unified date
+    status: 'active'
+  });
+} else {
+  // Update expiration for ALL existing connections (renew portion of upgrade)
+  console.log(`🔄 Renewing ${existingConnectionList.length} existing connection(s) to ${newExpirationDateStr}`);
+  existingConnectionList = existingConnectionList.map((conn: any) => ({
+    ...conn,
+    expiration_date: newExpirationDateStr
+  }));
 }
 ```
 
 ---
 
-## Technical Implementation
+### Change 5: Update New Connection Creation (Lines 942-984)
 
-### 1. Update `index.ts` - Add 'upgrade' to Action Routing
+Update the expirationDate passed to create-iptv-user and stored in newConnections:
 
-**Line 124**: Add `'upgrade'` to the enhanced webhook action check:
+Current (lines 942-943):
 ```typescript
-if (payload.action && ['create', 'renew', 'trial', 'upgrade'].includes(payload.action)) {
+startDate: new Date().toISOString().split('T')[0],
+expirationDate: customer.expiration_date, // Match existing expiration
 ```
 
-**Line 63**: Add `'upgrade'` to GET parameter action type.
-
----
-
-### 2. Update `EnhancedWebhookPayload` Interface
-
-**Line 14**: Update action union type:
+Updated:
 ```typescript
-action: 'create' | 'renew' | 'trial' | 'upgrade';
+startDate: new Date().toISOString().split('T')[0],
+expirationDate: newExpirationDateStr, // Use unified new expiration
 ```
 
-**Add** `plan_duration_months?: number;` at root level (line ~33) for flexibility.
-
----
-
-### 3. New Function: `upgradeCustomerConnections`
-
-Location: After `renewCustomerGroup` function (around line 719)
-
-```text
-Signature:
-async function upgradeCustomerConnections(
-  payload: EnhancedWebhookPayload,
-  resellerId: string,
-  resellerData: any
-): Promise<EnhancedWebhookResult>
-```
-
-**Logic Flow:**
-
-1. **Extract plan_duration_months** (REQUIRED)
-   - Read from `payload.customer.plan_duration_months` OR `payload.plan_duration_months`
-   - If missing/invalid: return error `missing_plan_duration`
-
-2. **Validate requested connections**
-   - Must be 2 or 3 (max allowed is 3)
-   - If < 1 or > 3: return error `invalid_connections`
-
-3. **Find existing customer** (same priority as renew)
-   - Priority 1: Lookup by `highlevel_contact_id` if `contact_id` provided
-   - Priority 2: Fallback to name + email
-   - If not found: return `customer_not_found`, sync failure to HighLevel
-
-4. **Persist contact_id** if provided but customer lacks it
-
-5. **Determine current connection count**
-   ```text
-   If customer.connection_list exists and length > 0:
-       currentConnections = connection_list.length
-   Else if customer.total_connections > 0:
-       currentConnections = total_connections
-   Else if customer.username exists:
-       currentConnections = 1  // Legacy single-connection
-   Else:
-       currentConnections = 0  // Error state
-   ```
-
-6. **Validate upgrade is possible**
-   - If `requestedConnections <= currentConnections`:
-     Return `no_upgrade_needed` with message: "Customer already has N connection(s). Use 'renew' to extend subscription."
-   - If `requestedConnections > 3`:
-     Return `invalid_connections`
-
-7. **Calculate credits required**
-   ```text
-   delta = requestedConnections - currentConnections
-   creditsRequired = delta * planDurationMonths
-   ```
-
-8. **Check reseller credits**
-   - If insufficient: sync failure to HighLevel, return `insufficient_credits`
-
-9. **Migrate primary connection if needed**
-   - If `connection_list` is empty but customer has `username`/`password`:
-     - Create connection 1 from existing top-level credentials with existing expiration_date
-     - This becomes the base for appending new connections
-
-10. **Create additional connections (delta)**
-    - Loop `delta` times using `create-iptv-user` function (same as createConsolidatedAccount)
-    - Use customer's existing `package_id`, `device_type`
-    - Use `planDurationMonths` from payload for the new connection duration
-    - Extract credentials from each response
-    - Build connection objects with proper `connection_number`
-
-11. **Update database**
-    ```text
-    updatedConnectionList = [...existingConnections, ...newConnections]
-    
-    UPDATE customers SET
-        connection_list = updatedConnectionList,
-        total_connections = requestedConnections,
-        max_connections = requestedConnections
-        -- NOTE: expiration_date is NOT changed
-    WHERE id = customer.id
-    ```
-
-12. **Deduct credits**
-    ```text
-    UPDATE profiles SET credits = credits - creditsRequired WHERE id = resellerId
-    ```
-
-13. **Log credit usage**
-    ```text
-    INSERT INTO credit_logs (action='account_creation', notes='Upgrade from N to M connections')
-    ```
-
-14. **Sync to HighLevel** (non-blocking)
-    - Build `credentialsList` from updated `connection_list` (up to 3)
-    - Call `syncHighLevelContact()` with:
-      - `success: true`
-      - `credentialsList`: all connection credentials
-      - `expirationDate`: existing customer.expiration_date (NO CHANGE)
-      - `successTags`: `['upgrade_success']`
-
-15. **Return response** with all credentials (up to 3)
-
----
-
-### 4. Add Switch Case in `processEnhancedWebhook`
-
-**Line ~793** (after 'renew' case):
+Current (line 982):
 ```typescript
-case 'upgrade':
-  return await upgradeCustomerConnections(payload, resellerData.resellerId, resellerData);
+expiration_date: customer.expiration_date, // Keep existing expiration
+```
+
+Updated:
+```typescript
+expiration_date: newExpirationDateStr, // Use unified new expiration
 ```
 
 ---
 
-## Error Response Codes
+### Change 6: Update Database with New Expiration (Lines 1000-1008)
 
-| Error Code | Condition |
-|------------|-----------|
-| `missing_plan_duration` | No plan_duration_months in payload |
-| `invalid_connections` | Requested connections > 3 or < 1 |
-| `customer_not_found` | No match by contact_id or name+email |
-| `no_upgrade_needed` | Requested connections <= current |
-| `insufficient_credits` | Reseller lacks credits for delta |
-| `upgrade_failed` | Provisioning API call failed |
+Current:
+```typescript
+.update({
+  connection_list: updatedConnectionList,
+  total_connections: requestedConnections,
+  max_connections: requestedConnections
+  // NOTE: expiration_date is NOT changed during upgrade
+})
+```
+
+Updated:
+```typescript
+.update({
+  connection_list: updatedConnectionList,
+  total_connections: requestedConnections,
+  max_connections: requestedConnections,
+  expiration_date: newExpirationDateStr,
+  plan_duration: planDurationMonths
+})
+```
 
 ---
 
-## Files to Modify
+### Change 7: Update Credit Log Note (Lines 1030-1037)
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/webhook/index.ts` | Add `'upgrade'` to action check (line 124), add GET param support (line 63) |
-| `supabase/functions/webhook/enhancedWebhookHandler.ts` | Add to type (line 14), add root-level `plan_duration_months` field, add `upgradeCustomerConnections()` function, add switch case |
+Current:
+```typescript
+notes: `Upgrade from ${currentConnections} to ${requestedConnections} connections (${delta} new × ${planDurationMonths} months)`
+```
+
+Updated:
+```typescript
+notes: `Upgrade+Renew: ${currentConnections} → ${requestedConnections} connections for ${planDurationMonths} months`
+```
 
 ---
 
-## Edge Functions to Redeploy
+### Change 8: Update HighLevel Sync Expiration (Lines 1051-1058)
+
+Current:
+```typescript
+await syncHighLevelContact(
+  resellerId,
+  contactIdToUse,
+  true,
+  credentialsList,
+  customer.expiration_date, // Old date
+  undefined,
+  ['upgrade_success']
+);
+```
+
+Updated:
+```typescript
+await syncHighLevelContact(
+  resellerId,
+  contactIdToUse,
+  true,
+  credentialsList,
+  newExpirationDateStr, // New unified date
+  undefined,
+  ['upgrade_success']
+);
+```
+
+---
+
+### Change 9: Update Response End Date (Line 1070)
+
+Current:
+```typescript
+end_date: customer.expiration_date, // No change during upgrade
+```
+
+Updated:
+```typescript
+end_date: newExpirationDateStr, // New unified expiration
+```
+
+---
+
+## Summary of Changes
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Credits charged | `delta × duration` | `requestedConnections × duration` |
+| Existing connections renewed? | No | Yes |
+| `expiration_date` updated? | No | Yes (all connections get same date) |
+| HighLevel `service_expiration` | Old date | New unified date |
+| Response `end_date` | Old date | New unified date |
+| Date calculation | N/A (used old date) | Helper function matching SQL interval |
+
+---
+
+## Test Cases Validation
+
+| Scenario | Connections | Duration | Credits |
+|----------|-------------|----------|---------|
+| 1 → 3 for 1 month | 3 | 1 | 3 |
+| 1 → 2 for 6 months | 2 | 6 | 12 |
+| 1 → 3 for 12 months | 3 | 12 | 36 |
+| 2 → 3 for 3 months | 3 | 3 | 9 |
+
+---
+
+## Edge Function to Redeploy
 
 - `webhook`
 
----
-
-## Key Corrections Applied
-
-1. **plan_duration_months is REQUIRED** - Read from `payload.customer.plan_duration_months` OR `payload.plan_duration_months`
-2. **Credits = delta × plan_duration_months** - No prorating, matches purchased product
-3. **Expiration NOT changed** - Keep existing `customer.expiration_date`
-4. **Uses existing create-iptv-user** - Same provisioning path as createConsolidatedAccount
-5. **Customer lookup priority** - contact_id first, then name+email fallback
-6. **HighLevel sync** - Uses existing expirationDate, syncs all credentials
-
----
-
-## Expected Success Response
-
-```json
-{
-  "success": true,
-  "message": "Upgraded from 1 to 3 connections",
-  "name": "John Doe",
-  "email": "john@example.com",
-  "device_type": "Smart TV",
-  "start_date": "2026-01-09",
-  "end_date": "2026-07-09",
-  "account_type": "m3u",
-  "credits_used": 12,
-  "total_connections": 3,
-  "credentials": [...],
-  "username_1": "...",
-  "password_1": "...",
-  "m3u_url_1": "...",
-  "username_2": "...",
-  "password_2": "...",
-  "m3u_url_2": "...",
-  "username_3": "...",
-  "password_3": "...",
-  "m3u_url_3": "..."
-}
-```
-
----
-
-## Expected Error Response (No Upgrade Needed)
-
-```json
-{
-  "success": false,
-  "message": "Customer already has 3 connection(s). No upgrade needed. Use 'renew' to extend subscription.",
-  "errors": ["no_upgrade_needed"]
-}
-```
