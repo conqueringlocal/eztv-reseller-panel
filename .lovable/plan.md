@@ -1,215 +1,239 @@
 
-# Sunset 8K/IPTV Panel - Trex-Only Mode
 
-## Overview
+# Fix: Preflight Validation for Consolidated Customers
 
-This plan "sunsets" the 8K/IPTV panel integrations by changing all defaults to Trex and removing 8K-specific API call logic. The code files will remain in place (no deletion) but will no longer be actively called or pinged.
+## Problem
 
----
-
-## Database Migration
-
-Update existing data and column defaults to Trex:
-
-```sql
--- Update profiles table
-ALTER TABLE profiles ALTER COLUMN provider SET DEFAULT 'trex';
-UPDATE profiles SET provider = 'trex' WHERE provider = '8k' OR provider = 'iptv' OR provider IS NULL;
-
--- Update customers table  
-ALTER TABLE customers ALTER COLUMN provider SET DEFAULT 'trex';
-UPDATE customers SET provider = 'trex' WHERE provider = '8k' OR provider = 'iptv' OR provider IS NULL;
-```
-
----
-
-## Edge Function Changes
-
-### High Priority (Remove 8K API Calls)
-
-| File | Current Behavior | Change |
-|------|------------------|--------|
-| `renew-customer-group/index.ts` | Defaults to `'8k'` when provider is missing; has 8K case in `verifyConnectionExists`; calls `renew-iptv-user` | Default to `'trex'`; remove 8K case; always call `renew-trex-user` for M3U accounts |
-| `sync-device-info/index.ts` | Has `case '8k'` in provider switch; pings 8K panel URL | Remove 8K case; default to Trex credentials |
-| `add-connection-to-customer/index.ts` | Defaults provider to `'8k'`; has 8K/IPTV API call blocks | Default to `'trex'`; remove 8K API logic |
-| `create-iptv-user/index.ts` | Defaults to 8K; has full 8K account creation flow | Default to `'trex'`; invoke `create-trex-user` instead |
-| `webhook/enhancedWebhookHandler.ts` | Defaults provider to `'8k'` in multiple places | Change all defaults to `'trex'` |
-| `get-iptv-packages/index.ts` | Fetches 8K packages as default | Default to Trex; remove 8K package fetch |
-| `check-iptv-user-exists/index.ts` | Has 8K verification logic | Remove 8K check; use Trex only |
-| `update-reseller-provider/index.ts` | Allows `'8k'` as valid provider | Remove `'8k'` from valid providers list |
-
-### Lower Priority (Keep but Won't Be Called)
-
-These functions will remain in the codebase but won't be invoked:
-- `create-8k-user/index.ts` - Keep file, but no longer called
-- `renew-iptv-user/index.ts` - Keep file, but `renew-customer-group` will only call `renew-trex-user`
-- `delete-iptv-user/index.ts` - Keep file, but no longer called
-
----
-
-## Frontend Changes
-
-| File | Change |
-|------|--------|
-| `src/components/customers/CreateTrialWithProviderForm.tsx` | Default provider to `'trex'`; remove `'8k'` from Zod enum |
-| `src/components/customers/AddCustomerForm.tsx` | Default provider to `'trex'` |
-| `src/components/customers/BulkImportForm.tsx` | Default provider to `'trex'` |
-| `src/hooks/useIptvPackages.ts` | Default provider state to `'trex'` |
-| `src/hooks/useAllIptvPackages.ts` | Remove `'8k'` from providers array |
-| `src/contexts/app/hooks/useCustomers.ts` | Default `userProvider` to `'trex'` |
-| `src/contexts/app/utils/customerUtils.ts` | Default provider fallback to `'trex'` |
-| `src/components/resellers/ChangeProviderDialog.tsx` | Simplify to assume Trex is the only option |
-
----
-
-## Detailed Edge Function Changes
-
-### 1. `renew-customer-group/index.ts`
-
-**Line 318, 520, 548** - Change provider fallback:
-```typescript
-// Before
-const provider = customer.provider || '8k';
-
-// After
-const provider = customer.provider || 'trex';
-```
-
-**Lines 36-48** - Remove 8K case from `verifyConnectionExists`:
-```typescript
-// Before
-switch (provider) {
-  case 'trex':
-    apiKey = Deno.env.get('TREX_API_KEY');
-    panelUrl = Deno.env.get('TREX_PANEL_URL');
-    break;
-  case '8k':
-    apiKey = Deno.env.get('8K_API_KEY');
-    panelUrl = Deno.env.get('8K_PANEL_URL');
-    break;
-  default:
-    apiKey = Deno.env.get('IPTV_API_KEY');
-    panelUrl = Deno.env.get('IPTV_PANEL_URL');
-    break;
-}
-
-// After
-// Always use Trex credentials
-apiKey = Deno.env.get('TREX_API_KEY');
-panelUrl = Deno.env.get('TREX_PANEL_URL');
-```
-
-**Line 521** - Always use Trex renewal function:
-```typescript
-// Before
-const functionName = provider === 'trex' ? 'renew-trex-user' : 'renew-iptv-user';
-
-// After
-const functionName = 'renew-trex-user';
-```
-
-### 2. `sync-device-info/index.ts`
-
-**Lines 86-99** - Remove provider switch:
-```typescript
-// Before
-switch (customer.provider) {
-  case 'trex':
-    apiKey = Deno.env.get('TREX_API_KEY');
-    panelUrl = Deno.env.get('TREX_PANEL_URL');
-    break;
-  case '8k':
-    apiKey = Deno.env.get('8K_API_KEY');
-    panelUrl = Deno.env.get('8K_PANEL_URL');
-    break;
-  default:
-    apiKey = Deno.env.get('IPTV_API_KEY');
-    panelUrl = Deno.env.get('IPTV_PANEL_URL');
-    break;
-}
-
-// After
-// Trex only
-apiKey = Deno.env.get('TREX_API_KEY');
-panelUrl = Deno.env.get('TREX_PANEL_URL');
-```
-
-### 3. `add-connection-to-customer/index.ts`
-
-**Lines 102, 218** - Change default provider:
-```typescript
-// Before
-const provider = customer.provider || '8k';
-
-// After
-const provider = customer.provider || 'trex';
-```
-
-**Lines 179-213, 295-329** - Remove 8K/IPTV API call blocks (the `else` branches after Trex):
-```typescript
-// Remove the entire else block that calls 8K/IPTV API
-// Only keep the Trex API logic
-```
-
-### 4. `webhook/enhancedWebhookHandler.ts`
-
-**Lines 104, 447** - Change default provider:
-```typescript
-// Before
-provider: apiKeyData.profiles.provider || '8k'
-provider: resellerData.provider || '8k'
-
-// After
-provider: apiKeyData.profiles.provider || 'trex'
-provider: resellerData.provider || 'trex'
-```
-
-### 5. `get-iptv-packages/index.ts`
-
-Change to always fetch Trex packages only.
-
----
-
-## Files NOT Being Deleted (Sunset Only)
-
-These files will remain in the codebase but will no longer be actively invoked:
+The webhook renewal is failing because the preflight validation checks the wrong credentials:
 
 ```text
-supabase/functions/create-8k-user/          (kept, not called)
-supabase/functions/renew-iptv-user/         (kept, not called)
-supabase/functions/delete-iptv-user/        (kept, not called)
+Customer: Michael Kennon
+├── Top-level fields (what preflight checks):
+│   ├── username: NULL
+│   ├── password: NULL
+│   └── mac_address: 00:00:00:00:00:00  ← PLACEHOLDER
+│
+└── connection_list (actual credentials):
+    └── [0]:
+        ├── username: bd264af259  ← REAL CREDENTIAL
+        ├── password: 4de2d92bca  ← REAL CREDENTIAL
+        └── m3u_url: http://vpn.eztvclub.online/get.php?...
+```
+
+The preflight sends the placeholder MAC `00:00:00:00:00:00` to verify, which the Trex API correctly says doesn't exist.
+
+---
+
+## Solution
+
+Update the preflight validation loop in `renew-customer-group` to:
+1. Check if `connection_list` exists and has entries
+2. If yes → verify each connection in the list
+3. If no → fall back to top-level credentials (legacy single-connection)
+
+Also ensure `renew-trex-user` is passed `serviceCall` flags so it doesn't require JWT.
+
+---
+
+## Technical Changes
+
+### File 1: `supabase/functions/renew-customer-group/index.ts`
+
+**Lines 306-328** - Replace the current preflight loop:
+
+```typescript
+for (const customer of groupCustomers) {
+  const provider = customer.provider || 'trex';
+  const connectionList = customer.connection_list;
+  const hasConnectionList = Array.isArray(connectionList) && connectionList.length > 0;
+  
+  if (hasConnectionList) {
+    // CONSOLIDATED CUSTOMER - verify each connection in the list
+    console.log(`📋 Customer ${customer.name} has ${connectionList.length} connection(s) in connection_list`);
+    
+    for (const conn of connectionList) {
+      const verification = await verifyConnectionExists(
+        { 
+          username: conn.username, 
+          password: conn.password, 
+          mac_address: conn.mac_address 
+        },
+        provider
+      );
+      
+      if (!verification.exists) {
+        console.log(`❌ PREFLIGHT FAILED: ${customer.name} connection ${conn.connection_number || '?'}`);
+        missingConnections.push({
+          name: `${customer.name} (Connection ${conn.connection_number || '?'})`,
+          username: conn.username,
+          mac_address: conn.mac_address,
+          error: verification.error || 'Account not found in provider panel'
+        });
+      } else {
+        console.log(`✅ PREFLIGHT PASSED: ${customer.name} connection ${conn.connection_number || '?'}`);
+      }
+    }
+  } else {
+    // LEGACY SINGLE-CONNECTION - use top-level fields
+    const verification = await verifyConnectionExists(
+      { 
+        username: customer.username, 
+        password: customer.password, 
+        mac_address: customer.mac_address 
+      },
+      provider
+    );
+    
+    if (!verification.exists) {
+      console.log(`❌ PREFLIGHT FAILED: ${customer.name} does not exist in ${provider} panel`);
+      missingConnections.push({
+        name: customer.name,
+        username: customer.username,
+        mac_address: customer.mac_address,
+        error: verification.error || 'Account not found in provider panel'
+      });
+    } else {
+      console.log(`✅ PREFLIGHT PASSED: ${customer.name} exists in panel`);
+    }
+  }
+}
+```
+
+**Lines 514-518** - Forward serviceCall flags to `renew-trex-user`:
+
+```typescript
+const { data, error } = await clientWithAuth.functions.invoke(functionName, {
+  body: {
+    customerId: customer.id,
+    planDuration: planDuration,
+    ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
+  }
+});
+```
+
+**Lines 473-478** - Forward serviceCall flags to `renew-mag-user`:
+
+```typescript
+const { data, error } = await clientWithAuth.functions.invoke('renew-mag-user', {
+  body: {
+    customerId: customer.id,
+    planDuration: planDuration,
+    ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
+  }
+});
 ```
 
 ---
 
-## Summary of What This Achieves
+### File 2: `supabase/functions/renew-trex-user/index.ts`
 
-1. **No more 8K/IPTV panel pings** - All API calls go to Trex only
-2. **Existing customers migrated** - Database migration updates all `'8k'` providers to `'trex'`
-3. **New accounts default to Trex** - Column defaults changed
-4. **UI simplified** - No provider selection needed (Trex assumed)
-5. **Code preserved** - Old files remain for reference but are inactive
+**Update interface (line 10):**
+```typescript
+interface RenewRequest {
+  customerId: string;
+  planDuration: number;
+  serviceCall?: boolean;  // Skip JWT for internal calls
+  resellerId?: string;    // Required when serviceCall=true
+}
+```
+
+**Replace JWT verification (lines 40-61):**
+```typescript
+const { customerId, planDuration, serviceCall = false, resellerId: providedResellerId }: RenewRequest = await req.json();
+
+let isServiceCall = false;
+
+if (!serviceCall) {
+  // Normal path: Verify JWT token
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return new Response(
+      JSON.stringify({ error: 'No authorization header' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+  if (authError || !user) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid token' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  // ... existing user authorization logic
+} else {
+  // Service call path: Skip JWT
+  console.log('🔐 Bypassing JWT authentication for service call');
+  if (!providedResellerId) {
+    return new Response(
+      JSON.stringify({ error: 'resellerId is required for service calls' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  isServiceCall = true;
+}
+```
+
+**After fetching customer (line ~81), add reseller check for service calls:**
+```typescript
+if (isServiceCall) {
+  if (customer.reseller_id !== providedResellerId) {
+    return new Response(
+      JSON.stringify({ error: 'Reseller ID mismatch' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  console.log(`✅ Service call authorized for reseller: ${providedResellerId}`);
+}
+```
+
+---
+
+### File 3: `supabase/config.toml`
+
+Add JWT bypass for renewal functions (they handle auth internally):
+
+```toml
+[functions.renew-trex-user]
+verify_jwt = false
+
+[functions.renew-mag-user]
+verify_jwt = false
+```
+
+---
+
+## Expected Flow After Fix
+
+```text
+Webhook → renew-customer-group (serviceCall: true)
+    │
+    ▼
+Preflight checks connection_list:
+  └── username: bd264af259 → Trex API returns ✅ exists
+    │
+    ▼
+renew-trex-user (serviceCall: true, resellerId)
+  └── JWT bypassed → Trex API renews → ✅ Success
+    │
+    ▼
+Database updated, HighLevel synced with renewal_success tag
+```
 
 ---
 
 ## Edge Functions to Redeploy
 
-After changes:
 - `renew-customer-group`
-- `sync-device-info`
-- `add-connection-to-customer`
-- `webhook`
-- `get-iptv-packages`
-- `check-iptv-user-exists`
-- `update-reseller-provider`
-- `create-iptv-user`
+- `renew-trex-user`
+- `renew-mag-user`
 
 ---
 
-## Testing After Deployment
+## Testing
 
-1. Create a new customer - verify only Trex API is called
-2. Renew an existing customer - verify only `renew-trex-user` is invoked
-3. Sync device info - verify Trex panel URL is used
-4. Add connection - verify Trex API is used
-5. Check database - confirm all providers are now `'trex'`
+Send the same webhook payload. Expected result:
+- HTTP 200 with `success: true`
+- Customer expiration extended by 1 month
+- HighLevel contact receives `renewal_success` tag
+
