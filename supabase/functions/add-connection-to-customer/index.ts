@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
       // We only create the NEW connection (connection 2)
       console.log(`🔄 Migration mode: will use existing credentials for connection 1, creating NEW connection 2`);
       
-      const provider = customer.provider || '8k';
+      const provider = customer.provider || 'trex';
       let apiKey: string;
       let panelUrl: string;
 
@@ -215,7 +215,7 @@ Deno.serve(async (req) => {
       console.log(`✅ New connection created via provider API`);
     } else {
       // Normal flow - create a new connection
-      const provider = customer.provider || '8k';
+      const provider = customer.provider || 'trex';
       let apiKey: string;
       let panelUrl: string;
 

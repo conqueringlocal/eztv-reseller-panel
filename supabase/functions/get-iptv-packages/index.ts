@@ -38,7 +38,7 @@ serve(async (req) => {
 
     // Get the authorization header to identify the reseller
     const authHeader = req.headers.get('Authorization');
-    let userProvider = '8k'; // Default provider
+    let userProvider = 'trex'; // Trex-only mode
     
     if (authHeader) {
       try {
@@ -58,7 +58,7 @@ serve(async (req) => {
           }
         }
       } catch (error) {
-        console.log('Could not determine provider from auth, using default 8k');
+        console.log('Could not determine provider from auth, using default trex');
       }
     }
 

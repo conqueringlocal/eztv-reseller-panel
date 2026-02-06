@@ -16,7 +16,7 @@ const formSchema = z.object({
   name: z.string().min(2, 'Customer name must be at least 2 characters'),
   email: z.string().email('Please enter a valid email address'),
   deviceType: z.string().min(1, 'Device type is required'),
-  provider: z.enum(['8k', 'trex'], {
+  provider: z.enum(['trex'], {
     required_error: 'Please select a provider',
   }),
 });
@@ -38,7 +38,7 @@ export function CreateTrialWithProviderForm({ onSuccess }: CreateTrialWithProvid
       name: '',
       email: '',
       deviceType: 'Smart TV',
-      provider: '8k',
+      provider: 'trex',
     },
   });
 

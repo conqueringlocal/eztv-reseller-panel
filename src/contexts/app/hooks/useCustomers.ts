@@ -68,7 +68,7 @@ export const useCustomers = (user: any, authLoading: boolean) => {
     
     try {
       // Get the user's assigned provider
-      const userProvider = user?.provider || '8k';
+      const userProvider = user?.provider || 'trex';
       console.log(`🏢 User provider: ${userProvider}`);
       
       // Use provider-specific edge function

@@ -101,7 +101,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       resellerId: apiKeyData.reseller_id,
       credits: apiKeyData.profiles.credits,
       name: apiKeyData.profiles.name,
-      provider: apiKeyData.profiles.provider || 'trex'
+      provider: 'trex' // Trex-only mode
     };
   } catch (error) {
     console.error('💥 Error getting reseller by API key:', error);
@@ -444,7 +444,7 @@ async function createConsolidatedAccount(
         expiration_date: expirationDate.toISOString().split('T')[0],
         status: 'active',
         is_deactivated: false,
-        provider: resellerData.provider || '8k',
+        provider: 'trex', // Trex-only mode
         customer_group: customerGroupId,
         customer_group_id: null,
         highlevel_contact_id: payload.contact_id

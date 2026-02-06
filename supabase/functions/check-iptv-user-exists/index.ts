@@ -65,7 +65,7 @@ serve(async (req) => {
       );
     }
 
-    const provider = reseller.provider || '8k';
+    const provider = reseller.provider || 'trex';
     console.log(`📱 Using provider: ${provider}`);
 
     // Get API credentials from environment

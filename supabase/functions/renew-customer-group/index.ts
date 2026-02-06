@@ -33,20 +33,9 @@ async function verifyConnectionExists(
     let apiKey: string | undefined;
     let panelUrl: string | undefined;
 
-    switch (provider) {
-      case 'trex':
-        apiKey = Deno.env.get('TREX_API_KEY');
-        panelUrl = Deno.env.get('TREX_PANEL_URL');
-        break;
-      case '8k':
-        apiKey = Deno.env.get('8K_API_KEY');
-        panelUrl = Deno.env.get('8K_PANEL_URL');
-        break;
-      default:
-        apiKey = Deno.env.get('IPTV_API_KEY');
-        panelUrl = Deno.env.get('IPTV_PANEL_URL');
-        break;
-    }
+    // Trex-only mode: Always use Trex credentials
+    apiKey = Deno.env.get('TREX_API_KEY');
+    panelUrl = Deno.env.get('TREX_PANEL_URL');
 
     if (!apiKey || !panelUrl) {
       return { exists: false, error: `Provider ${provider} not configured` };
@@ -315,7 +304,7 @@ serve(async (req) => {
     const missingConnections: Array<{ name: string; username?: string; mac_address?: string; error: string }> = [];
     
     for (const customer of groupCustomers) {
-      const provider = customer.provider || '8k';
+      const provider = customer.provider || 'trex';
       const verification = await verifyConnectionExists(
         { 
           username: customer.username, 
@@ -517,8 +506,8 @@ serve(async (req) => {
     console.log(`\n🔄 Starting M3U Customer Renewals (${m3uCustomers.length} accounts)...`);
     for (const customer of m3uCustomers) {
       try {
-        const provider = customer.provider || '8k';
-        const functionName = provider === 'trex' ? 'renew-trex-user' : 'renew-iptv-user';
+        const provider = customer.provider || 'trex';
+        const functionName = 'renew-trex-user'; // Trex-only mode
         
         console.log(`   → Renewing ${provider.toUpperCase()}: ${customer.name} | Username: ${customer.username} | Customer ID: ${customer.id}`);
         
@@ -545,7 +534,7 @@ serve(async (req) => {
           });
         }
       } catch (error) {
-        const provider = customer.provider || '8k';
+        const provider = customer.provider || 'trex';
         console.error(`   ❌ EXCEPTION: ${customer.name} - ${error.message}`);
         renewalResults.push({
           account: customer as CustomerAccount,

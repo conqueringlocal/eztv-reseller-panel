@@ -102,7 +102,7 @@ serve(async (req) => {
     }
 
     // Validate provider value
-    const validProviders = ['8k', 'trex'];
+    const validProviders = ['trex']; // Trex-only mode
     if (!validProviders.includes(new_provider)) {
       console.log('Invalid provider:', new_provider);
       return new Response(JSON.stringify({ error: 'Invalid provider. Must be one of: ' + validProviders.join(', ') }), {
@@ -127,7 +127,7 @@ serve(async (req) => {
       });
     }
 
-    const oldProvider = currentReseller.provider || '8k';
+    const oldProvider = currentReseller.provider || 'trex';
     
     if (oldProvider === new_provider) {
       console.log('Provider is already set to:', new_provider);

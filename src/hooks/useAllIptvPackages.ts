@@ -35,7 +35,7 @@ export function useAllIptvPackages() {
     
     try {
       // Fetch packages for both major providers
-      const providers = ['8k', 'trex'];
+      const providers = ['trex']; // Trex-only mode
       const allPackages: IptvPackage[] = [];
       const packageMap = new Map<string, string>();
       

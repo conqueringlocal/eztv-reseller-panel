@@ -83,20 +83,9 @@ serve(async (req) => {
     let apiKey: string | undefined;
     let panelUrl: string | undefined;
 
-    switch (customer.provider) {
-      case 'trex':
-        apiKey = Deno.env.get('TREX_API_KEY');
-        panelUrl = Deno.env.get('TREX_PANEL_URL');
-        break;
-      case '8k':
-        apiKey = Deno.env.get('8K_API_KEY');
-        panelUrl = Deno.env.get('8K_PANEL_URL');
-        break;
-      default:
-        apiKey = Deno.env.get('IPTV_API_KEY');
-        panelUrl = Deno.env.get('IPTV_PANEL_URL');
-        break;
-    }
+    // Trex-only mode: Always use Trex credentials
+    apiKey = Deno.env.get('TREX_API_KEY');
+    panelUrl = Deno.env.get('TREX_PANEL_URL');
 
     if (!apiKey || !panelUrl) {
       console.error('Missing provider credentials for:', customer.provider);
