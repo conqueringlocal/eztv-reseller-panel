@@ -1,221 +1,171 @@
 
-# Renewal by HighLevel Contact ID + Success Tag
+# Fix: Webhook Renewal 401 Error
 
-## Overview
+## Problem
 
-Add the ability to renew customers using only their HighLevel `contact_id`, and add a `renewal_success` tag on successful renewals to trigger HighLevel workflows.
+The webhook is receiving a **401 Unauthorized** error when calling `renew-customer-group`:
+```
+❌ Auth verification failed: { error: "invalid claim: missing sub claim" }
+```
+
+**Root Cause:** The `renew-customer-group` function requires a valid user JWT, but webhooks authenticate via API key (not JWT). When the webhook invokes this function, there's no valid user session.
+
+## Solution
+
+Add the **serviceCall pattern** (already used by `create-iptv-user` and `create-trex-user`) to `renew-customer-group`. This allows internal service calls to bypass JWT verification while maintaining security for direct user calls.
 
 ---
 
-## Simplified Webhook Payload
+## Changes Required
 
-**Minimal Renewal (Contact ID Lookup):**
-```json
-{
-  "api_key": "{{custom_values.iptv_reseller_api_key}}",
-  "contact_id": "{{contact.id}}",
-  "action": "renew",
-  "customer": {
-    "plan_duration_months": 1
-  }
+### File 1: `supabase/functions/renew-customer-group/index.ts`
+
+**1. Update Request Interface (around line 10)**
+Add `serviceCall` and `resellerId` parameters:
+```typescript
+interface RenewGroupRequest {
+  customerId: string;
+  planDuration: number;
+  serviceCall?: boolean;  // NEW: Skip JWT verification for internal calls
+  resellerId?: string;    // NEW: Provided when serviceCall=true
 }
 ```
 
-**Full Renewal (Backwards Compatible with Fallback):**
-```json
-{
-  "api_key": "{{custom_values.iptv_reseller_api_key}}",
-  "contact_id": "{{contact.id}}",
-  "action": "renew",
-  "customer": {
-    "name": "{{contact.first_name}} {{contact.last_name}}",
-    "email": "{{contact.email}}",
-    "plan_duration_months": 1
+**2. Add Service Call Logic (lines 115-155)**
+Wrap the JWT verification in a conditional:
+```typescript
+const { customerId, planDuration, serviceCall = false, resellerId: providedResellerId }: RenewGroupRequest = await req.json();
+
+// Determine user context based on call type
+let verifiedUserId: string | null = null;
+let isServiceCall = false;
+
+if (!serviceCall) {
+  // Normal path: Verify JWT token
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    // ... existing error handling
   }
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+  if (authError || !user) {
+    // ... existing error handling
+  }
+  verifiedUserId = user.id;
+  console.log(`✅ User authenticated: ${user.email} (ID: ${user.id})`);
+} else {
+  // Service call path: Skip JWT, trust the provided resellerId
+  console.log('🔐 Bypassing JWT authentication for service call');
+  if (!providedResellerId) {
+    return new Response(
+      JSON.stringify({ error: 'resellerId is required for service calls' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  isServiceCall = true;
 }
 ```
 
-No need to specify connections - the system automatically renews ALL connections in the customer's `connection_list`.
+**3. Adjust Authorization Logic**
+After the customer lookup, use the verified user OR service call context:
+```typescript
+// For service calls, skip user-based authorization
+// The webhook already verified the API key belongs to the reseller
+if (!isServiceCall) {
+  // Existing user/admin authorization checks...
+} else {
+  // Service call - verify the provided resellerId matches the customer's reseller
+  if (primaryCustomer.reseller_id !== providedResellerId) {
+    console.error(`❌ Service call reseller mismatch: provided ${providedResellerId} != customer ${primaryCustomer.reseller_id}`);
+    return new Response(
+      JSON.stringify({ error: 'Reseller ID mismatch' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  console.log(`✅ Service call authorized for reseller: ${providedResellerId}`);
+}
+```
 
 ---
 
-## How It Works
+### File 2: `supabase/functions/webhook/enhancedWebhookHandler.ts`
+
+**Update the renewal invocation (around line 619)**
+Pass `serviceCall: true` and the validated `resellerId`:
+```typescript
+const { data, error } = await supabase.functions.invoke('renew-customer-group', {
+  body: {
+    customerId: customer.id,
+    planDuration: planDuration,
+    serviceCall: true,      // NEW: Bypass JWT verification
+    resellerId: resellerId  // NEW: Already validated from API key
+  }
+});
+```
+
+---
+
+## Security Notes
+
+- **API Key Validation**: The webhook already validates the API key and resolves `resellerId` before reaching the renewal logic. This is secure.
+- **Reseller Mismatch Check**: The service call path still verifies that the provided `resellerId` matches the customer's owner.
+- **No JWT Required**: Since the webhook uses API key auth (validated at webhook entry), JWT is not needed for internal calls.
+
+---
+
+## Flow After Fix
 
 ```text
-Webhook Received
+Webhook Received (action: renew)
        │
        ▼
 ┌──────────────────────────────┐
-│  Has contact_id?             │
+│ Validate API Key             │
+│ Resolve resellerId           │
 └──────────────────────────────┘
-       │ Yes              │ No
-       ▼                  │
-┌────────────────────┐    │
-│ Query customers by │    │
-│ highlevel_contact_id│   │
-└────────────────────┘    │
-       │                  │
-   Found?                 │
-       │ No               │
-       ▼                  ▼
-┌─────────────────────────────┐
-│ Query by name + email       │
-│ (backwards compatible)      │
-└─────────────────────────────┘
-       │
-   Found?
-       │ No ────▶ Return Error + provision_failed tag
        │
        ▼
-┌─────────────────────────────┐
-│ renew-customer-group        │
-│ (renews ALL connections)    │
-└─────────────────────────────┘
+┌──────────────────────────────┐
+│ Find customer by contact_id  │
+│ or name+email                │
+└──────────────────────────────┘
        │
-   Success?
-       │ Yes
        ▼
-┌─────────────────────────────┐
-│ Sync to HighLevel:          │
-│ • provision_status: success │
-│ • service_expiration        │
-│ • All credentials (1-3)     │
-│ • renewal_success tag       │
-└─────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ Invoke renew-customer-group              │
+│   serviceCall: true                      │
+│   resellerId: <from API key>             │
+│   customerId: <from lookup>              │
+│   planDuration: <from payload>           │
+└──────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────┐
+│ Skip JWT verification        │
+│ Verify reseller owns customer│
+│ Proceed with renewal         │
+└──────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────┐
+│ Renew ALL connections        │
+│ Sync to HighLevel            │
+│ Add renewal_success tag      │
+└──────────────────────────────┘
 ```
 
 ---
 
-## What Gets Synced to HighLevel
+## Edge Functions to Redeploy
 
-**On Success:**
-| Field | Value |
-|-------|-------|
-| `provision_status` | `success` |
-| `service_expiration` | New expiry date (YYYY-MM-DD) |
-| `total_connections` | Number of connections (1-3) |
-| `service_username_1..3` | Credentials for each connection |
-| `service_password_1..3` | Credentials for each connection |
-| `service_m3u_url_1..3` | M3U URLs for each connection |
-| **Tag Added** | `renewal_success` |
-
-**On Failure:**
-| Field | Value |
-|-------|-------|
-| `provision_status` | `failed` |
-| `provision_error` | Error message |
-| **Tag Added** | `provision_failed` |
-
----
-
-## Technical Changes
-
-### File to Modify
-
-`supabase/functions/webhook/enhancedWebhookHandler.ts`
-
-### Changes
-
-**1. Update Customer Lookup (lines 546-572)**
-
-Add contact_id lookup before name+email:
-
-```typescript
-// First try to find by highlevel_contact_id if contact_id is provided
-let customer = null;
-if (payload.contact_id) {
-  const { data: contactCustomers } = await supabase
-    .from('customers')
-    .select('*')
-    .eq('reseller_id', resellerId)
-    .eq('highlevel_contact_id', payload.contact_id)
-    .in('status', ['active', 'expired', 'expiring_soon'])
-    .limit(1);
-  
-  if (contactCustomers && contactCustomers.length > 0) {
-    customer = contactCustomers[0];
-    console.log(`✅ Found customer by highlevel_contact_id: ${customer.name}`);
-  }
-}
-
-// Fallback to name + email lookup
-if (!customer && payload.customer.name && payload.customer.email) {
-  const { data: nameEmailCustomers } = await supabase
-    .from('customers')
-    .select('*')
-    .eq('reseller_id', resellerId)
-    .eq('name', payload.customer.name)
-    .eq('email', payload.customer.email)
-    .in('status', ['active', 'expired', 'expiring_soon'])
-    .limit(1);
-  
-  if (nameEmailCustomers && nameEmailCustomers.length > 0) {
-    customer = nameEmailCustomers[0];
-  }
-}
-
-if (!customer) {
-  // Sync failure to HighLevel
-  await syncHighLevelContact(resellerId, payload.contact_id, false, undefined, undefined, 
-    'No customer found matching the provided contact_id, name, or email');
-  return { success: false, message: 'Customer not found', errors: ['customer_not_found'] };
-}
-```
-
-**2. Add renewal_success Tag on Success (line 629-635)**
-
-Update the HighLevel sync call to include the success tag:
-
-```typescript
-await syncHighLevelContact(
-  resellerId,
-  contactIdToUse,
-  true,
-  credentialsList,
-  newExpiry.toISOString().split('T')[0],
-  undefined,
-  ['renewal_success']  // NEW: Tag for workflow triggers
-);
-```
-
----
-
-## Multi-Connection Handling
-
-No changes needed - the existing `renew-customer-group` function already:
-
-1. Retrieves the customer's `connection_list` JSONB array
-2. Validates all connections exist in the provider panel (pre-flight check)
-3. Iterates through each connection and renews individually
-4. Updates all expiration dates in the database
-5. Deducts credits based on total connections x duration
-
----
-
-## Edge Function to Redeploy
-
+- `renew-customer-group`
 - `webhook`
 
 ---
 
-## Testing After Deployment
+## Testing
 
-1. **Test Contact ID Lookup:**
-   - Send renewal with only `contact_id` and `plan_duration_months`
-   - Verify customer is found and renewed
-
-2. **Test Backwards Compatibility:**
-   - Send renewal with `name`, `email`, and `plan_duration_months`
-   - Verify existing flow still works
-
-3. **Test Multi-Connection Renewal:**
-   - Renew a customer with 2-3 connections
-   - Verify all connections get extended
-
-4. **Test HighLevel Sync:**
-   - Check contact has `renewal_success` tag
-   - Verify credentials and expiration are updated
-
-5. **Test Failure Scenario:**
-   - Send renewal with non-existent `contact_id`
-   - Verify `provision_failed` tag is added
+1. Send the same renewal webhook payload
+2. Verify no 401 error occurs
+3. Check customer expiration date is extended
+4. Verify HighLevel contact has `renewal_success` tag
