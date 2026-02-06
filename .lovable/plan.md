@@ -1,171 +1,215 @@
 
-# Fix: Webhook Renewal 401 Error
+# Sunset 8K/IPTV Panel - Trex-Only Mode
 
-## Problem
+## Overview
 
-The webhook is receiving a **401 Unauthorized** error when calling `renew-customer-group`:
-```
-❌ Auth verification failed: { error: "invalid claim: missing sub claim" }
-```
-
-**Root Cause:** The `renew-customer-group` function requires a valid user JWT, but webhooks authenticate via API key (not JWT). When the webhook invokes this function, there's no valid user session.
-
-## Solution
-
-Add the **serviceCall pattern** (already used by `create-iptv-user` and `create-trex-user`) to `renew-customer-group`. This allows internal service calls to bypass JWT verification while maintaining security for direct user calls.
+This plan "sunsets" the 8K/IPTV panel integrations by changing all defaults to Trex and removing 8K-specific API call logic. The code files will remain in place (no deletion) but will no longer be actively called or pinged.
 
 ---
 
-## Changes Required
+## Database Migration
 
-### File 1: `supabase/functions/renew-customer-group/index.ts`
+Update existing data and column defaults to Trex:
 
-**1. Update Request Interface (around line 10)**
-Add `serviceCall` and `resellerId` parameters:
+```sql
+-- Update profiles table
+ALTER TABLE profiles ALTER COLUMN provider SET DEFAULT 'trex';
+UPDATE profiles SET provider = 'trex' WHERE provider = '8k' OR provider = 'iptv' OR provider IS NULL;
+
+-- Update customers table  
+ALTER TABLE customers ALTER COLUMN provider SET DEFAULT 'trex';
+UPDATE customers SET provider = 'trex' WHERE provider = '8k' OR provider = 'iptv' OR provider IS NULL;
+```
+
+---
+
+## Edge Function Changes
+
+### High Priority (Remove 8K API Calls)
+
+| File | Current Behavior | Change |
+|------|------------------|--------|
+| `renew-customer-group/index.ts` | Defaults to `'8k'` when provider is missing; has 8K case in `verifyConnectionExists`; calls `renew-iptv-user` | Default to `'trex'`; remove 8K case; always call `renew-trex-user` for M3U accounts |
+| `sync-device-info/index.ts` | Has `case '8k'` in provider switch; pings 8K panel URL | Remove 8K case; default to Trex credentials |
+| `add-connection-to-customer/index.ts` | Defaults provider to `'8k'`; has 8K/IPTV API call blocks | Default to `'trex'`; remove 8K API logic |
+| `create-iptv-user/index.ts` | Defaults to 8K; has full 8K account creation flow | Default to `'trex'`; invoke `create-trex-user` instead |
+| `webhook/enhancedWebhookHandler.ts` | Defaults provider to `'8k'` in multiple places | Change all defaults to `'trex'` |
+| `get-iptv-packages/index.ts` | Fetches 8K packages as default | Default to Trex; remove 8K package fetch |
+| `check-iptv-user-exists/index.ts` | Has 8K verification logic | Remove 8K check; use Trex only |
+| `update-reseller-provider/index.ts` | Allows `'8k'` as valid provider | Remove `'8k'` from valid providers list |
+
+### Lower Priority (Keep but Won't Be Called)
+
+These functions will remain in the codebase but won't be invoked:
+- `create-8k-user/index.ts` - Keep file, but no longer called
+- `renew-iptv-user/index.ts` - Keep file, but `renew-customer-group` will only call `renew-trex-user`
+- `delete-iptv-user/index.ts` - Keep file, but no longer called
+
+---
+
+## Frontend Changes
+
+| File | Change |
+|------|--------|
+| `src/components/customers/CreateTrialWithProviderForm.tsx` | Default provider to `'trex'`; remove `'8k'` from Zod enum |
+| `src/components/customers/AddCustomerForm.tsx` | Default provider to `'trex'` |
+| `src/components/customers/BulkImportForm.tsx` | Default provider to `'trex'` |
+| `src/hooks/useIptvPackages.ts` | Default provider state to `'trex'` |
+| `src/hooks/useAllIptvPackages.ts` | Remove `'8k'` from providers array |
+| `src/contexts/app/hooks/useCustomers.ts` | Default `userProvider` to `'trex'` |
+| `src/contexts/app/utils/customerUtils.ts` | Default provider fallback to `'trex'` |
+| `src/components/resellers/ChangeProviderDialog.tsx` | Simplify to assume Trex is the only option |
+
+---
+
+## Detailed Edge Function Changes
+
+### 1. `renew-customer-group/index.ts`
+
+**Line 318, 520, 548** - Change provider fallback:
 ```typescript
-interface RenewGroupRequest {
-  customerId: string;
-  planDuration: number;
-  serviceCall?: boolean;  // NEW: Skip JWT verification for internal calls
-  resellerId?: string;    // NEW: Provided when serviceCall=true
+// Before
+const provider = customer.provider || '8k';
+
+// After
+const provider = customer.provider || 'trex';
+```
+
+**Lines 36-48** - Remove 8K case from `verifyConnectionExists`:
+```typescript
+// Before
+switch (provider) {
+  case 'trex':
+    apiKey = Deno.env.get('TREX_API_KEY');
+    panelUrl = Deno.env.get('TREX_PANEL_URL');
+    break;
+  case '8k':
+    apiKey = Deno.env.get('8K_API_KEY');
+    panelUrl = Deno.env.get('8K_PANEL_URL');
+    break;
+  default:
+    apiKey = Deno.env.get('IPTV_API_KEY');
+    panelUrl = Deno.env.get('IPTV_PANEL_URL');
+    break;
 }
+
+// After
+// Always use Trex credentials
+apiKey = Deno.env.get('TREX_API_KEY');
+panelUrl = Deno.env.get('TREX_PANEL_URL');
 ```
 
-**2. Add Service Call Logic (lines 115-155)**
-Wrap the JWT verification in a conditional:
+**Line 521** - Always use Trex renewal function:
 ```typescript
-const { customerId, planDuration, serviceCall = false, resellerId: providedResellerId }: RenewGroupRequest = await req.json();
+// Before
+const functionName = provider === 'trex' ? 'renew-trex-user' : 'renew-iptv-user';
 
-// Determine user context based on call type
-let verifiedUserId: string | null = null;
-let isServiceCall = false;
+// After
+const functionName = 'renew-trex-user';
+```
 
-if (!serviceCall) {
-  // Normal path: Verify JWT token
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    // ... existing error handling
-  }
-  const token = authHeader.replace('Bearer ', '');
-  const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-  if (authError || !user) {
-    // ... existing error handling
-  }
-  verifiedUserId = user.id;
-  console.log(`✅ User authenticated: ${user.email} (ID: ${user.id})`);
-} else {
-  // Service call path: Skip JWT, trust the provided resellerId
-  console.log('🔐 Bypassing JWT authentication for service call');
-  if (!providedResellerId) {
-    return new Response(
-      JSON.stringify({ error: 'resellerId is required for service calls' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  isServiceCall = true;
+### 2. `sync-device-info/index.ts`
+
+**Lines 86-99** - Remove provider switch:
+```typescript
+// Before
+switch (customer.provider) {
+  case 'trex':
+    apiKey = Deno.env.get('TREX_API_KEY');
+    panelUrl = Deno.env.get('TREX_PANEL_URL');
+    break;
+  case '8k':
+    apiKey = Deno.env.get('8K_API_KEY');
+    panelUrl = Deno.env.get('8K_PANEL_URL');
+    break;
+  default:
+    apiKey = Deno.env.get('IPTV_API_KEY');
+    panelUrl = Deno.env.get('IPTV_PANEL_URL');
+    break;
 }
+
+// After
+// Trex only
+apiKey = Deno.env.get('TREX_API_KEY');
+panelUrl = Deno.env.get('TREX_PANEL_URL');
 ```
 
-**3. Adjust Authorization Logic**
-After the customer lookup, use the verified user OR service call context:
+### 3. `add-connection-to-customer/index.ts`
+
+**Lines 102, 218** - Change default provider:
 ```typescript
-// For service calls, skip user-based authorization
-// The webhook already verified the API key belongs to the reseller
-if (!isServiceCall) {
-  // Existing user/admin authorization checks...
-} else {
-  // Service call - verify the provided resellerId matches the customer's reseller
-  if (primaryCustomer.reseller_id !== providedResellerId) {
-    console.error(`❌ Service call reseller mismatch: provided ${providedResellerId} != customer ${primaryCustomer.reseller_id}`);
-    return new Response(
-      JSON.stringify({ error: 'Reseller ID mismatch' }),
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  console.log(`✅ Service call authorized for reseller: ${providedResellerId}`);
-}
+// Before
+const provider = customer.provider || '8k';
+
+// After
+const provider = customer.provider || 'trex';
 ```
 
----
-
-### File 2: `supabase/functions/webhook/enhancedWebhookHandler.ts`
-
-**Update the renewal invocation (around line 619)**
-Pass `serviceCall: true` and the validated `resellerId`:
+**Lines 179-213, 295-329** - Remove 8K/IPTV API call blocks (the `else` branches after Trex):
 ```typescript
-const { data, error } = await supabase.functions.invoke('renew-customer-group', {
-  body: {
-    customerId: customer.id,
-    planDuration: planDuration,
-    serviceCall: true,      // NEW: Bypass JWT verification
-    resellerId: resellerId  // NEW: Already validated from API key
-  }
-});
+// Remove the entire else block that calls 8K/IPTV API
+// Only keep the Trex API logic
 ```
 
+### 4. `webhook/enhancedWebhookHandler.ts`
+
+**Lines 104, 447** - Change default provider:
+```typescript
+// Before
+provider: apiKeyData.profiles.provider || '8k'
+provider: resellerData.provider || '8k'
+
+// After
+provider: apiKeyData.profiles.provider || 'trex'
+provider: resellerData.provider || 'trex'
+```
+
+### 5. `get-iptv-packages/index.ts`
+
+Change to always fetch Trex packages only.
+
 ---
 
-## Security Notes
+## Files NOT Being Deleted (Sunset Only)
 
-- **API Key Validation**: The webhook already validates the API key and resolves `resellerId` before reaching the renewal logic. This is secure.
-- **Reseller Mismatch Check**: The service call path still verifies that the provided `resellerId` matches the customer's owner.
-- **No JWT Required**: Since the webhook uses API key auth (validated at webhook entry), JWT is not needed for internal calls.
-
----
-
-## Flow After Fix
+These files will remain in the codebase but will no longer be actively invoked:
 
 ```text
-Webhook Received (action: renew)
-       │
-       ▼
-┌──────────────────────────────┐
-│ Validate API Key             │
-│ Resolve resellerId           │
-└──────────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────┐
-│ Find customer by contact_id  │
-│ or name+email                │
-└──────────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────────────────┐
-│ Invoke renew-customer-group              │
-│   serviceCall: true                      │
-│   resellerId: <from API key>             │
-│   customerId: <from lookup>              │
-│   planDuration: <from payload>           │
-└──────────────────────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────┐
-│ Skip JWT verification        │
-│ Verify reseller owns customer│
-│ Proceed with renewal         │
-└──────────────────────────────┘
-       │
-       ▼
-┌──────────────────────────────┐
-│ Renew ALL connections        │
-│ Sync to HighLevel            │
-│ Add renewal_success tag      │
-└──────────────────────────────┘
+supabase/functions/create-8k-user/          (kept, not called)
+supabase/functions/renew-iptv-user/         (kept, not called)
+supabase/functions/delete-iptv-user/        (kept, not called)
 ```
+
+---
+
+## Summary of What This Achieves
+
+1. **No more 8K/IPTV panel pings** - All API calls go to Trex only
+2. **Existing customers migrated** - Database migration updates all `'8k'` providers to `'trex'`
+3. **New accounts default to Trex** - Column defaults changed
+4. **UI simplified** - No provider selection needed (Trex assumed)
+5. **Code preserved** - Old files remain for reference but are inactive
 
 ---
 
 ## Edge Functions to Redeploy
 
+After changes:
 - `renew-customer-group`
+- `sync-device-info`
+- `add-connection-to-customer`
 - `webhook`
+- `get-iptv-packages`
+- `check-iptv-user-exists`
+- `update-reseller-provider`
+- `create-iptv-user`
 
 ---
 
-## Testing
+## Testing After Deployment
 
-1. Send the same renewal webhook payload
-2. Verify no 401 error occurs
-3. Check customer expiration date is extended
-4. Verify HighLevel contact has `renewal_success` tag
+1. Create a new customer - verify only Trex API is called
+2. Renew an existing customer - verify only `renew-trex-user` is invoked
+3. Sync device info - verify Trex panel URL is used
+4. Add connection - verify Trex API is used
+5. Check database - confirm all providers are now `'trex'`
