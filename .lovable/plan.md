@@ -1,223 +1,40 @@
 
 
-# Fix: Preflight Validation for Consolidated Customers
+# Fix: `userProfile is not defined` Error in renew-customer-group
 
-## Problem
+## Root Cause
 
-The webhook renewal is failing because the preflight validation checks the wrong credentials:
-
-```text
-Customer: Michael Kennon
-├── Top-level fields (what preflight checks):
-│   ├── username: NULL
-│   ├── password: NULL
-│   └── mac_address: 00:00:00:00:00:00  ← PLACEHOLDER
-│
-└── connection_list (actual credentials):
-    └── [0]:
-        ├── username: bd264af259  ← REAL CREDENTIAL
-        ├── password: 4de2d92bca  ← REAL CREDENTIAL
-        └── m3u_url: http://vpn.eztvclub.online/get.php?...
+The error occurs at line 466:
+```typescript
+console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userProfile.email}`);
 ```
 
-The preflight sends the placeholder MAC `00:00:00:00:00:00` to verify, which the Trex API correctly says doesn't exist.
+The variable `userProfile` is only defined inside the `if (!isServiceCall)` block (line 202-206), but line 466 is reached when `isAdminOverride` is true, which can only happen for **non-service calls** where an admin is logged in.
 
----
+While this code path can only be hit during normal (non-service) calls, the JavaScript scoping means `userProfile` is not accessible at line 466 because it was declared inside a nested block.
 
 ## Solution
 
-Update the preflight validation loop in `renew-customer-group` to:
-1. Check if `connection_list` exists and has entries
-2. If yes → verify each connection in the list
-3. If no → fall back to top-level credentials (legacy single-connection)
+Replace `userProfile.email` with `userEmail` on line 466. The `userEmail` variable is properly scoped:
+- Initialized at line 198: `let userEmail = 'service-call';`
+- Updated at line 216: `userEmail = userProfile.email;` (inside the non-service call block)
 
-Also ensure `renew-trex-user` is passed `serviceCall` flags so it doesn't require JWT.
-
----
-
-## Technical Changes
-
-### File 1: `supabase/functions/renew-customer-group/index.ts`
-
-**Lines 306-328** - Replace the current preflight loop:
-
-```typescript
-for (const customer of groupCustomers) {
-  const provider = customer.provider || 'trex';
-  const connectionList = customer.connection_list;
-  const hasConnectionList = Array.isArray(connectionList) && connectionList.length > 0;
-  
-  if (hasConnectionList) {
-    // CONSOLIDATED CUSTOMER - verify each connection in the list
-    console.log(`📋 Customer ${customer.name} has ${connectionList.length} connection(s) in connection_list`);
-    
-    for (const conn of connectionList) {
-      const verification = await verifyConnectionExists(
-        { 
-          username: conn.username, 
-          password: conn.password, 
-          mac_address: conn.mac_address 
-        },
-        provider
-      );
-      
-      if (!verification.exists) {
-        console.log(`❌ PREFLIGHT FAILED: ${customer.name} connection ${conn.connection_number || '?'}`);
-        missingConnections.push({
-          name: `${customer.name} (Connection ${conn.connection_number || '?'})`,
-          username: conn.username,
-          mac_address: conn.mac_address,
-          error: verification.error || 'Account not found in provider panel'
-        });
-      } else {
-        console.log(`✅ PREFLIGHT PASSED: ${customer.name} connection ${conn.connection_number || '?'}`);
-      }
-    }
-  } else {
-    // LEGACY SINGLE-CONNECTION - use top-level fields
-    const verification = await verifyConnectionExists(
-      { 
-        username: customer.username, 
-        password: customer.password, 
-        mac_address: customer.mac_address 
-      },
-      provider
-    );
-    
-    if (!verification.exists) {
-      console.log(`❌ PREFLIGHT FAILED: ${customer.name} does not exist in ${provider} panel`);
-      missingConnections.push({
-        name: customer.name,
-        username: customer.username,
-        mac_address: customer.mac_address,
-        error: verification.error || 'Account not found in provider panel'
-      });
-    } else {
-      console.log(`✅ PREFLIGHT PASSED: ${customer.name} exists in panel`);
-    }
-  }
-}
-```
-
-**Lines 514-518** - Forward serviceCall flags to `renew-trex-user`:
-
-```typescript
-const { data, error } = await clientWithAuth.functions.invoke(functionName, {
-  body: {
-    customerId: customer.id,
-    planDuration: planDuration,
-    ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
-  }
-});
-```
-
-**Lines 473-478** - Forward serviceCall flags to `renew-mag-user`:
-
-```typescript
-const { data, error } = await clientWithAuth.functions.invoke('renew-mag-user', {
-  body: {
-    customerId: customer.id,
-    planDuration: planDuration,
-    ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
-  }
-});
-```
+This ensures the variable is always available regardless of block scoping.
 
 ---
 
-### File 2: `supabase/functions/renew-trex-user/index.ts`
+## Technical Change
 
-**Update interface (line 10):**
+### File: `supabase/functions/renew-customer-group/index.ts`
+
+**Line 466** - Replace `userProfile.email` with `userEmail`:
+
 ```typescript
-interface RenewRequest {
-  customerId: string;
-  planDuration: number;
-  serviceCall?: boolean;  // Skip JWT for internal calls
-  resellerId?: string;    // Required when serviceCall=true
-}
-```
+// Before
+console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userProfile.email}`);
 
-**Replace JWT verification (lines 40-61):**
-```typescript
-const { customerId, planDuration, serviceCall = false, resellerId: providedResellerId }: RenewRequest = await req.json();
-
-let isServiceCall = false;
-
-if (!serviceCall) {
-  // Normal path: Verify JWT token
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return new Response(
-      JSON.stringify({ error: 'No authorization header' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  const token = authHeader.replace('Bearer ', '');
-  const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-  if (authError || !user) {
-    return new Response(
-      JSON.stringify({ error: 'Invalid token' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  // ... existing user authorization logic
-} else {
-  // Service call path: Skip JWT
-  console.log('🔐 Bypassing JWT authentication for service call');
-  if (!providedResellerId) {
-    return new Response(
-      JSON.stringify({ error: 'resellerId is required for service calls' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  isServiceCall = true;
-}
-```
-
-**After fetching customer (line ~81), add reseller check for service calls:**
-```typescript
-if (isServiceCall) {
-  if (customer.reseller_id !== providedResellerId) {
-    return new Response(
-      JSON.stringify({ error: 'Reseller ID mismatch' }),
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-  console.log(`✅ Service call authorized for reseller: ${providedResellerId}`);
-}
-```
-
----
-
-### File 3: `supabase/config.toml`
-
-Add JWT bypass for renewal functions (they handle auth internally):
-
-```toml
-[functions.renew-trex-user]
-verify_jwt = false
-
-[functions.renew-mag-user]
-verify_jwt = false
-```
-
----
-
-## Expected Flow After Fix
-
-```text
-Webhook → renew-customer-group (serviceCall: true)
-    │
-    ▼
-Preflight checks connection_list:
-  └── username: bd264af259 → Trex API returns ✅ exists
-    │
-    ▼
-renew-trex-user (serviceCall: true, resellerId)
-  └── JWT bypassed → Trex API renews → ✅ Success
-    │
-    ▼
-Database updated, HighLevel synced with renewal_success tag
+// After
+console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userEmail}`);
 ```
 
 ---
@@ -225,15 +42,13 @@ Database updated, HighLevel synced with renewal_success tag
 ## Edge Functions to Redeploy
 
 - `renew-customer-group`
-- `renew-trex-user`
-- `renew-mag-user`
 
 ---
 
-## Testing
+## Expected Result
 
-Send the same webhook payload. Expected result:
-- HTTP 200 with `success: true`
-- Customer expiration extended by 1 month
-- HighLevel contact receives `renewal_success` tag
+After this fix:
+- Dashboard manual renewals will work again for admin users
+- The credit bypass log will correctly display the admin's email
+- Webhook-triggered renewals (service calls) continue to work as designed
 
