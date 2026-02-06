@@ -7,6 +7,23 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+// Helper to calculate expiration date, matching SQL interval behavior for month-end handling
+function calculateNewExpirationDate(monthsToAdd: number): string {
+  const now = new Date();
+  const targetMonth = now.getMonth() + monthsToAdd;
+  const targetYear = now.getFullYear() + Math.floor(targetMonth / 12);
+  const actualMonth = ((targetMonth % 12) + 12) % 12; // Handle negative months correctly
+  
+  // Get the last day of the target month
+  const lastDayOfTargetMonth = new Date(targetYear, actualMonth + 1, 0).getDate();
+  
+  // Use current day or last day of month if current day exceeds it
+  const targetDay = Math.min(now.getDate(), lastDayOfTargetMonth);
+  
+  const result = new Date(targetYear, actualMonth, targetDay);
+  return result.toISOString().split('T')[0];
+}
+
 export interface EnhancedWebhookPayload {
   api_key?: string;
   resellerId?: string;
@@ -877,10 +894,10 @@ async function upgradeCustomerConnections(
       };
     }
 
-    // 7. Calculate delta and credits required
+    // 7. Calculate delta and credits required (upgrade = renew + add, so charge for ALL connections)
     const delta = requestedConnections - currentConnections;
-    const creditsRequired = delta * planDurationMonths;
-    console.log(`💰 Credits calculation: delta=${delta} × duration=${planDurationMonths} = ${creditsRequired} credits`);
+    const creditsRequired = requestedConnections * planDurationMonths;
+    console.log(`💰 Credits calculation: connections=${requestedConnections} × duration=${planDurationMonths} = ${creditsRequired} credits (upgrade+renew)`);
 
     // 8. Check reseller credits
     if (resellerData.credits < creditsRequired) {
@@ -903,7 +920,11 @@ async function upgradeCustomerConnections(
       };
     }
 
-    // 9. Migrate primary connection if connection_list is empty
+    // Calculate unified expiration date for all connections (upgrade = renew + add)
+    const newExpirationDateStr = calculateNewExpirationDate(planDurationMonths);
+    console.log(`📅 Unified expiration date: ${newExpirationDateStr} (now + ${planDurationMonths} months)`);
+
+    // 9. Migrate primary connection if connection_list is empty, or update existing connections' expiration
     if (existingConnectionList.length === 0 && customer.username && customer.password) {
       console.log('📦 Migrating primary connection to connection_list');
       existingConnectionList.push({
@@ -911,9 +932,16 @@ async function upgradeCustomerConnections(
         username: customer.username,
         password: customer.password,
         m3u_url: customer.m3u_url,
-        expiration_date: customer.expiration_date,
+        expiration_date: newExpirationDateStr, // Use new unified date
         status: 'active'
       });
+    } else {
+      // Update expiration for ALL existing connections (renew portion of upgrade)
+      console.log(`🔄 Renewing ${existingConnectionList.length} existing connection(s) to ${newExpirationDateStr}`);
+      existingConnectionList = existingConnectionList.map((conn: any) => ({
+        ...conn,
+        expiration_date: newExpirationDateStr
+      }));
     }
 
     // 10. Create additional connections (delta) using create-iptv-user
@@ -940,7 +968,7 @@ async function upgradeCustomerConnections(
             connections: 1, // Create one at a time
             maxConnections: 1,
             startDate: new Date().toISOString().split('T')[0],
-            expirationDate: customer.expiration_date, // Match existing expiration
+            expirationDate: newExpirationDateStr, // Use unified new expiration
             accountType: 'm3u',
             status: 'active',
             isDeactivated: false
@@ -979,7 +1007,7 @@ async function upgradeCustomerConnections(
         username: createdCreds.username,
         password: createdCreds.password,
         m3u_url: createdCreds.m3u_url,
-        expiration_date: customer.expiration_date, // Keep existing expiration
+        expiration_date: newExpirationDateStr, // Use unified new expiration
         status: 'active'
       });
 
@@ -1002,8 +1030,9 @@ async function upgradeCustomerConnections(
       .update({
         connection_list: updatedConnectionList,
         total_connections: requestedConnections,
-        max_connections: requestedConnections
-        // NOTE: expiration_date is NOT changed during upgrade
+        max_connections: requestedConnections,
+        expiration_date: newExpirationDateStr,
+        plan_duration: planDurationMonths
       })
       .eq('id', customer.id);
 
@@ -1027,14 +1056,14 @@ async function upgradeCustomerConnections(
     }
 
     // 13. Log credit usage
-    await supabase.from('credit_logs').insert({
+    await supabase.from('credit_logs').insert([{
       reseller_id: resellerId,
       action: 'account_creation',
       credits_used: creditsRequired,
       customer_id: customer.id,
       customer_name: customer.name,
-      notes: `Upgrade from ${currentConnections} to ${requestedConnections} connections (${delta} new × ${planDurationMonths} months)`
-    });
+      notes: `Upgrade+Renew: ${currentConnections} → ${requestedConnections} connections for ${planDurationMonths} months`
+    }]);
 
     console.log(`✅ Upgrade completed: ${currentConnections} → ${requestedConnections} connections, ${creditsRequired} credits used`);
 
@@ -1047,13 +1076,13 @@ async function upgradeCustomerConnections(
         m3u_url: conn.m3u_url
       }));
       
-      // Use existing expiration (no change during upgrade)
+      // Use new unified expiration (upgrade = renew + add)
       await syncHighLevelContact(
         resellerId,
         contactIdToUse,
         true,
         credentialsList,
-        customer.expiration_date,
+        newExpirationDateStr,
         undefined,
         ['upgrade_success']
       );
@@ -1067,7 +1096,7 @@ async function upgradeCustomerConnections(
       email: customer.email,
       device_type: customer.device_type || 'Smart TV',
       start_date: customer.start_date,
-      end_date: customer.expiration_date, // No change during upgrade
+      end_date: newExpirationDateStr, // New unified expiration
       account_type: 'm3u',
       credits_used: creditsRequired,
       total_connections: requestedConnections,
