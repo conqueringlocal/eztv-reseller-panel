@@ -10,6 +10,8 @@ const corsHeaders = {
 interface RenewMagRequest {
   customerId: string;
   planDuration: number;
+  serviceCall?: boolean;  // Skip JWT for internal calls
+  resellerId?: string;    // Required when serviceCall=true
 }
 
 serve(async (req) => {
@@ -24,28 +26,44 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    // Get the authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const { customerId, planDuration, serviceCall = false, resellerId: providedResellerId }: RenewMagRequest = await req.json();
 
-    // Verify the JWT token
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-    
-    if (authError || !user) {
-      console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Invalid token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    let isServiceCall = false;
+    let verifiedUserId: string | null = null;
 
-    const { customerId, planDuration }: RenewMagRequest = await req.json();
+    if (!serviceCall) {
+      // Normal path: Verify JWT token
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'No authorization header' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      
+      if (authError || !user) {
+        console.error('Auth error:', authError);
+        return new Response(
+          JSON.stringify({ error: 'Invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      verifiedUserId = user.id;
+    } else {
+      // Service call path: Skip JWT, trust the provided resellerId
+      console.log('🔐 Bypassing JWT authentication for service call');
+      
+      if (!providedResellerId) {
+        return new Response(
+          JSON.stringify({ error: 'resellerId is required for service calls' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      isServiceCall = true;
+    }
 
     console.log(`🔄 Starting MAG renewal process for customer: ${customerId}, duration: ${planDuration} months`);
 
@@ -73,40 +91,44 @@ serve(async (req) => {
       );
     }
 
-    // Check if customer has MAC address (required for MAG devices)
-    if (!customer.mac_address) {
-      console.error(`❌ Customer ${customer.name} does not have MAC address`);
-      return new Response(
-        JSON.stringify({ error: 'Customer does not have MAC address. This appears to be an M3U account.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Authorization check
+    if (isServiceCall) {
+      // Service call: Verify the provided resellerId matches the customer's reseller
+      if (customer.reseller_id !== providedResellerId) {
+        console.error(`❌ Service call reseller mismatch: provided ${providedResellerId} != customer ${customer.reseller_id}`);
+        return new Response(
+          JSON.stringify({ error: 'Reseller ID mismatch' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      console.log(`✅ Service call authorized for reseller: ${providedResellerId}`);
+    } else {
+      // User call: Check authorization
+      const { data: userProfile, error: profileError } = await supabaseClient
+        .from('profiles')
+        .select('role')
+        .eq('id', verifiedUserId)
+        .single();
+
+      if (profileError || !userProfile) {
+        console.error('❌ Failed to fetch user profile:', profileError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to verify user permissions' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Check authorization: admins can renew any customer, resellers only their own
+      if (userProfile.role !== 'admin' && customer.reseller_id !== verifiedUserId) {
+        console.error(`❌ Authorization failed: User ${verifiedUserId} attempted to renew customer belonging to ${customer.reseller_id}`);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized to renew this customer' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log(`✅ Authorization passed: ${userProfile.role === 'admin' ? 'Admin' : 'Reseller'} renewing customer`);
     }
-
-    // Fetch user profile to check role
-    const { data: userProfile, error: profileError } = await supabaseClient
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !userProfile) {
-      console.error('❌ Failed to fetch user profile:', profileError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to verify user permissions' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check authorization: admins can renew any customer, resellers only their own
-    if (userProfile.role !== 'admin' && customer.reseller_id !== user.id) {
-      console.error(`❌ Authorization failed: User ${user.id} attempted to renew customer belonging to ${customer.reseller_id}`);
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized to renew this customer' }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`✅ Authorization passed: ${userProfile.role === 'admin' ? 'Admin' : 'Reseller'} ${user.email} renewing customer`);
 
     // Note: Credit checking and deduction is now handled by renew-customer-group function
     // This function only handles the IPTV API call and database update

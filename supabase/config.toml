@@ -48,3 +48,9 @@ verify_jwt = false
 
 [functions.merge-customer-into-group]
 verify_jwt = false
+
+[functions.renew-trex-user]
+verify_jwt = false
+
+[functions.renew-mag-user]
+verify_jwt = false
