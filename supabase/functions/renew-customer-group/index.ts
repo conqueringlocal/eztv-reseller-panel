@@ -305,25 +305,57 @@ serve(async (req) => {
     
     for (const customer of groupCustomers) {
       const provider = customer.provider || 'trex';
-      const verification = await verifyConnectionExists(
-        { 
-          username: customer.username, 
-          password: customer.password, 
-          mac_address: customer.mac_address 
-        },
-        provider
-      );
+      const connectionList = customer.connection_list;
+      const hasConnectionList = Array.isArray(connectionList) && connectionList.length > 0;
       
-      if (!verification.exists) {
-        console.log(`❌ PREFLIGHT FAILED: ${customer.name} does not exist in ${provider} panel`);
-        missingConnections.push({
-          name: customer.name,
-          username: customer.username,
-          mac_address: customer.mac_address,
-          error: verification.error || 'Account not found in provider panel'
-        });
+      if (hasConnectionList) {
+        // CONSOLIDATED CUSTOMER: Verify each connection in the connection_list
+        console.log(`📋 Customer ${customer.name} has ${connectionList.length} connection(s) in connection_list`);
+        
+        for (const conn of connectionList) {
+          const verification = await verifyConnectionExists(
+            { 
+              username: conn.username, 
+              password: conn.password, 
+              mac_address: conn.mac_address 
+            },
+            provider
+          );
+          
+          if (!verification.exists) {
+            console.log(`❌ PREFLIGHT FAILED: ${customer.name} connection ${conn.connection_number || '?'}`);
+            missingConnections.push({
+              name: `${customer.name} (Connection ${conn.connection_number || '?'})`,
+              username: conn.username,
+              mac_address: conn.mac_address,
+              error: verification.error || 'Account not found in provider panel'
+            });
+          } else {
+            console.log(`✅ PREFLIGHT PASSED: ${customer.name} connection ${conn.connection_number || '?'}`);
+          }
+        }
       } else {
-        console.log(`✅ PREFLIGHT PASSED: ${customer.name} exists in panel`);
+        // LEGACY SINGLE-CONNECTION: Use top-level fields
+        const verification = await verifyConnectionExists(
+          { 
+            username: customer.username, 
+            password: customer.password, 
+            mac_address: customer.mac_address 
+          },
+          provider
+        );
+        
+        if (!verification.exists) {
+          console.log(`❌ PREFLIGHT FAILED: ${customer.name} does not exist in ${provider} panel`);
+          missingConnections.push({
+            name: customer.name,
+            username: customer.username,
+            mac_address: customer.mac_address,
+            error: verification.error || 'Account not found in provider panel'
+          });
+        } else {
+          console.log(`✅ PREFLIGHT PASSED: ${customer.name} exists in panel`);
+        }
       }
     }
     
@@ -473,7 +505,8 @@ serve(async (req) => {
         const { data, error } = await clientWithAuth.functions.invoke('renew-mag-user', {
           body: {
             customerId: customer.id,
-            planDuration: planDuration
+            planDuration: planDuration,
+            ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
           }
         });
 
@@ -514,7 +547,8 @@ serve(async (req) => {
         const { data, error } = await clientWithAuth.functions.invoke(functionName, {
           body: {
             customerId: customer.id,
-            planDuration: planDuration
+            planDuration: planDuration,
+            ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
           }
         });
 
