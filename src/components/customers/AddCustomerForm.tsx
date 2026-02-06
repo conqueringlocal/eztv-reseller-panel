@@ -184,7 +184,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         expirationDate: expirationDateString,
         status: 'active',
         isDeactivated: false,
-        provider: user?.provider || '8k',
+        provider: user?.provider || 'trex',
       });
       
       if (success) {

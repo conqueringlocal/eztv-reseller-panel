@@ -249,7 +249,7 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
             status: 'active',
             is_trial: false,
             highlevel_contact_id: customer.highlevelContactId?.trim() || null,
-            provider: user?.provider || '8k'
+            provider: user?.provider || 'trex'
           })
           .select()
           .single();

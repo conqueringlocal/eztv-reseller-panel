@@ -32,7 +32,7 @@ export const useIptvPackages = (providerOverride?: string, showToasts: boolean =
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<'api' | 'default'>('api');
-  const [provider, setProvider] = useState<string>('8k');
+  const [provider, setProvider] = useState<string>('trex');
   const [debugInfo, setDebugInfo] = useState<PackageResponse['debug_info'] | null>(null);
   
   // Use ref to track if we're already fetching to prevent concurrent requests
@@ -99,7 +99,7 @@ export const useIptvPackages = (providerOverride?: string, showToasts: boolean =
       
       setPackages(response.packages || []);
       setSource(response.source || 'api');
-      setProvider(response.provider || effectiveProvider || '8k');
+      setProvider(response.provider || effectiveProvider || 'trex');
       setDebugInfo(response.debug_info || null);
       
       const packageCount = response.packages?.length || 0;

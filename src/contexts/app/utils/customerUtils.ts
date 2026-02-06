@@ -23,7 +23,7 @@ export const convertDbCustomerToCustomer = (dbCustomer: any): Customer => {
     expirationDate: dbCustomer.expiration_date,
     status: dbCustomer.status,
     isDeactivated: dbCustomer.is_deactivated || false,
-    provider: dbCustomer.provider || '8k',
+    provider: dbCustomer.provider || 'trex',
     customer_group: dbCustomer.customer_group,
     customer_group_id: dbCustomer.customer_group_id,
     m3u_url: dbCustomer.m3u_url,
