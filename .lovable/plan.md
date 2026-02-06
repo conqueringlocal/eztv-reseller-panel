@@ -1,25 +1,52 @@
 
 
-# Fix: `userProfile is not defined` Error in renew-customer-group
+# Fix: Customer Type Classification for Renewals
 
-## Root Cause
+## Problem Identified
 
-The error occurs at line 466:
+The `renew-customer-group` function incorrectly classifies customers as MAG or M3U based on whether `mac_address` is truthy:
+
 ```typescript
-console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userProfile.email}`);
+// Current logic (line 470-471)
+const magCustomers = groupCustomers.filter(c => c.mac_address);
+const m3uCustomers = groupCustomers.filter(c => !c.mac_address);
 ```
 
-The variable `userProfile` is only defined inside the `if (!isServiceCall)` block (line 202-206), but line 466 is reached when `isAdminOverride` is true, which can only happen for **non-service calls** where an admin is logged in.
+**Michael Kennon** has:
+- `device_type: Smart TV` → This is an **M3U** device
+- `mac_address: 00:00:00:00:00:00` → This is a **placeholder**, not a real MAC
+- `connection_list` with username/password credentials (M3U format)
 
-While this code path can only be hit during normal (non-service) calls, the JavaScript scoping means `userProfile` is not accessible at line 466 because it was declared inside a nested block.
+Because `'00:00:00:00:00:00'` is a truthy string, the customer is incorrectly routed to `renew-mag-user` instead of `renew-trex-user`.
+
+The `renew-mag-user` function then correctly logs:
+```
+⚠️ Connection 1 missing MAC address, skipping
+```
+...because the credentials in `connection_list` don't have a valid MAC.
+
+---
 
 ## Solution
 
-Replace `userProfile.email` with `userEmail` on line 466. The `userEmail` variable is properly scoped:
-- Initialized at line 198: `let userEmail = 'service-call';`
-- Updated at line 216: `userEmail = userProfile.email;` (inside the non-service call block)
+Fix the classification logic to use `device_type` instead of `mac_address` presence:
 
-This ensures the variable is always available regardless of block scoping.
+```typescript
+// Fixed logic
+const isMagDevice = (deviceType: string) => {
+  const magTypes = ['MAG Box', 'STB Device', 'MAG 254', 'MAG 256', 'MAG 322', 'MAG 424', 'Other MAG'];
+  return magTypes.some(t => deviceType?.toLowerCase().includes(t.toLowerCase()) || 
+                            deviceType?.toLowerCase().includes('mag') ||
+                            deviceType?.toLowerCase().includes('stb'));
+};
+
+const magCustomers = groupCustomers.filter(c => isMagDevice(c.device_type));
+const m3uCustomers = groupCustomers.filter(c => !isMagDevice(c.device_type));
+```
+
+This ensures:
+- `Smart TV`, `Android Box`, `Fire TV`, etc. → Routed to `renew-trex-user`
+- `MAG Box`, `MAG 254`, `STB Device`, etc. → Routed to `renew-mag-user`
 
 ---
 
@@ -27,14 +54,23 @@ This ensures the variable is always available regardless of block scoping.
 
 ### File: `supabase/functions/renew-customer-group/index.ts`
 
-**Line 466** - Replace `userProfile.email` with `userEmail`:
+**Lines 469-471** - Replace the customer classification logic:
 
 ```typescript
 // Before
-console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userProfile.email}`);
+const magCustomers = groupCustomers.filter(c => c.mac_address);
+const m3uCustomers = groupCustomers.filter(c => !c.mac_address);
 
 // After
-console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userEmail}`);
+// Helper function to determine if device is MAG type
+const isMagDevice = (deviceType: string | null | undefined): boolean => {
+  if (!deviceType) return false;
+  const dt = deviceType.toLowerCase();
+  return dt.includes('mag') || dt.includes('stb');
+};
+
+const magCustomers = groupCustomers.filter(c => isMagDevice(c.device_type));
+const m3uCustomers = groupCustomers.filter(c => !isMagDevice(c.device_type));
 ```
 
 ---
@@ -45,10 +81,18 @@ console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userEmail}`)
 
 ---
 
-## Expected Result
+## Expected Result After Fix
 
-After this fix:
-- Dashboard manual renewals will work again for admin users
-- The credit bypass log will correctly display the admin's email
-- Webhook-triggered renewals (service calls) continue to work as designed
+```text
+Customer: Michael Kennon
+├── device_type: Smart TV → isMagDevice() returns false
+├── Classified as: M3U customer ✅
+└── Routed to: renew-trex-user ✅
+
+Renewal flow:
+1. Preflight validates connection_list credentials ✅ (already fixed)
+2. Customer classified as M3U (by device_type) ✅
+3. renew-trex-user called with correct credentials ✅
+4. Trex API renewal succeeds ✅
+```
 
