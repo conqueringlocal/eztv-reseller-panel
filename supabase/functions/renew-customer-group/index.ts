@@ -443,7 +443,13 @@ serve(async (req) => {
     }
 
     const transactionId = transactionResult.transaction_id;
-    console.log(`✅ Created new renewal transaction: ${transactionId}`);
+    const apiCallsAlreadyCompleted = transactionResult.api_calls_completed === true;
+    
+    console.log(`✅ Renewal transaction: ${transactionId} (API calls completed: ${apiCallsAlreadyCompleted})`);
+    
+    if (apiCallsAlreadyCompleted) {
+      console.log(`⚡ API calls already completed for transaction ${transactionId}, will skip to database update phase`);
+    }
 
     // Only check credits if NOT admin
     if (!isAdminOverride) {
@@ -485,6 +491,7 @@ serve(async (req) => {
     console.log(`   - Plan duration: ${planDuration} months`);
     console.log(`   - Credits required: ${creditsRequired}`);
     console.log(`   - Transaction ID: ${transactionId}`);
+    console.log(`   - API calls already completed: ${apiCallsAlreadyCompleted}`);
 
     let renewalResults: Array<{account: CustomerAccount, success: boolean, error?: string}> = [];
 
@@ -504,85 +511,116 @@ serve(async (req) => {
           }
         );
 
-    // Renew MAG customers
-    console.log(`\n🔄 Starting MAG Customer Renewals (${magCustomers.length} accounts)...`);
-    for (const customer of magCustomers) {
-      try {
-        console.log(`   → Renewing MAG: ${customer.name} | MAC: ${customer.mac_address} | Customer ID: ${customer.id}`);
-        
-        const { data, error } = await clientWithAuth.functions.invoke('renew-mag-user', {
-          body: {
-            customerId: customer.id,
-            planDuration: planDuration,
-            ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
-          }
-        });
+    // ========================================
+    // API CALLS: Skip if already completed (idempotency protection)
+    // ========================================
+    if (apiCallsAlreadyCompleted) {
+      console.log(`\n⚡ SKIPPING API CALLS - Already completed for transaction ${transactionId}`);
+      console.log(`   Populating success results for database update phase...`);
+      
+      // Populate renewalResults with success for all customers since API was already called
+      renewalResults = groupCustomers.map(customer => ({
+        account: customer as CustomerAccount,
+        success: true
+      }));
+    } else {
+      // Renew MAG customers
+      console.log(`\n🔄 Starting MAG Customer Renewals (${magCustomers.length} accounts)...`);
+      for (const customer of magCustomers) {
+        try {
+          console.log(`   → Renewing MAG: ${customer.name} | MAC: ${customer.mac_address} | Customer ID: ${customer.id}`);
+          
+          const { data, error } = await clientWithAuth.functions.invoke('renew-mag-user', {
+            body: {
+              customerId: customer.id,
+              planDuration: planDuration,
+              ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
+            }
+          });
 
-        if (error || !data?.success) {
-          const errorMsg = error?.message || data?.error || 'Unknown error';
-          console.error(`   ❌ FAILED: ${customer.name} - ${errorMsg}`);
+          if (error || !data?.success) {
+            const errorMsg = error?.message || data?.error || 'Unknown error';
+            console.error(`   ❌ FAILED: ${customer.name} - ${errorMsg}`);
+            renewalResults.push({
+              account: customer as CustomerAccount,
+              success: false,
+              error: errorMsg
+            });
+          } else {
+            console.log(`   ✅ SUCCESS: ${customer.name}`);
+            renewalResults.push({
+              account: customer as CustomerAccount,
+              success: true
+            });
+          }
+        } catch (error) {
+          console.error(`   ❌ EXCEPTION: ${customer.name} - ${error.message}`);
           renewalResults.push({
             account: customer as CustomerAccount,
             success: false,
-            error: errorMsg
-          });
-        } else {
-          console.log(`   ✅ SUCCESS: ${customer.name}`);
-          renewalResults.push({
-            account: customer as CustomerAccount,
-            success: true
+            error: error.message
           });
         }
-      } catch (error) {
-        console.error(`   ❌ EXCEPTION: ${customer.name} - ${error.message}`);
-        renewalResults.push({
-          account: customer as CustomerAccount,
-          success: false,
-          error: error.message
-        });
       }
-    }
 
-    // Renew M3U customers based on provider
-    console.log(`\n🔄 Starting M3U Customer Renewals (${m3uCustomers.length} accounts)...`);
-    for (const customer of m3uCustomers) {
-      try {
-        const provider = customer.provider || 'trex';
-        const functionName = 'renew-trex-user'; // Trex-only mode
-        
-        console.log(`   → Renewing ${provider.toUpperCase()}: ${customer.name} | Username: ${customer.username} | Customer ID: ${customer.id}`);
-        
-        const { data, error } = await clientWithAuth.functions.invoke(functionName, {
-          body: {
-            customerId: customer.id,
-            planDuration: planDuration,
-            ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
+      // Renew M3U customers based on provider
+      console.log(`\n🔄 Starting M3U Customer Renewals (${m3uCustomers.length} accounts)...`);
+      for (const customer of m3uCustomers) {
+        try {
+          const provider = customer.provider || 'trex';
+          const functionName = 'renew-trex-user'; // Trex-only mode
+          
+          console.log(`   → Renewing ${provider.toUpperCase()}: ${customer.name} | Username: ${customer.username} | Customer ID: ${customer.id}`);
+          
+          const { data, error } = await clientWithAuth.functions.invoke(functionName, {
+            body: {
+              customerId: customer.id,
+              planDuration: planDuration,
+              ...(isServiceCall ? { serviceCall: true, resellerId: providedResellerId } : {})
+            }
+          });
+
+          if (error || !data?.success) {
+            const errorMsg = error?.message || data?.error || 'Unknown error';
+            console.error(`   ❌ FAILED: ${customer.name} - ${errorMsg}`);
+            renewalResults.push({
+              account: customer as CustomerAccount,
+              success: false,
+              error: errorMsg
+            });
+          } else {
+            console.log(`   ✅ SUCCESS: ${customer.name}`);
+            renewalResults.push({
+              account: customer as CustomerAccount,
+              success: true
+            });
           }
-        });
-
-        if (error || !data?.success) {
-          const errorMsg = error?.message || data?.error || 'Unknown error';
-          console.error(`   ❌ FAILED: ${customer.name} - ${errorMsg}`);
+        } catch (error) {
+          const provider = customer.provider || 'trex';
+          console.error(`   ❌ EXCEPTION: ${customer.name} - ${error.message}`);
           renewalResults.push({
             account: customer as CustomerAccount,
             success: false,
-            error: errorMsg
-          });
-        } else {
-          console.log(`   ✅ SUCCESS: ${customer.name}`);
-          renewalResults.push({
-            account: customer as CustomerAccount,
-            success: true
+            error: error.message
           });
         }
-      } catch (error) {
-        const provider = customer.provider || 'trex';
-        console.error(`   ❌ EXCEPTION: ${customer.name} - ${error.message}`);
-        renewalResults.push({
-          account: customer as CustomerAccount,
-          success: false,
-          error: error.message
-        });
+      }
+
+      // Mark API calls as completed immediately after successful renewals
+      const successCount = renewalResults.filter(r => r.success).length;
+      if (successCount === renewalResults.length && renewalResults.length > 0) {
+        console.log(`\n✅ All API calls successful, marking transaction as api_calls_completed...`);
+        const { error: markError } = await supabaseClient
+          .from('renewal_transactions')
+          .update({ api_calls_completed: true })
+          .eq('id', transactionId);
+        
+        if (markError) {
+          console.error(`❌ Failed to mark api_calls_completed:`, markError);
+          // Don't fail the request, continue with database update
+        } else {
+          console.log(`✅ Transaction ${transactionId} marked as api_calls_completed`);
+        }
       }
     }
 
