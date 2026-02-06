@@ -463,7 +463,7 @@ serve(async (req) => {
 
       console.log(`✅ Credit check passed: ${reseller.credits} credits available, ${creditsRequired} required`);
     } else {
-      console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userProfile.email}`);
+      console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userEmail}`);
     }
 
     // Separate customers into MAG and M3U types
