@@ -466,9 +466,17 @@ serve(async (req) => {
       console.log(`⚡ ADMIN OVERRIDE: Bypassing credit check for admin ${userEmail}`);
     }
 
-    // Separate customers into MAG and M3U types
-    const magCustomers = groupCustomers.filter(c => c.mac_address);
-    const m3uCustomers = groupCustomers.filter(c => !c.mac_address);
+    // Helper function to determine if device is MAG type based on device_type
+    // This is more reliable than checking mac_address since placeholder MACs exist
+    const isMagDevice = (deviceType: string | null | undefined): boolean => {
+      if (!deviceType) return false;
+      const dt = deviceType.toLowerCase();
+      return dt.includes('mag') || dt.includes('stb');
+    };
+
+    // Separate customers into MAG and M3U types based on device_type
+    const magCustomers = groupCustomers.filter(c => isMagDevice(c.device_type));
+    const m3uCustomers = groupCustomers.filter(c => !isMagDevice(c.device_type));
 
     console.log(`📊 Customer Group Breakdown:`);
     console.log(`   - Total accounts in group: ${groupCustomers.length}`);
