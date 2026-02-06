@@ -657,7 +657,7 @@ serve(async (req) => {
               credits_used: 0,
               customer_name: primaryCustomer.name,
               customer_id: customerId,
-              notes: `ADMIN ACTION: Renewed by admin ${userProfile.email} without credit charge (${planDuration} months, ${groupCustomers.length} accounts)`
+              notes: `ADMIN ACTION: Renewed by admin ${userEmail} without credit charge (${planDuration} months, ${groupCustomers.length} accounts)`
             });
           
           console.log(`✅ Admin renewal completed successfully (no credits charged to reseller)`);
