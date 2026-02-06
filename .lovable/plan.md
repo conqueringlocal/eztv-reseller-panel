@@ -1,77 +1,91 @@
 
 
-# Fix: Customer Type Classification for Renewals
+# Fix: Prevent Double Renewal on Trex API
 
-## Problem Identified
+## Problem Summary
 
-The `renew-customer-group` function incorrectly classifies customers as MAG or M3U based on whether `mac_address` is truthy:
+The user renewed a customer and was effectively charged for 2 one-month renewals (expiration extended by 2 months). Investigation reveals:
 
-```typescript
-// Current logic (line 470-471)
-const magCustomers = groupCustomers.filter(c => c.mac_address);
-const m3uCustomers = groupCustomers.filter(c => !c.mac_address);
-```
+1. **First attempt (05:11)**: Called Trex API successfully (+1 month), then crashed during database update due to `userProfile is not defined`
+2. **Second attempt (05:13)**: Called Trex API again (+1 month), database update succeeded
 
-**Michael Kennon** has:
-- `device_type: Smart TV` → This is an **M3U** device
-- `mac_address: 00:00:00:00:00:00` → This is a **placeholder**, not a real MAC
-- `connection_list` with username/password credentials (M3U format)
+**Root Cause**: The idempotency protection only prevents duplicate *database* operations. The Trex API call happens before the database update, so when a failure occurs after the API call but before completion, the next retry calls the Trex API again.
 
-Because `'00:00:00:00:00:00'` is a truthy string, the customer is incorrectly routed to `renew-mag-user` instead of `renew-trex-user`.
+## Solution: Add API-Level Idempotency Flag
 
-The `renew-mag-user` function then correctly logs:
-```
-⚠️ Connection 1 missing MAC address, skipping
-```
-...because the credentials in `connection_list` don't have a valid MAC.
+Track whether the Trex API was already called for a given transaction, preventing duplicate external API calls on retry.
 
 ---
 
-## Solution
+## Technical Changes
 
-Fix the classification logic to use `device_type` instead of `mac_address` presence:
+### 1. Add `api_calls_completed` Flag to Renewal Transactions
 
-```typescript
-// Fixed logic
-const isMagDevice = (deviceType: string) => {
-  const magTypes = ['MAG Box', 'STB Device', 'MAG 254', 'MAG 256', 'MAG 322', 'MAG 424', 'Other MAG'];
-  return magTypes.some(t => deviceType?.toLowerCase().includes(t.toLowerCase()) || 
-                            deviceType?.toLowerCase().includes('mag') ||
-                            deviceType?.toLowerCase().includes('stb'));
-};
+Add a new column to track whether the provider API calls have been completed for this transaction:
 
-const magCustomers = groupCustomers.filter(c => isMagDevice(c.device_type));
-const m3uCustomers = groupCustomers.filter(c => !isMagDevice(c.device_type));
+```sql
+ALTER TABLE renewal_transactions ADD COLUMN IF NOT EXISTS api_calls_completed BOOLEAN DEFAULT FALSE;
 ```
 
-This ensures:
-- `Smart TV`, `Android Box`, `Fire TV`, etc. → Routed to `renew-trex-user`
-- `MAG Box`, `MAG 254`, `STB Device`, etc. → Routed to `renew-mag-user`
+### 2. Update `renew-customer-group` to Skip API Calls on Retry
+
+Modify the edge function to check if API calls were already made for this transaction. If so, skip directly to the database update phase.
+
+**File: `supabase/functions/renew-customer-group/index.ts`**
+
+After getting the transaction result (around line 446), add:
+```typescript
+const apiCallsAlreadyCompleted = transactionResult.api_calls_completed === true;
+
+if (apiCallsAlreadyCompleted) {
+  console.log(`⚡ API calls already completed for transaction ${transactionId}, skipping to database update`);
+}
+```
+
+Before the renewal loops (around line 508), wrap the API calls:
+```typescript
+if (!apiCallsAlreadyCompleted) {
+  // Existing renewal logic for MAG and M3U customers...
+  // After all renewals succeed, mark API calls as completed
+  await supabaseClient
+    .from('renewal_transactions')
+    .update({ api_calls_completed: true })
+    .eq('id', transactionId);
+} else {
+  // Populate renewalResults with success for database update phase
+  renewalResults = groupCustomers.map(c => ({ account: c, success: true }));
+}
+```
+
+### 3. Update Transaction Key Generation
+
+The current 5-minute window may be too short. Consider increasing to 10 or 15 minutes to better handle edge cases, or making it configurable.
 
 ---
 
-## Technical Change
+## Database Migration
+
+```sql
+-- Add api_calls_completed flag to renewal_transactions
+ALTER TABLE public.renewal_transactions 
+ADD COLUMN IF NOT EXISTS api_calls_completed BOOLEAN DEFAULT FALSE;
+
+-- Add comment for documentation
+COMMENT ON COLUMN public.renewal_transactions.api_calls_completed IS 
+'Tracks whether external provider API calls (Trex, etc.) have been made for this transaction. 
+Prevents duplicate API calls on retry after database errors.';
+```
+
+---
+
+## Edge Function Changes
 
 ### File: `supabase/functions/renew-customer-group/index.ts`
 
-**Lines 469-471** - Replace the customer classification logic:
-
-```typescript
-// Before
-const magCustomers = groupCustomers.filter(c => c.mac_address);
-const m3uCustomers = groupCustomers.filter(c => !c.mac_address);
-
-// After
-// Helper function to determine if device is MAG type
-const isMagDevice = (deviceType: string | null | undefined): boolean => {
-  if (!deviceType) return false;
-  const dt = deviceType.toLowerCase();
-  return dt.includes('mag') || dt.includes('stb');
-};
-
-const magCustomers = groupCustomers.filter(c => isMagDevice(c.device_type));
-const m3uCustomers = groupCustomers.filter(c => !isMagDevice(c.device_type));
-```
+1. After line 446 (transaction result), add check for `api_calls_completed`
+2. Before line 508 (MAG renewals), wrap API calls in conditional
+3. After successful API calls (around line 587), update transaction to mark `api_calls_completed = true`
+4. If `api_calls_completed` is true, skip directly to database update with success results
 
 ---
 
@@ -84,15 +98,28 @@ const m3uCustomers = groupCustomers.filter(c => !isMagDevice(c.device_type));
 ## Expected Result After Fix
 
 ```text
-Customer: Michael Kennon
-├── device_type: Smart TV → isMagDevice() returns false
-├── Classified as: M3U customer ✅
-└── Routed to: renew-trex-user ✅
+Timeline (with fix):
+1. 05:11 - First attempt starts
+2. 05:11 - Trex API called (+1 month) 
+3. 05:11 - Transaction marked: api_calls_completed = TRUE
+4. 05:11 - Database update fails (userProfile error)
+5. 05:11 - Transaction marked: status = failed
 
-Renewal flow:
-1. Preflight validates connection_list credentials ✅ (already fixed)
-2. Customer classified as M3U (by device_type) ✅
-3. renew-trex-user called with correct credentials ✅
-4. Trex API renewal succeeds ✅
+6. 05:13 - Retry attempt starts  
+7. 05:13 - Same transaction found (5-min window)
+8. 05:13 - Sees api_calls_completed = TRUE
+9. 05:13 - SKIPS Trex API call (no double renewal!)
+10. 05:13 - Database update succeeds
+11. 05:13 - Transaction marked: status = completed
+
+Result: Customer extended by 1 month (correct), not 2
 ```
+
+---
+
+## Immediate Workaround
+
+The customer's expiration was incorrectly extended. To fix this specific case:
+- Use the Trex panel directly to adjust the expiration date, OR
+- Note this for the next renewal (they have an extra month of credit)
 
