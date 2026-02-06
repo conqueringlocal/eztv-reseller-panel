@@ -685,6 +685,17 @@ async function renewCustomerGroup(
       );
     }
 
+    // Trigger post-renewal sync to fetch authoritative dates from provider (non-blocking safety net)
+    try {
+      console.log('🔄 Triggering post-renewal sync for customer:', customer.id);
+      await supabase.functions.invoke('sync-device-info', {
+        body: { customerId: customer.id }
+      });
+      console.log('✅ Post-renewal sync triggered successfully');
+    } catch (syncError) {
+      console.log('⚠️ Post-renewal sync failed (non-blocking):', syncError instanceof Error ? syncError.message : 'Unknown error');
+    }
+
     return {
       success: true,
       message: `Customer renewed successfully. ${data.accountsRenewed} accounts renewed for ${planDuration} months`,

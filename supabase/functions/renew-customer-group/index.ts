@@ -649,26 +649,50 @@ serve(async (req) => {
           // ADMIN PATH: Update customers directly without calling renew_customer_group function
           console.log(`⚡ ADMIN: Updating customer expiration dates directly (no credit deduction)`);
           
-          // Update all customers in the group
+          // Calculate new expiration date
           const newExpirationDate = new Date();
           newExpirationDate.setMonth(newExpirationDate.getMonth() + planDuration);
+          const newExpirationDateStr = newExpirationDate.toISOString().split('T')[0];
           
-          const { error: updateError } = await supabaseClient
-            .from('customers')
-            .update({
-              expiration_date: newExpirationDate.toISOString().split('T')[0],
-              plan_duration: planDuration,
-              status: 'active'
-            })
-            .eq('customer_group', primaryCustomer.customer_group)
-            .neq('status', 'cancelled');
+          // Update each customer individually to properly update connection_list JSONB
+          let updateFailed = false;
+          let updateErrorMessage = '';
           
-          if (updateError) {
-            console.error('❌ Admin database update failed:', updateError);
+          for (const customer of groupCustomers) {
+            const connectionList = customer.connection_list;
+            let updatedConnectionList = connectionList;
             
+            // Update expiration_date in each connection if connection_list exists
+            if (Array.isArray(connectionList) && connectionList.length > 0) {
+              updatedConnectionList = connectionList.map((conn: any) => ({
+                ...conn,
+                expiration_date: newExpirationDateStr
+              }));
+              console.log(`📝 Updating connection_list for ${customer.name} with ${connectionList.length} connections`);
+            }
+            
+            const { error: updateError } = await supabaseClient
+              .from('customers')
+              .update({
+                expiration_date: newExpirationDateStr,
+                plan_duration: planDuration,
+                status: 'active',
+                connection_list: updatedConnectionList
+              })
+              .eq('id', customer.id);
+            
+            if (updateError) {
+              console.error(`❌ Admin database update failed for ${customer.name}:`, updateError);
+              updateFailed = true;
+              updateErrorMessage = updateError.message;
+              break;
+            }
+          }
+          
+          if (updateFailed) {
             const { error: failError } = await supabaseClient.rpc('fail_renewal_transaction', {
               p_transaction_id: transactionId,
-              p_reason: `Admin update failed: ${updateError.message}`
+              p_reason: `Admin update failed: ${updateErrorMessage}`
             });
             
             if (failError) {
@@ -678,13 +702,15 @@ serve(async (req) => {
             return new Response(
               JSON.stringify({ 
                 error: 'API renewals succeeded but database update failed',
-                details: updateError.message,
+                details: updateErrorMessage,
                 renewalResults: renewalResults,
                 transactionId: transactionId
               }),
               { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
+          
+          console.log(`✅ Admin: Updated ${groupCustomers.length} customers with new expiration dates and connection_list`);
           
           // Log admin action (no credit deduction)
           await supabaseClient
