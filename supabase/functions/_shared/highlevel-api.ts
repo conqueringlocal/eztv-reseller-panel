@@ -322,3 +322,99 @@ export async function updateHighLevelContact(
     };
   }
 }
+
+// Partial fields for backfill - no provision_status required
+export interface HighLevelPartialFields {
+  total_connections?: string;
+  service_m3u_url_1?: string;
+  service_m3u_url_2?: string;
+  service_m3u_url_3?: string;
+}
+
+// Update HighLevel contact with partial fields (for backfill operations)
+// Does NOT require provision_status
+export async function updateHighLevelContactPartial(
+  contactId: string,
+  token: string,
+  locationId: string,
+  resellerId: string,
+  fields: HighLevelPartialFields
+): Promise<HighLevelUpdateResult> {
+  // SANITIZED LOGGING - mask contactId, never log token or URLs
+  const maskedContactId = contactId ? `${contactId.slice(0, 4)}...${contactId.slice(-4)}` : 'unknown';
+  console.log('🔗 HighLevel Partial Update:', {
+    contactId: maskedContactId,
+    hasToken: !!token,
+    totalConnections: fields.total_connections,
+    hasM3uUrl1: !!fields.service_m3u_url_1,
+    hasM3uUrl2: !!fields.service_m3u_url_2,
+    hasM3uUrl3: !!fields.service_m3u_url_3
+  });
+
+  try {
+    const mapping = await getCustomFieldMappings(locationId, token, resellerId);
+
+    const customFields: Array<{ id?: string; key: string; field_value: string }> = [];
+
+    const addField = (key: string, value: string | undefined) => {
+      if (!value) return;
+      const fieldPayload: { id?: string; key: string; field_value: string } = {
+        key,
+        field_value: value
+      };
+      if (mapping[key]) {
+        fieldPayload.id = mapping[key];
+      }
+      customFields.push(fieldPayload);
+    };
+
+    addField('total_connections', fields.total_connections);
+    addField('service_m3u_url_1', fields.service_m3u_url_1);
+    addField('service_m3u_url_2', fields.service_m3u_url_2);
+    addField('service_m3u_url_3', fields.service_m3u_url_3);
+
+    if (customFields.length === 0) {
+      console.log('⏭️ No partial fields to update');
+      return { success: true };
+    }
+
+    console.log('📤 Sending partial fields update:', {
+      fieldsCount: customFields.length,
+      fieldKeys: customFields.map(f => f.key)
+    });
+
+    const response = await fetch(
+      `https://services.leadconnectorhq.com/contacts/${contactId}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ customFields })
+      }
+    );
+
+    console.log('📡 HighLevel Partial Update Response:', {
+      contactId: maskedContactId,
+      status: response.status,
+      ok: response.ok
+    });
+
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `HighLevel API error: ${response.status}`
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('❌ HighLevel Partial Update exception:', error instanceof Error ? error.message : 'Unknown error');
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
