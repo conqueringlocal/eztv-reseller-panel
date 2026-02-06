@@ -24,6 +24,113 @@ function calculateNewExpirationDate(monthsToAdd: number): string {
   return result.toISOString().split('T')[0];
 }
 
+// Helper to mask identifiers for sanitized logging
+// MAC: show first 8 chars + ":xx:xx:xx" (e.g., "00:1A:2B:xx:xx:xx")
+// Username: show first 2 + last 2 chars (or full if <= 4 chars)
+function maskIdentifier(value: string | undefined, isMac: boolean): string {
+  if (!value) return '[empty]';
+  
+  if (isMac) {
+    if (value.length >= 8) {
+      return value.substring(0, 8) + ':xx:xx:xx';
+    }
+    return value.substring(0, 2) + ':xx:xx:xx';
+  } else {
+    if (value.length <= 4) {
+      return value;
+    }
+    return value.substring(0, 2) + '***' + value.substring(value.length - 2);
+  }
+}
+
+// Helper to renew a single existing connection via Trex API
+// Supports both M3U (username+password) and MAG (mac_address) accounts
+// NEVER logs passwords, tokens, or m3u_url - only masked identifiers
+async function renewConnectionViaTrex(
+  connection: { username?: string; password?: string; mac_address?: string },
+  planDurationMonths: number
+): Promise<{ success: boolean; error?: string }> {
+  const trexApiKey = Deno.env.get('TREX_API_KEY');
+  const panelUrl = Deno.env.get('TREX_PANEL_URL') || 'https://activationpanel.net/api/api.php';
+
+  if (!trexApiKey) {
+    return { success: false, error: 'Trex API key not configured' };
+  }
+
+  // Map plan duration to subscription format
+  const subMapping: { [key: number]: string } = { 1: '1', 3: '3', 6: '6', 12: '12', 24: '99' };
+  const subscriptionPeriod = subMapping[planDurationMonths] || '1';
+
+  const isMagAccount = !!connection.mac_address;
+  const accountType = isMagAccount ? 'mag' : 'm3u';
+
+  const renewUrl = new URL(panelUrl);
+  renewUrl.searchParams.append('api_key', trexApiKey);
+  renewUrl.searchParams.append('action', 'renew');
+  renewUrl.searchParams.append('type', accountType);
+  renewUrl.searchParams.append('sub', subscriptionPeriod);
+
+  if (isMagAccount) {
+    renewUrl.searchParams.append('mac', connection.mac_address!);
+  } else {
+    renewUrl.searchParams.append('username', connection.username || '');
+    renewUrl.searchParams.append('password', connection.password || '');
+  }
+
+  try {
+    // SANITIZED LOG - only log MASKED identifier
+    const rawIdentifier = isMagAccount ? connection.mac_address : connection.username;
+    const maskedIdentifier = maskIdentifier(rawIdentifier, isMagAccount);
+    console.log(`📡 Trex renewal API call for ${accountType}: ${maskedIdentifier}`);
+    
+    const response = await fetch(renewUrl.toString());
+    const responseText = await response.text();
+    
+    let data: any;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      data = { raw: responseText };
+    }
+
+    // SANITIZED LOG - only safe metadata
+    console.log(`📡 Trex renewal response for ${maskedIdentifier}:`, {
+      httpStatus: response.status,
+      hasError: !!data.error,
+      hasMessage: !!data.message,
+      status: data.status,
+      success: data.success
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `HTTP ${response.status}` };
+    }
+
+    if (data.error) {
+      return { success: false, error: data.error };
+    }
+
+    // STRICT success check - only clear success indicators
+    const isSuccess = data.status === 'true' || data.status === true || 
+                      data.success === true || data.status === 'success';
+    
+    if (isSuccess) {
+      console.log(`✅ Trex renewal succeeded for ${maskedIdentifier}`);
+      return { success: true };
+    }
+
+    // Unclear response = FAILURE
+    console.error(`❌ Trex renewal returned unclear response for ${maskedIdentifier}:`, {
+      status: data.status, success: data.success, hasError: !!data.error
+    });
+    return { success: false, error: 'Trex renewal returned unclear response' };
+    
+  } catch (error) {
+    console.error(`❌ Trex renewal exception:`, error instanceof Error ? error.message : 'Unknown error');
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 export interface EnhancedWebhookPayload {
   api_key?: string;
   resellerId?: string;
@@ -924,27 +1031,70 @@ async function upgradeCustomerConnections(
     const newExpirationDateStr = calculateNewExpirationDate(planDurationMonths);
     console.log(`📅 Unified expiration date: ${newExpirationDateStr} (now + ${planDurationMonths} months)`);
 
-    // 9. Migrate primary connection if connection_list is empty, or update existing connections' expiration
+    // 9. Migrate primary connection if connection_list is empty
     if (existingConnectionList.length === 0 && customer.username && customer.password) {
       console.log('📦 Migrating primary connection to connection_list');
       existingConnectionList.push({
         connection_number: 1,
         username: customer.username,
         password: customer.password,
+        mac_address: customer.mac_address || null,
         m3u_url: customer.m3u_url,
-        expiration_date: newExpirationDateStr, // Use new unified date
+        expiration_date: customer.expiration_date,
         status: 'active'
       });
-    } else {
-      // Update expiration for ALL existing connections (renew portion of upgrade)
-      console.log(`🔄 Renewing ${existingConnectionList.length} existing connection(s) to ${newExpirationDateStr}`);
-      existingConnectionList = existingConnectionList.map((conn: any) => ({
-        ...conn,
-        expiration_date: newExpirationDateStr
-      }));
     }
 
-    // 10. Create additional connections (delta) using create-iptv-user
+    // 10. RENEW EXISTING CONNECTIONS VIA TREX API (provider-side renewal)
+    console.log(`🔄 Renewing ${existingConnectionList.length} existing connection(s) via Trex API...`);
+
+    for (let i = 0; i < existingConnectionList.length; i++) {
+      const conn = existingConnectionList[i];
+      const connNum = conn.connection_number || i + 1;
+      
+      console.log(`📡 Renewing existing connection ${connNum}/${existingConnectionList.length}...`);
+      
+      const renewResult = await renewConnectionViaTrex(
+        {
+          username: conn.username,
+          password: conn.password,
+          mac_address: conn.mac_address
+        },
+        planDurationMonths
+      );
+      
+      if (!renewResult.success) {
+        const errorMsg = `Failed to renew existing connection ${connNum}: ${renewResult.error}`;
+        console.error(`❌ ${errorMsg}`);
+        
+        await syncHighLevelContact(
+          resellerId,
+          payload.contact_id,
+          false,
+          undefined,
+          undefined,
+          errorMsg
+        );
+        
+        return {
+          success: false,
+          message: errorMsg,
+          errors: ['upgrade_failed']
+        };
+      }
+      
+      // Update local expiration AFTER successful API renewal
+      existingConnectionList[i] = {
+        ...conn,
+        expiration_date: newExpirationDateStr
+      };
+      
+      console.log(`✅ Connection ${connNum} renewed and expiration updated to ${newExpirationDateStr}`);
+    }
+
+    console.log(`✅ All ${existingConnectionList.length} existing connection(s) renewed via Trex API`);
+
+    // 11. Create additional connections (delta) using create-iptv-user
     const newConnections: any[] = [];
     const packageId = customer.package_id || payload.customer.package_id || 'default';
     const deviceType = customer.device_type || payload.customer.device_type || 'Smart TV';
@@ -1022,7 +1172,7 @@ async function upgradeCustomerConnections(
       console.log(`✅ Connection ${connectionNumber} created successfully`);
     }
 
-    // 11. Update database with new connection_list
+    // 12. Update database with new connection_list
     const updatedConnectionList = [...existingConnectionList, ...newConnections];
     
     const { error: updateError } = await supabase
@@ -1045,7 +1195,7 @@ async function upgradeCustomerConnections(
       };
     }
 
-    // 12. Deduct credits from reseller
+    // 13. Deduct credits from reseller
     const { error: creditError } = await supabase
       .from('profiles')
       .update({ credits: resellerData.credits - creditsRequired })
@@ -1055,7 +1205,7 @@ async function upgradeCustomerConnections(
       console.error('⚠️ Failed to deduct credits (non-blocking):', creditError);
     }
 
-    // 13. Log credit usage
+    // 14. Log credit usage
     await supabase.from('credit_logs').insert([{
       reseller_id: resellerId,
       action: 'account_creation',
@@ -1067,7 +1217,7 @@ async function upgradeCustomerConnections(
 
     console.log(`✅ Upgrade completed: ${currentConnections} → ${requestedConnections} connections, ${creditsRequired} credits used`);
 
-    // 14. Sync to HighLevel (non-blocking)
+    // 15. Sync to HighLevel (non-blocking)
     const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
     if (contactIdToUse) {
       const credentialsList = updatedConnectionList.slice(0, 3).map((conn: any) => ({
@@ -1088,7 +1238,7 @@ async function upgradeCustomerConnections(
       );
     }
 
-    // 15. Build response with all credentials
+    // 16. Build response with all credentials
     const response: EnhancedWebhookResult = {
       success: true,
       message: `Upgraded from ${currentConnections} to ${requestedConnections} connections`,
