@@ -1096,8 +1096,24 @@ async function upgradeCustomerConnections(
 
     // 11. Create additional connections (delta) using create-iptv-user
     const newConnections: any[] = [];
-    const packageId = customer.package_id || payload.customer.package_id || 'default';
-    const deviceType = customer.device_type || payload.customer.device_type || 'Smart TV';
+    const deviceType = customer.device_type || payload.customer?.device_type || 'Smart TV';
+
+    // Get package ID - prioritize customer's existing package, then payload, then lookup from system settings
+    let packageId = customer.package_id || payload.customer?.package_id;
+    if (!packageId) {
+      const { data: packageSetting, error: packageSettingError } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('id', 'trex_default_package_id')
+        .single();
+      
+      if (packageSettingError) {
+        console.log('⚠️ Could not load trex_default_package_id from system_settings (using fallback)');
+      }
+      
+      packageId = packageSetting?.value || '27228';
+      console.log(`📦 Using default Trex package ID: ${String(packageId)}`);
+    }
 
     for (let i = 0; i < delta; i++) {
       const connectionNumber = existingConnectionList.length + newConnections.length + 1;
