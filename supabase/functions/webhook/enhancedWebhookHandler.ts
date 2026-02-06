@@ -543,17 +543,52 @@ async function renewCustomerGroup(
 
     const planDuration = payload.customer.plan_duration_months || 1;
 
-    // Find existing customer
-    const { data: customers, error: findError } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('reseller_id', resellerId)
-      .eq('name', payload.customer.name)
-      .eq('email', payload.customer.email)
-      .in('status', ['active', 'expired', 'expiring_soon'])
-      .limit(1);
+    // Find existing customer - priority: contact_id lookup, then name+email fallback
+    let customer: any = null;
 
-    if (findError || !customers || customers.length === 0) {
+    // 1. First try to find by highlevel_contact_id if contact_id is provided
+    if (payload.contact_id) {
+      console.log(`🔍 Looking up customer by highlevel_contact_id: ${payload.contact_id}`);
+      const { data: contactCustomers, error: contactError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('reseller_id', resellerId)
+        .eq('highlevel_contact_id', payload.contact_id)
+        .in('status', ['active', 'expired', 'expiring_soon'])
+        .limit(1);
+
+      if (!contactError && contactCustomers && contactCustomers.length > 0) {
+        customer = contactCustomers[0];
+        console.log(`✅ Found customer by highlevel_contact_id: ${customer.name}`);
+      } else {
+        console.log('⏭️ No customer found by highlevel_contact_id, trying name+email fallback');
+      }
+    }
+
+    // 2. Fallback to name + email lookup if not found by contact_id
+    if (!customer && payload.customer.name && payload.customer.email) {
+      console.log(`🔍 Looking up customer by name+email: ${payload.customer.name} / ${payload.customer.email}`);
+      const { data: nameEmailCustomers, error: findError } = await supabase
+        .from('customers')
+        .select('*')
+        .eq('reseller_id', resellerId)
+        .eq('name', payload.customer.name)
+        .eq('email', payload.customer.email)
+        .in('status', ['active', 'expired', 'expiring_soon'])
+        .limit(1);
+
+      if (!findError && nameEmailCustomers && nameEmailCustomers.length > 0) {
+        customer = nameEmailCustomers[0];
+        console.log(`✅ Found customer by name+email: ${customer.name}`);
+      }
+    }
+
+    // 3. If still not found, return error
+    if (!customer) {
+      const errorMsg = payload.contact_id 
+        ? `No customer found matching contact_id "${payload.contact_id}" or name/email provided`
+        : `No customer found with name "${payload.customer.name}" and email "${payload.customer.email}"`;
+      
       // Sync failure to HighLevel (non-blocking)
       await syncHighLevelContact(
         resellerId,
@@ -561,24 +596,23 @@ async function renewCustomerGroup(
         false,
         undefined,
         undefined,
-        `No customer found with name "${payload.customer.name}" and email "${payload.customer.email}"`
+        errorMsg
       );
       
       return {
         success: false,
-        message: `No customer found with name "${payload.customer.name}" and email "${payload.customer.email}"`,
+        message: errorMsg,
         errors: ['customer_not_found']
       };
     }
 
-    const customer = customers[0];
-
-    // Persist contact_id if provided via webhook
-    if (payload.contact_id && customer.id) {
+    // Persist contact_id if provided via webhook (link HighLevel contact to customer)
+    if (payload.contact_id && customer.id && customer.highlevel_contact_id !== payload.contact_id) {
       await supabase
         .from('customers')
         .update({ highlevel_contact_id: payload.contact_id })
         .eq('id', customer.id);
+      console.log(`🔗 Linked highlevel_contact_id to customer: ${payload.contact_id}`);
     }
 
     // Use the renew-customer-group function
@@ -592,6 +626,18 @@ async function renewCustomerGroup(
 
     if (error || !data?.success) {
       console.error('❌ Failed to renew customer:', error || data);
+      
+      // Sync failure to HighLevel (non-blocking)
+      const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
+      await syncHighLevelContact(
+        resellerId,
+        contactIdToUse,
+        false,
+        undefined,
+        undefined,
+        data?.message || 'Failed to renew customer'
+      );
+      
       return {
         success: false,
         message: data?.message || 'Failed to renew customer',
@@ -626,20 +672,23 @@ async function renewCustomerGroup(
         }];
       }
       
+      // Add renewal_success tag on successful renewal
       await syncHighLevelContact(
         resellerId,
         contactIdToUse,
         true,
         credentialsList,
-        newExpiry.toISOString().split('T')[0]
+        newExpiry.toISOString().split('T')[0],
+        undefined,
+        ['renewal_success']
       );
     }
 
     return {
       success: true,
       message: `Customer renewed successfully. ${data.accountsRenewed} accounts renewed for ${planDuration} months`,
-      name: payload.customer.name,
-      email: payload.customer.email,
+      name: customer.name,
+      email: customer.email,
       device_type: customer.device_type || 'Smart TV',
       start_date: customer.start_date,
       end_date: newExpiry.toISOString().split('T')[0],
