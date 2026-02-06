@@ -1,125 +1,216 @@
 
+# Fix: Expiration Dates Not Updating on Dashboard After HighLevel Renewal
 
-# Fix: Prevent Double Renewal on Trex API
+## Problem Identified
 
-## Problem Summary
+When a customer is renewed through HighLevel (or any webhook path), the expiration dates are not reflected on the dashboard immediately. This happens because:
 
-The user renewed a customer and was effectively charged for 2 one-month renewals (expiration extended by 2 months). Investigation reveals:
+1. **Top-level `expiration_date` is updated** - The SQL function `renew_customer_group` and the admin override path both correctly update the `expiration_date` column in the `customers` table.
 
-1. **First attempt (05:11)**: Called Trex API successfully (+1 month), then crashed during database update due to `userProfile is not defined`
-2. **Second attempt (05:13)**: Called Trex API again (+1 month), database update succeeded
+2. **`connection_list` JSONB is NOT updated** - Neither the SQL function nor the edge function updates the `expiration_date` fields stored inside the `connection_list` array.
 
-**Root Cause**: The idempotency protection only prevents duplicate *database* operations. The Trex API call happens before the database update, so when a failure occurs after the API call but before completion, the next retry calls the Trex API again.
+3. **Dashboard reads from `connection_list`** - The `CustomerCredentials.tsx` component (lines 158-162) specifically reads the expiration date from `connection_list[].expiration_date` for consolidated customers:
+   ```typescript
+   const connectionData = connectionList.find((c: any) => c.connection_number === connection.connectionNumber);
+   const actualExpirationDate = connectionData?.expiration_date || connectionExpirationDate;
+   ```
 
-## Solution: Add API-Level Idempotency Flag
-
-Track whether the Trex API was already called for a given transaction, preventing duplicate external API calls on retry.
+**Result**: The dashboard shows stale dates from the `connection_list` while the top-level field is correct.
 
 ---
 
-## Technical Changes
+## Solution: Two-Part Fix
 
-### 1. Add `api_calls_completed` Flag to Renewal Transactions
+### Part 1: Update `connection_list` During Renewal
 
-Add a new column to track whether the provider API calls have been completed for this transaction:
+Modify both the SQL function and the edge function admin path to update the `expiration_date` inside each connection in the `connection_list` JSONB array.
+
+### Part 2: Auto-Sync After Webhook Renewal (Safety Net)
+
+Call the `sync-device-info` function after successful webhook renewals to fetch authoritative expiration dates from the Trex panel.
+
+---
+
+## Technical Implementation
+
+### 1. Update SQL Function: `renew_customer_group`
+
+Create a new migration to replace the function with one that updates `connection_list`:
 
 ```sql
-ALTER TABLE renewal_transactions ADD COLUMN IF NOT EXISTS api_calls_completed BOOLEAN DEFAULT FALSE;
+CREATE OR REPLACE FUNCTION public.renew_customer_group(
+  customer_id_param uuid,
+  duration_months integer,
+  reseller_id_param uuid
+)
+RETURNS TABLE(success boolean, accounts_renewed integer, credits_used integer, error_message text)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO ''
+AS $$
+DECLARE
+  customer_group_val text;
+  accounts_count_val integer;
+  credits_needed integer;
+  reseller_credits integer;
+  new_expiration_date date;
+  customer_record record;
+BEGIN
+  -- Get customer group
+  SELECT customer_group INTO customer_group_val
+  FROM public.customers
+  WHERE id = customer_id_param;
+  
+  IF customer_group_val IS NULL THEN
+    RETURN QUERY SELECT false, 0, 0, 'Customer not found'::text;
+    RETURN;
+  END IF;
+  
+  -- Calculate requirements
+  SELECT cr.credits_required, cr.accounts_count 
+  INTO credits_needed, accounts_count_val
+  FROM public.calculate_renewal_credits_required(customer_id_param, duration_months) cr;
+  
+  -- Check reseller credits
+  SELECT credits INTO reseller_credits
+  FROM public.profiles
+  WHERE id = reseller_id_param;
+  
+  IF reseller_credits < credits_needed THEN
+    RETURN QUERY SELECT false, 0, 0, 'Insufficient credits'::text;
+    RETURN;
+  END IF;
+  
+  -- Update each customer in the group, including connection_list
+  FOR customer_record IN 
+    SELECT id, expiration_date, connection_list 
+    FROM public.customers 
+    WHERE customer_group = customer_group_val AND status != 'cancelled'
+  LOOP
+    new_expiration_date := (customer_record.expiration_date + (duration_months || ' months')::interval)::date;
+    
+    UPDATE public.customers
+    SET 
+      expiration_date = new_expiration_date,
+      plan_duration = duration_months,
+      status = 'active',
+      -- Update connection_list: set expiration_date for each connection
+      connection_list = CASE 
+        WHEN connection_list IS NOT NULL AND jsonb_array_length(connection_list) > 0 THEN
+          (SELECT jsonb_agg(
+            conn || jsonb_build_object('expiration_date', new_expiration_date::text)
+          )
+          FROM jsonb_array_elements(connection_list) AS conn)
+        ELSE connection_list
+      END
+    WHERE id = customer_record.id;
+  END LOOP;
+  
+  -- Deduct credits from reseller
+  UPDATE public.profiles
+  SET credits = credits - credits_needed
+  WHERE id = reseller_id_param;
+  
+  -- Log the credit usage
+  INSERT INTO public.credit_logs (
+    reseller_id, action, credits_used, customer_name, customer_id, notes
+  ) VALUES (
+    reseller_id_param, 'account_creation', credits_needed,
+    (SELECT name FROM public.customers WHERE id = customer_id_param LIMIT 1),
+    customer_id_param,
+    'Group renewal for ' || accounts_count_val || ' accounts'
+  );
+  
+  RETURN QUERY SELECT true, accounts_count_val, credits_needed, NULL::text;
+END;
+$$;
 ```
 
-### 2. Update `renew-customer-group` to Skip API Calls on Retry
+### 2. Update Edge Function: `renew-customer-group/index.ts`
 
-Modify the edge function to check if API calls were already made for this transaction. If so, skip directly to the database update phase.
+Modify the admin override path (lines 648-687) to also update `connection_list`:
 
-**File: `supabase/functions/renew-customer-group/index.ts`**
-
-After getting the transaction result (around line 446), add:
 ```typescript
-const apiCallsAlreadyCompleted = transactionResult.api_calls_completed === true;
-
-if (apiCallsAlreadyCompleted) {
-  console.log(`⚡ API calls already completed for transaction ${transactionId}, skipping to database update`);
+if (isAdminOverride) {
+  console.log(`⚡ ADMIN: Updating customer expiration dates directly (no credit deduction)`);
+  
+  const newExpirationDate = new Date();
+  newExpirationDate.setMonth(newExpirationDate.getMonth() + planDuration);
+  const newExpirationDateStr = newExpirationDate.toISOString().split('T')[0];
+  
+  // For each customer in the group, update both expiration_date and connection_list
+  for (const customer of groupCustomers) {
+    const connectionList = customer.connection_list;
+    let updatedConnectionList = connectionList;
+    
+    // Update expiration_date in each connection if connection_list exists
+    if (Array.isArray(connectionList) && connectionList.length > 0) {
+      updatedConnectionList = connectionList.map((conn: any) => ({
+        ...conn,
+        expiration_date: newExpirationDateStr
+      }));
+    }
+    
+    const { error: updateError } = await supabaseClient
+      .from('customers')
+      .update({
+        expiration_date: newExpirationDateStr,
+        plan_duration: planDuration,
+        status: 'active',
+        connection_list: updatedConnectionList
+      })
+      .eq('id', customer.id);
+    
+    if (updateError) {
+      console.error(`❌ Admin database update failed for ${customer.name}:`, updateError);
+      // Handle error...
+    }
+  }
+  
+  console.log(`✅ Admin renewal completed successfully`);
 }
 ```
 
-Before the renewal loops (around line 508), wrap the API calls:
+### 3. Optional: Auto-Sync in Webhook Handler (Safety Net)
+
+In `enhancedWebhookHandler.ts`, after a successful renewal, optionally call `sync-device-info`:
+
 ```typescript
-if (!apiCallsAlreadyCompleted) {
-  // Existing renewal logic for MAG and M3U customers...
-  // After all renewals succeed, mark API calls as completed
-  await supabaseClient
-    .from('renewal_transactions')
-    .update({ api_calls_completed: true })
-    .eq('id', transactionId);
-} else {
-  // Populate renewalResults with success for database update phase
-  renewalResults = groupCustomers.map(c => ({ account: c, success: true }));
+// After successful renewal, trigger sync to get authoritative dates from provider
+if (data.success && customer.id) {
+  try {
+    console.log('🔄 Triggering post-renewal sync for customer:', customer.id);
+    await supabase.functions.invoke('sync-device-info', {
+      body: { customerId: customer.id }
+    });
+  } catch (syncError) {
+    console.log('⚠️ Post-renewal sync failed (non-blocking):', syncError);
+  }
 }
 ```
 
-### 3. Update Transaction Key Generation
-
-The current 5-minute window may be too short. Consider increasing to 10 or 15 minutes to better handle edge cases, or making it configurable.
-
 ---
 
-## Database Migration
+## Files to Modify
 
-```sql
--- Add api_calls_completed flag to renewal_transactions
-ALTER TABLE public.renewal_transactions 
-ADD COLUMN IF NOT EXISTS api_calls_completed BOOLEAN DEFAULT FALSE;
-
--- Add comment for documentation
-COMMENT ON COLUMN public.renewal_transactions.api_calls_completed IS 
-'Tracks whether external provider API calls (Trex, etc.) have been made for this transaction. 
-Prevents duplicate API calls on retry after database errors.';
-```
-
----
-
-## Edge Function Changes
-
-### File: `supabase/functions/renew-customer-group/index.ts`
-
-1. After line 446 (transaction result), add check for `api_calls_completed`
-2. Before line 508 (MAG renewals), wrap API calls in conditional
-3. After successful API calls (around line 587), update transaction to mark `api_calls_completed = true`
-4. If `api_calls_completed` is true, skip directly to database update with success results
+| File | Change |
+|------|--------|
+| `supabase/migrations/[new].sql` | Update `renew_customer_group` function to update `connection_list` |
+| `supabase/functions/renew-customer-group/index.ts` | Update admin override path to update `connection_list` |
+| `supabase/functions/webhook/enhancedWebhookHandler.ts` | Add optional post-renewal sync call |
 
 ---
 
 ## Edge Functions to Redeploy
 
 - `renew-customer-group`
+- `webhook`
 
 ---
 
-## Expected Result After Fix
+## Expected Result
 
-```text
-Timeline (with fix):
-1. 05:11 - First attempt starts
-2. 05:11 - Trex API called (+1 month) 
-3. 05:11 - Transaction marked: api_calls_completed = TRUE
-4. 05:11 - Database update fails (userProfile error)
-5. 05:11 - Transaction marked: status = failed
-
-6. 05:13 - Retry attempt starts  
-7. 05:13 - Same transaction found (5-min window)
-8. 05:13 - Sees api_calls_completed = TRUE
-9. 05:13 - SKIPS Trex API call (no double renewal!)
-10. 05:13 - Database update succeeds
-11. 05:13 - Transaction marked: status = completed
-
-Result: Customer extended by 1 month (correct), not 2
-```
-
----
-
-## Immediate Workaround
-
-The customer's expiration was incorrectly extended. To fix this specific case:
-- Use the Trex panel directly to adjust the expiration date, OR
-- Note this for the next renewal (they have an extra month of credit)
-
+After implementation:
+1. When renewal is triggered via HighLevel webhook, both the top-level `expiration_date` AND the `connection_list[].expiration_date` fields will be updated
+2. The dashboard will immediately show the correct new expiration dates for all connections
+3. The optional sync call provides an extra safety net by fetching authoritative dates from the Trex panel
