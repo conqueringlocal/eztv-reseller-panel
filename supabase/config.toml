@@ -57,3 +57,6 @@ verify_jwt = false
 
 [functions.backfill-m3u-domains]
 verify_jwt = false
+
+[functions.import-customers-to-highlevel]
+verify_jwt = false
