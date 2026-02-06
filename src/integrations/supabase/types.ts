@@ -555,6 +555,7 @@ export type Database = {
       }
       renewal_transactions: {
         Row: {
+          api_calls_completed: boolean | null
           completed_at: string | null
           created_at: string
           credits_required: number
@@ -568,6 +569,7 @@ export type Database = {
           transaction_key: string
         }
         Insert: {
+          api_calls_completed?: boolean | null
           completed_at?: string | null
           created_at?: string
           credits_required: number
@@ -581,6 +583,7 @@ export type Database = {
           transaction_key: string
         }
         Update: {
+          api_calls_completed?: boolean | null
           completed_at?: string | null
           created_at?: string
           credits_required?: number
@@ -1070,6 +1073,7 @@ export type Database = {
           p_reseller_id: string
         }
         Returns: {
+          api_calls_completed: boolean
           current_status: string
           is_new_transaction: boolean
           transaction_id: string
