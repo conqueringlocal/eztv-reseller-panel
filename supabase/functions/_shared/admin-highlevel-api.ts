@@ -26,6 +26,7 @@ export interface AdminResellerAlertFields {
   reseller_credit_alert_reason?: string;
   reseller_credit_alert_triggered_at?: string;
   reseller_name?: string;
+  reseller_buy_credits_url?: string;
 }
 
 interface CustomFieldMapping {
@@ -89,6 +90,16 @@ async function getAdminCustomFieldMappings(
     return cachedMappings;
   }
 
+  // Define the fields we're looking for
+  const targetFields = [
+    'reseller_credit_balance',
+    'reseller_low_credit_threshold',
+    'reseller_credit_alert_reason',
+    'reseller_credit_alert_triggered_at',
+    'reseller_name',
+    'reseller_buy_credits_url'
+  ];
+
   try {
     const response = await fetch(
       `${HIGHLEVEL_API_BASE}/locations/${locationId}/customFields`,
@@ -110,18 +121,41 @@ async function getAdminCustomFieldMappings(
     const data = await response.json();
     const fields = data.customFields || [];
     
+    console.log('Admin HL raw fields sample:', fields.slice(0, 3).map((f: { fieldKey?: string; name?: string; id?: string }) => ({
+      fieldKey: f.fieldKey,
+      name: f.name,
+      id: f.id ? maskId(f.id) : null
+    })));
+    
     const mapping: CustomFieldMapping = {};
     for (const field of fields) {
-      // Map by field key (e.g., 'reseller_credit_balance')
-      if (field.fieldKey) {
-        mapping[field.fieldKey] = field.id;
+      const fieldKey = field.fieldKey || field.key || '';
+      // Strip 'contact.' prefix if present (HighLevel UI-created fields use this format)
+      const strippedKey = fieldKey.replace(/^contact\./, '');
+      // Normalize name: "Reseller Credit Balance" → "reseller_credit_balance"
+      const fieldName = (field.name || '').toLowerCase().replace(/\s+/g, '_');
+      const fieldId = field.id;
+      
+      if (!fieldId) continue;
+      
+      // Match against target fields using multiple strategies
+      for (const targetField of targetFields) {
+        if (fieldKey === targetField || strippedKey === targetField || fieldName === targetField) {
+          mapping[targetField] = fieldId;
+          break;
+        }
       }
     }
 
     cachedMappings = mapping;
     cacheTimestamp = now;
     
-    console.log('Admin HL custom field mappings loaded:', Object.keys(mapping).length, 'fields');
+    // Debug logging - show what was found and what's missing
+    console.log('Admin HL field mapping result:', {
+      found: Object.keys(mapping),
+      missing: targetFields.filter(f => !mapping[f])
+    });
+    
     return mapping;
   } catch (error) {
     console.error('Error fetching custom field mappings:', error);
@@ -138,9 +172,41 @@ export async function upsertAdminResellerContact(
   reseller: { id: string; name: string; email: string }
 ): Promise<{ contactId: string | null; isNew: boolean }> {
   try {
-    console.log('Upserting Admin HL contact for reseller:', maskId(reseller.id));
+    console.log('Upserting Admin HL contact for reseller:', maskId(reseller.id), 'email:', reseller.email);
 
-    // First try to find existing contact by email
+    // First try to find existing contact by email using the lookup endpoint
+    const lookupResponse = await fetch(
+      `${HIGHLEVEL_API_BASE}/contacts/lookup?locationId=${locationId}&email=${encodeURIComponent(reseller.email)}`,
+      {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Version': '2021-07-28',
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (lookupResponse.ok) {
+      const lookupData = await lookupResponse.json();
+      const contacts = lookupData.contacts || [];
+      
+      console.log('Contact lookup result for reseller:', {
+        resellerId: maskId(reseller.id),
+        email: reseller.email,
+        contactsFound: contacts.length
+      });
+      
+      if (contacts.length > 0) {
+        const contactId = contacts[0].id;
+        console.log('Found existing Admin HL contact via lookup:', maskId(contactId));
+        return { contactId, isNew: false };
+      }
+    } else {
+      console.log('Lookup endpoint failed, trying duplicate search:', lookupResponse.status);
+    }
+
+    // Fallback: try the duplicate search endpoint
     const searchResponse = await fetch(
       `${HIGHLEVEL_API_BASE}/contacts/search/duplicate?locationId=${locationId}&email=${encodeURIComponent(reseller.email)}`,
       {
@@ -157,14 +223,20 @@ export async function upsertAdminResellerContact(
       const searchData = await searchResponse.json();
       const contacts = searchData.contacts || [];
       
+      console.log('Duplicate search result for reseller:', {
+        resellerId: maskId(reseller.id),
+        contactsFound: contacts.length
+      });
+      
       if (contacts.length > 0) {
         const contactId = contacts[0].id;
-        console.log('Found existing Admin HL contact:', maskId(contactId));
+        console.log('Found existing Admin HL contact via duplicate search:', maskId(contactId));
         return { contactId, isNew: false };
       }
     }
 
     // Contact not found, create new one using upsert endpoint
+    console.log('No existing contact found, creating new one for:', reseller.email);
     const createResponse = await fetch(
       `${HIGHLEVEL_API_BASE}/contacts/upsert`,
       {
@@ -222,14 +294,15 @@ export async function updateAdminResellerAlertFields(
     // Get custom field mappings
     const mapping = await getAdminCustomFieldMappings(locationId, token);
     
-    // Build custom fields array - NEVER send blank strings
-    const customFields: Array<{ id: string; field_value: string }> = [];
+    // Build custom fields array with both id and key for maximum compatibility
+    // NEVER send blank strings - use undefined to skip fields
+    const customFields: Array<{ id: string; key: string; field_value: string }> = [];
     
     const addField = (key: string, value: string | undefined) => {
       if (!value) return; // Skip undefined or empty strings - NEVER send blank
       const fieldId = mapping[key];
       if (fieldId) {
-        customFields.push({ id: fieldId, field_value: value });
+        customFields.push({ id: fieldId, key, field_value: value });
       } else {
         console.log(`Custom field '${key}' not found in Admin HL location`);
       }
@@ -240,11 +313,18 @@ export async function updateAdminResellerAlertFields(
     addField('reseller_credit_alert_reason', fields.reseller_credit_alert_reason);
     addField('reseller_credit_alert_triggered_at', fields.reseller_credit_alert_triggered_at);
     addField('reseller_name', fields.reseller_name);
+    addField('reseller_buy_credits_url', fields.reseller_buy_credits_url);
 
     if (customFields.length === 0) {
       console.log('No custom fields to update');
       return { success: true };
     }
+
+    console.log('Sending custom fields update:', {
+      contactId: maskId(contactId),
+      fieldsCount: customFields.length,
+      fieldKeys: customFields.map(f => f.key)
+    });
 
     const response = await fetch(
       `${HIGHLEVEL_API_BASE}/contacts/${contactId}`,
