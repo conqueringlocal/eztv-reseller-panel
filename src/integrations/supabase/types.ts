@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_highlevel_settings: {
+        Row: {
+          created_at: string | null
+          custom_field_mappings: Json | null
+          id: string
+          is_active: boolean
+          location_id: string | null
+          private_integration_token: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          custom_field_mappings?: Json | null
+          id?: string
+          is_active?: boolean
+          location_id?: string | null
+          private_integration_token?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          custom_field_mappings?: Json | null
+          id?: string
+          is_active?: boolean
+          location_id?: string | null
+          private_integration_token?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       auth_rate_limits: {
         Row: {
           attempt_type: string
@@ -496,6 +526,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          admin_highlevel_contact_id: string | null
           api_key: string | null
           created_at: string
           credit_price_per_unit: number | null
@@ -503,6 +534,9 @@ export type Database = {
           credits: number
           email: string
           id: string
+          last_low_credit_alert_at: string | null
+          low_credit_alert_cooldown_hours: number
+          low_credit_threshold: number
           name: string
           panel_url: string | null
           parent_reseller_id: string | null
@@ -512,6 +546,7 @@ export type Database = {
           use_admin_api: boolean | null
         }
         Insert: {
+          admin_highlevel_contact_id?: string | null
           api_key?: string | null
           created_at?: string
           credit_price_per_unit?: number | null
@@ -519,6 +554,9 @@ export type Database = {
           credits?: number
           email: string
           id: string
+          last_low_credit_alert_at?: string | null
+          low_credit_alert_cooldown_hours?: number
+          low_credit_threshold?: number
           name: string
           panel_url?: string | null
           parent_reseller_id?: string | null
@@ -528,6 +566,7 @@ export type Database = {
           use_admin_api?: boolean | null
         }
         Update: {
+          admin_highlevel_contact_id?: string | null
           api_key?: string | null
           created_at?: string
           credit_price_per_unit?: number | null
@@ -535,6 +574,9 @@ export type Database = {
           credits?: number
           email?: string
           id?: string
+          last_low_credit_alert_at?: string | null
+          low_credit_alert_cooldown_hours?: number
+          low_credit_threshold?: number
           name?: string
           panel_url?: string | null
           parent_reseller_id?: string | null
