@@ -60,3 +60,6 @@ verify_jwt = false
 
 [functions.import-customers-to-highlevel]
 verify_jwt = false
+
+[functions.reseller-credit-monitor]
+verify_jwt = false
