@@ -164,9 +164,9 @@ export async function upsertAdminResellerContact(
       }
     }
 
-    // Contact not found, create new one
+    // Contact not found, create new one using upsert endpoint
     const createResponse = await fetch(
-      `${HIGHLEVEL_API_BASE}/contacts`,
+      `${HIGHLEVEL_API_BASE}/contacts/upsert`,
       {
         method: 'POST',
         headers: {
@@ -179,14 +179,15 @@ export async function upsertAdminResellerContact(
           email: reseller.email,
           name: reseller.name,
           firstName: reseller.name.split(' ')[0] || reseller.name,
-          lastName: reseller.name.split(' ').slice(1).join(' ') || '',
+          lastName: reseller.name.split(' ').slice(1).join(' ') || undefined,
           tags: ['reseller', 'low_credit_alert']
         })
       }
     );
 
     if (!createResponse.ok) {
-      console.error('Failed to create Admin HL contact:', createResponse.status);
+      const errorText = await createResponse.text();
+      console.error('Failed to create Admin HL contact:', createResponse.status, errorText);
       return { contactId: null, isNew: false };
     }
 
