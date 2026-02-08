@@ -1,264 +1,376 @@
 
-# Import Existing Customers to HighLevel - Implementation
+
+# Low Credit Alerts - Implementation Plan
 
 ## Overview
-Implementing the approved plan to create an admin-only edge function that imports existing customers from the database into HighLevel CRM, with two additional safety tweaks.
+Implement a "Low Credit Alerts" system using a single Admin HighLevel subaccount to trigger automated email/SMS alerts when reseller credits drop below a configurable threshold.
+
+---
 
 ## Files to Create/Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `supabase/functions/import-customers-to-highlevel/index.ts` | CREATE | New edge function for HighLevel import |
-| `supabase/config.toml` | MODIFY | Add function config entry (line 60) |
-| `src/pages/admin/AdminResellerDetail.tsx` | MODIFY | Add import button + confirmation dialog |
+| Database Migration | CREATE | Add columns to profiles + new admin_highlevel_settings table |
+| `supabase/functions/_shared/admin-highlevel-api.ts` | CREATE | Admin HL helper functions |
+| `supabase/functions/reseller-credit-monitor/index.ts` | CREATE | Scheduled edge function |
+| `src/components/admin/AdminHighLevelAlertSettings.tsx` | CREATE | Admin HL alert settings UI |
+| `src/components/resellers/ResellerAlertSettings.tsx` | CREATE | Per-reseller threshold UI |
+| `src/pages/admin/AdminSettings.tsx` | MODIFY | Add Alerts tab (5th tab) |
+| `src/pages/admin/AdminResellerDetail.tsx` | MODIFY | Add alert settings card |
+| `supabase/config.toml` | MODIFY | Add function entry |
 
 ---
 
-## Safety Tweaks Applied
+## Final Tweaks Applied
 
-### 1. Never Send Blank Strings
-Use `undefined` instead of `''` for missing values so `buildCustomFieldsPayload` doesn't overwrite existing HL fields:
+### 1. Dual Auth: CRON_SECRET OR Admin JWT
+The edge function accepts EITHER:
+- **A) Scheduled calls:** `X-CRON-SECRET` header matches env `CRON_SECRET`
+- **B) Manual admin calls:** `Authorization: Bearer <JWT>` + `has_role('admin') = true`
+
+This allows cron to stay locked down while "Run Credit Monitor Now" works from the UI without exposing CRON_SECRET to the browser.
+
 ```typescript
-const fields: HighLevelContactFields = {
-  provision_status: 'success',
-  service_expiration: serviceExpiration || undefined,
-  total_connections: totalConnections || undefined,
-  service_username_1: connections[0]?.username || undefined,
-  service_password_1: connections[0]?.password || undefined,
-  service_m3u_url_1: connections[0]?.m3u_url || undefined,
-  // ... connections 2 and 3
-};
-```
+// Check for cron secret first
+const cronSecret = req.headers.get('X-CRON-SECRET');
+const expectedCronSecret = Deno.env.get('CRON_SECRET');
+const isCronAuth = cronSecret && cronSecret === expectedCronSecret;
 
-### 2. Duplicate Email Protection
-Track normalized emails in a Set within the import run:
-```typescript
-const seenEmails = new Set<string>();
-
-// In customer loop:
-if (seenEmails.has(email)) {
-  duplicateEmailSkipped++;
-  continue;
+// If not cron, check for admin JWT
+if (!isCronAuth) {
+  const authHeader = req.headers.get('Authorization');
+  // ... validate JWT and has_role('admin')
 }
-seenEmails.add(email);
 ```
 
-Response includes new counter: `duplicateEmailSkipped`
+### 2. Dry Run Mode
+Optional request body flag `{ dry_run: boolean }`:
+- If `dry_run=true`: compute eligible resellers and return stats, but do NOT:
+  - Call HighLevel API
+  - Write `admin_highlevel_contact_id` to DB
+  - Write `last_low_credit_alert_at` to DB
+
+### 3. Credits Null Safety
+If `reseller.credits` is null/undefined, skip that reseller and count `skippedNoCredits++` (do not alert).
 
 ---
 
-## Edge Function: `import-customers-to-highlevel/index.ts`
+## Database Migration
 
-**Features:**
-- Admin-only (JWT + `has_role('admin')`)
-- Requires HighLevel configured via `getHighLevelSettings(resellerId)`
-- Processes customers in batches of 200
-- 150ms delay around EACH HighLevel API call (rate limiting)
-- Idempotent: uses email-based upsert, handles existing contact IDs
-- Sanitized logging (masked IDs, no passwords/tokens/URLs)
+### 1. Extend `profiles` table
 
-**Input Body:**
+```sql
+ALTER TABLE public.profiles 
+  ADD COLUMN IF NOT EXISTS low_credit_threshold integer NOT NULL DEFAULT 10,
+  ADD COLUMN IF NOT EXISTS low_credit_alert_cooldown_hours integer NOT NULL DEFAULT 24,
+  ADD COLUMN IF NOT EXISTS last_low_credit_alert_at timestamptz NULL,
+  ADD COLUMN IF NOT EXISTS admin_highlevel_contact_id text NULL;
+```
+
+### 2. Create `admin_highlevel_settings` table (single-row, nullable credentials)
+
+```sql
+CREATE TABLE IF NOT EXISTS public.admin_highlevel_settings (
+  id text PRIMARY KEY DEFAULT 'admin',
+  private_integration_token text NULL,  -- Nullable
+  location_id text NULL,                -- Nullable
+  is_active boolean NOT NULL DEFAULT false,  -- Default false
+  custom_field_mappings jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- RLS using is_admin() function
+ALTER TABLE public.admin_highlevel_settings ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admins only - full access" 
+  ON public.admin_highlevel_settings
+  FOR ALL 
+  USING (is_admin());
+```
+
+---
+
+## Required Secret
+
+A new secret `CRON_SECRET` must be configured in Supabase Edge Function secrets. This will be used by the cron job to authenticate scheduled calls.
+
+---
+
+## Edge Function: `reseller-credit-monitor/index.ts`
+
+### Dual Auth Logic
 ```typescript
-{
-  reseller_id: string;   // Required
-  limit?: number;        // Optional: max customers
-  dry_run?: boolean;     // Optional: skip writes
+// 1. Check for cron secret
+const cronSecret = req.headers.get('X-CRON-SECRET');
+const expectedCronSecret = Deno.env.get('CRON_SECRET');
+const isCronAuth = cronSecret && cronSecret === expectedCronSecret;
+
+// 2. If not cron, check for admin JWT
+if (!isCronAuth) {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+  
+  const token = authHeader.replace('Bearer ', '');
+  const { data: userData, error: authError } = await supabaseAuth.auth.getUser(token);
+  if (authError || !userData?.user) {
+    return new Response(JSON.stringify({ error: 'Invalid token' }), { status: 401 });
+  }
+  
+  const { data: isAdmin } = await supabaseAdmin.rpc('has_role', {
+    _user_id: userData.user.id,
+    _role: 'admin'
+  });
+  if (!isAdmin) {
+    return new Response(JSON.stringify({ error: 'Admin access required' }), { status: 403 });
+  }
 }
 ```
 
-**Safe Expiration Formatting:**
-```typescript
-const expRaw = customer.expiration_date;
-const serviceExpiration =
-  typeof expRaw === 'string'
-    ? expRaw.split('T')[0]
-    : expRaw instanceof Date
-      ? expRaw.toISOString().split('T')[0]
-      : '';
-```
+### Processing Logic
+1. Parse body for `{ dry_run?: boolean }`
+2. Load `admin_highlevel_settings` → exit with `{ disabled: true }` if not active or missing credentials
+3. Query resellers: `role = 'reseller'`
+4. For each reseller:
+   - Skip if `credits` is null/undefined → `skippedNoCredits++`
+   - Skip if `credits > threshold` → normal (not counted)
+   - Skip if in cooldown → `skippedCooldown++`
+   - Skip if no email → `skippedNoEmail++`
+   - If `dry_run=true`: count as would-be alerted but skip HL calls and DB writes
+   - Otherwise:
+     - Upsert Admin HL contact by email
+     - Save `admin_highlevel_contact_id` to DB if new
+     - Update HL custom fields (only non-empty values)
+     - Update `last_low_credit_alert_at = NOW()` in DB
+5. 150ms delay between HL API calls
+6. Return stats JSON
 
-**Email Normalization:**
-```typescript
-const email = (customer.email || '').trim().toLowerCase();
-if (!email) {
-  skippedNoEmail++;
-  continue;
-}
-```
-
-**Contact Resolution:**
-1. If `customer.highlevel_contact_id` exists → use it
-2. Try `POST /contacts/upsert` with email/name
-3. Fallback: `GET /contacts/search/duplicate?email=...`
-4. Fallback: `POST /contacts` create new
-5. Save `highlevel_contact_id` to DB (unless dry_run)
-
-**Response JSON:**
+### Response JSON
 ```json
 {
   "success": true,
-  "resellerId": "uuid",
-  "processed": 150,
-  "createdContacts": 45,
-  "updatedContacts": 100,
-  "skippedNoEmail": 5,
-  "duplicateEmailSkipped": 2,
-  "updatedDbContactId": 45,
-  "hlSynced": 145,
-  "hlFailed": 0,
-  "dryRun": false
+  "disabled": false,
+  "dryRun": false,
+  "stats": {
+    "scanned": 25,
+    "eligible": 8,
+    "alerted": 3,
+    "skippedCooldown": 5,
+    "skippedNoEmail": 1,
+    "skippedNoCredits": 0,
+    "hlFailed": 0,
+    "contactsCreated": 2,
+    "contactsUpdated": 1
+  }
 }
+```
+
+### Sanitized Logging
+```typescript
+const maskId = (id: string): string => {
+  if (!id || id.length < 8) return '****';
+  return `${id.slice(0, 4)}...${id.slice(-4)}`;
+};
+// Example: "abcd...wxyz"
+// NEVER log: tokens, emails, URLs
 ```
 
 ---
 
-## Config.toml Update
+## Shared Helper: `admin-highlevel-api.ts`
 
-Add after line 59:
-```toml
-[functions.import-customers-to-highlevel]
-verify_jwt = false
+New file for Admin HL operations:
+
+### Functions
+```typescript
+// Get Admin HL settings - returns null if inactive or missing credentials
+export async function getAdminHighLevelSettings(): Promise<AdminHighLevelSettings | null>
+
+// Upsert reseller contact in Admin HL (by email, fallback create)
+export async function upsertAdminResellerContact(
+  token: string,
+  locationId: string,
+  reseller: { id: string; name: string; email: string }
+): Promise<{ contactId: string | null; isNew: boolean }>
+
+// Get custom field mappings for Admin HL (cached)
+async function getAdminCustomFieldMappings(
+  locationId: string,
+  token: string
+): Promise<CustomFieldMapping>
+
+// Update reseller alert fields - NEVER sends blank strings
+export async function updateAdminResellerAlertFields(
+  contactId: string,
+  token: string,
+  locationId: string,
+  fields: AdminResellerAlertFields
+): Promise<{ success: boolean; error?: string }>
+```
+
+### No Blank Strings Pattern
+```typescript
+const addField = (key: string, value: string | undefined) => {
+  if (!value) return; // Skip undefined or empty strings
+  customFields.push({ key, field_value: value });
+};
+```
+
+---
+
+## Admin UI: `AdminHighLevelAlertSettings.tsx`
+
+New component for Admin Settings > Alerts tab:
+
+### Features
+- **Private Integration Token** input (password with show/hide, masked when saved)
+- **Location ID** input
+- **Active** toggle switch (default off)
+- **Save** button (uses UPSERT on id='admin')
+- **Test Connection** button (validates token by fetching custom fields)
+- **Run Credit Monitor Now** button:
+  - Calls `reseller-credit-monitor` edge function with admin JWT (no X-CRON-SECRET needed)
+  - Shows toast with returned stats
+- **Required custom fields list** for HighLevel setup
+- **Cron job setup instructions**
+
+### UPSERT Save Pattern
+```typescript
+const { error } = await supabase
+  .from('admin_highlevel_settings')
+  .upsert({
+    id: 'admin',
+    private_integration_token: token || null,
+    location_id: locationId || null,
+    is_active: isActive,
+    updated_at: new Date().toISOString()
+  }, { onConflict: 'id' });
+```
+
+---
+
+## Reseller UI: `ResellerAlertSettings.tsx`
+
+New component for AdminResellerDetail page:
+
+### Features
+- **Low Credit Threshold** - Number input (default 10)
+- **Cooldown Hours** - Number input (default 24)
+- **Current Credits** - Read-only display
+- **Last Alert Sent** - Read-only timestamp or "Never"
+- **Save** button
+
+---
+
+## AdminSettings.tsx Changes
+
+Add 5th tab "Alerts":
+```tsx
+<TabsList className="grid w-full grid-cols-5">
+  <TabsTrigger value="settings">System Settings</TabsTrigger>
+  <TabsTrigger value="highlevel">HighLevel</TabsTrigger>
+  <TabsTrigger value="alerts">Alerts</TabsTrigger>
+  <TabsTrigger value="security">Security Audit</TabsTrigger>
+  <TabsTrigger value="audit">Renewal Audit</TabsTrigger>
+</TabsList>
+
+<TabsContent value="alerts">
+  <AdminHighLevelAlertSettings />
+</TabsContent>
 ```
 
 ---
 
 ## AdminResellerDetail.tsx Changes
 
-**Add imports (line 16):**
-```typescript
-import { ArrowLeft, Users, DollarSign, Activity, Calendar, Key, Trash2, ArrowRight, Upload, Loader2 } from 'lucide-react';
-```
-
-**Add state (after line 47):**
-```typescript
-const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-const [isImporting, setIsImporting] = useState(false);
-```
-
-**Add import handler (after line 193):**
-```typescript
-const handleImportToHighLevel = async () => {
-  if (!id) return;
-  
-  setIsImporting(true);
-  try {
-    const { data, error } = await supabase.functions.invoke('import-customers-to-highlevel', {
-      body: { reseller_id: id }
-    });
-
-    if (error) throw error;
-
-    if (data?.success) {
-      toast.success(
-        `Import complete! Processed: ${data.processed}, ` +
-        `New contacts: ${data.createdContacts}, ` +
-        `Synced: ${data.hlSynced}, ` +
-        `Failed: ${data.hlFailed}`
-      );
-      setIsImportDialogOpen(false);
-    } else {
-      toast.error(data?.error || 'Import failed');
-    }
-  } catch (error: any) {
-    console.error('Import error:', error);
-    toast.error(error.message || 'Failed to import customers to HighLevel');
-  } finally {
-    setIsImporting(false);
-  }
-};
-```
-
-**Add UI Card (after M3UDomainSettings, around line 292):**
+Add `ResellerAlertSettings` card after M3UDomainSettings (around line 324):
 ```tsx
 <div className="mb-6">
-  <Card>
-    <CardHeader>
-      <CardTitle className="flex items-center gap-2">
-        <Upload className="h-5 w-5" />
-        Import Customers to HighLevel
-      </CardTitle>
-      <CardDescription>
-        Sync existing customers to HighLevel CRM with their credentials
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <Button 
-        onClick={() => setIsImportDialogOpen(true)}
-        disabled={isImporting}
-        className="bg-eztv-700 hover:bg-eztv-800"
-      >
-        {isImporting ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Importing...
-          </>
-        ) : (
-          <>
-            <Upload className="h-4 w-4 mr-2" />
-            Import Customers to HighLevel
-          </>
-        )}
-      </Button>
-      <p className="text-sm text-muted-foreground mt-2">
-        Creates contacts in HighLevel for customers without a contact ID 
-        and syncs their credentials. Safe to re-run (uses email-based upsert).
-      </p>
-    </CardContent>
-  </Card>
+  <ResellerAlertSettings 
+    resellerId={id!} 
+    currentCredits={reseller.credits} 
+  />
 </div>
 ```
 
-**Add confirmation dialog (before closing DashboardLayout):**
-```tsx
-{/* Import to HighLevel Confirmation Dialog */}
-<AlertDialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>Import Customers to HighLevel</AlertDialogTitle>
-      <AlertDialogDescription asChild>
-        <div className="space-y-3">
-          <p>
-            This will sync all {resellerCustomers.length} customer(s) 
-            for <strong>{reseller.name}</strong> to HighLevel:
-          </p>
-          <ul className="list-disc list-inside text-sm space-y-1">
-            <li>Create new contacts for customers without a HighLevel contact ID</li>
-            <li>Update credentials and expiration dates for all customers</li>
-            <li>Use email-based upsert to avoid duplicates</li>
-          </ul>
-          <p className="text-amber-600 font-medium">
-            Ensure HighLevel integration is configured before proceeding.
-          </p>
-        </div>
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel disabled={isImporting}>Cancel</AlertDialogCancel>
-      <AlertDialogAction
-        onClick={handleImportToHighLevel}
-        disabled={isImporting}
-        className="bg-eztv-700 hover:bg-eztv-800"
-      >
-        {isImporting ? 'Importing...' : 'Start Import'}
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
+---
+
+## Config.toml Update
+
+Add after existing function entries:
+```toml
+[functions.reseller-credit-monitor]
+verify_jwt = false
 ```
 
 ---
 
-## Deployment
+## HighLevel Custom Fields (Admin Subaccount)
 
-Edge function will auto-deploy on save.
+These fields must be created in the Admin HighLevel location:
+- `reseller_credit_balance` - Current credit count (text/number)
+- `reseller_low_credit_threshold` - Threshold that triggered alert (text/number)
+- `reseller_credit_alert_reason` - "low_credit" (text)
+- `reseller_credit_alert_triggered_at` - ISO timestamp (text)
+- `reseller_name` - Reseller's business name (text, optional)
 
 ---
 
-## Test cURL
+## Cron Schedule Setup
 
-```bash
-curl -X POST "https://hddnqgggjjlildufirof.supabase.co/functions/v1/import-customers-to-highlevel" \
-  -H "Authorization: Bearer YOUR_ADMIN_JWT" \
-  -H "Content-Type: application/json" \
-  -d '{"reseller_id": "uuid-here"}'
+After deployment and adding `CRON_SECRET` to edge function secrets, configure cron via Supabase Dashboard SQL Editor:
+```sql
+SELECT cron.schedule(
+  'reseller-credit-monitor',
+  '*/15 * * * *', -- Every 15 minutes
+  $$
+  SELECT net.http_post(
+    url := 'https://hddnqgggjjlildufirof.supabase.co/functions/v1/reseller-credit-monitor',
+    headers := '{"Content-Type": "application/json", "X-CRON-SECRET": "YOUR_CRON_SECRET_HERE"}'::jsonb,
+    body := '{}'::jsonb
+  ) AS request_id;
+  $$
+);
 ```
+
+Replace `YOUR_CRON_SECRET_HERE` with the actual secret value.
+
+---
+
+## Edge Cases Handled
+
+| Case | Handling |
+|------|----------|
+| No auth (no cron secret, no JWT) | Return 401 Unauthorized |
+| Invalid cron secret | Check JWT fallback |
+| Invalid JWT | Return 401 Unauthorized |
+| JWT user not admin | Return 403 Forbidden |
+| Admin HL not configured | Return `{ disabled: true }` |
+| Admin HL inactive (`is_active=false`) | Return `{ disabled: true }` |
+| Token/location_id null | Return `{ disabled: true }` |
+| Reseller credits null | Skip, increment `skippedNoCredits` |
+| Reseller has no email | Skip, increment `skippedNoEmail` |
+| Reseller in cooldown | Skip, increment `skippedCooldown` |
+| Credits above threshold | Normal, no alert |
+| HL API fails | Continue to next, increment `hlFailed` |
+| Empty field values | Use `undefined` to skip field entirely |
+| `dry_run=true` | Compute stats but skip all HL calls and DB writes |
+
+---
+
+## Implementation Summary
+
+| # | File | Type | Description |
+|---|------|------|-------------|
+| 1 | Database Migration | DB | Add profiles columns + admin_highlevel_settings table |
+| 2 | `admin-highlevel-api.ts` | Shared | Admin HL helper functions |
+| 3 | `reseller-credit-monitor/index.ts` | Edge | Scheduled monitor function with dual auth |
+| 4 | `AdminHighLevelAlertSettings.tsx` | UI | Admin settings with Run Now button |
+| 5 | `ResellerAlertSettings.tsx` | UI | Per-reseller threshold/cooldown UI |
+| 6 | `AdminSettings.tsx` | UI | Add Alerts tab |
+| 7 | `AdminResellerDetail.tsx` | UI | Add alert settings card |
+| 8 | `config.toml` | Config | Add function entry |
+
