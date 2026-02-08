@@ -9,6 +9,7 @@ import { Eye, EyeOff, Save, Webhook } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalHighLevelSettings } from '@/components/admin/GlobalHighLevelSettings';
+import { AdminHighLevelAlertSettings } from '@/components/admin/AdminHighLevelAlertSettings';
 import { SecurityAuditLogs } from '@/components/admin/SecurityAuditLogs';
 import { RenewalAuditTool } from '@/components/admin/RenewalAuditTool';
 
@@ -236,9 +237,10 @@ export default function AdminSettings() {
       
       <div className="container mx-auto">
         <Tabs defaultValue="settings" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="settings">System Settings</TabsTrigger>
             <TabsTrigger value="highlevel">HighLevel</TabsTrigger>
+            <TabsTrigger value="alerts">Alerts</TabsTrigger>
             <TabsTrigger value="security">Security Audit</TabsTrigger>
             <TabsTrigger value="audit">Renewal Audit</TabsTrigger>
           </TabsList>
@@ -575,6 +577,10 @@ export default function AdminSettings() {
           
           <TabsContent value="highlevel">
             <GlobalHighLevelSettings />
+          </TabsContent>
+          
+          <TabsContent value="alerts">
+            <AdminHighLevelAlertSettings />
           </TabsContent>
           
           <TabsContent value="security">
