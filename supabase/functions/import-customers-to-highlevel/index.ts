@@ -121,7 +121,7 @@ serve(async (req) => {
   // Load reseller profile for M3U domain override
   const { data: reseller, error: resellerErr } = await supabaseAdmin
     .from('profiles')
-    .select('id, m3u_domain_override')
+    .select('id')
     .eq('id', resellerId)
     .single();
 
@@ -132,7 +132,7 @@ serve(async (req) => {
     });
   }
 
-  const domainOverride = (reseller as { id: string; m3u_domain_override?: string | null }).m3u_domain_override || null;
+  const domainOverride: string | null = null;
   console.log('🔗 M3U domain override:', domainOverride ? 'configured' : 'using default');
 
   // Counters
