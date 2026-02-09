@@ -1,43 +1,52 @@
 
 
-# Fix: Import Customers to HighLevel - 404 Error
+# Fix: Import Customers to HighLevel - 400 Bad Request on Field Update
 
 ## Root Cause
 
-The `supabase/config.toml` has a **catch-all wildcard route** at the top:
+The per-reseller `highlevel-api.ts` has the same field mapping bug that was previously fixed in the admin version. HighLevel UI-created custom fields have keys like `contact.service_username_1`, but the code only checks `fieldKey` directly without stripping the `contact.` prefix.
 
-```
-[[routes]]
-path = "/*"
-function = "catch-all"
-```
-
-This intercepts ALL requests before they reach the `import-customers-to-highlevel` function. The catch-all function doesn't know how to handle it, so it returns a 404.
+This means:
+- Field ID lookup fails for all fields
+- The update payload includes `key` but no `id`
+- HighLevel API rejects the payload with 400 Bad Request
 
 ## Solution
 
-Add a specific route for `import-customers-to-highlevel` **above** the catch-all wildcard route in `supabase/config.toml`. Supabase routes are matched in order, so specific routes must come before the wildcard.
+Update `getCustomFieldMappings()` in `supabase/functions/_shared/highlevel-api.ts` to strip the `contact.` prefix when matching fields -- the same fix already applied to `admin-highlevel-api.ts`.
 
-## File to Modify
+## Changes
 
-**`supabase/config.toml`** -- Add a route entry before the catch-all:
+**File: `supabase/functions/_shared/highlevel-api.ts`** (lines 126-167)
 
-```toml
-[[routes]]
-path = "/import-customers-to-highlevel"
-function = "import-customers-to-highlevel"
+Replace the field matching loop with a cleaner approach that:
+1. Strips the `contact.` prefix from `fieldKey`
+2. Matches by raw key, stripped key, or normalized name
+3. Iterates over target fields instead of using a long if/else chain
 
-# Route all unmatched paths to catch-all function
-[[routes]]
-path = "/*"
-function = "catch-all"
+```typescript
+const mapping: CustomFieldMapping = {};
+for (const field of customFields) {
+  const fieldKey = field.fieldKey || field.key || '';
+  const strippedKey = fieldKey.replace(/^contact\./, '');
+  const fieldName = (field.name || '').toLowerCase().replace(/\s+/g, '_');
+  const fieldId = field.id;
+  
+  if (!fieldId) continue;
+  
+  for (const targetField of requiredFields) {
+    if (!mapping[targetField] && 
+        (fieldKey === targetField || strippedKey === targetField || fieldName === targetField)) {
+      mapping[targetField] = fieldId;
+      break;
+    }
+  }
+}
 ```
+
+This reuses the existing `requiredFields` array already defined at line 86, making the code shorter and consistent with the admin helper.
 
 ## Deployment
 
-After updating the config, the `import-customers-to-highlevel` function will need to be redeployed so the routing change takes effect.
-
-## Why Other Functions Work
-
-Other functions like `reseller-credit-monitor` likely also suffer from this same routing issue unless they have explicit route entries. Any function that needs to be called directly by the frontend should have a specific route listed above the catch-all.
+Redeploy `import-customers-to-highlevel` (and any other functions using this shared helper) after the change.
 
