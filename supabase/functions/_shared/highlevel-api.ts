@@ -161,24 +161,20 @@ async function getCustomFieldMappings(
   }
 }
 
-// Build customFields payload with id, key, and field_value
+// Build customFields payload - prefer id-only to avoid key format mismatches
 function buildCustomFieldsPayload(
   fields: HighLevelContactFields,
   mapping: CustomFieldMapping
-): Array<{ id?: string; key: string; field_value: string }> {
-  const customFields: Array<{ id?: string; key: string; field_value: string }> = [];
+): Array<{ id?: string; key?: string; field_value: string }> {
+  const customFields: Array<{ id?: string; key?: string; field_value: string }> = [];
 
   const addField = (key: string, value: string | undefined) => {
     if (!value) return;
-    const fieldPayload: { id?: string; key: string; field_value: string } = {
-      key,
-      field_value: value
-    };
-    // Include field ID if we have it (more robust)
     if (mapping[key]) {
-      fieldPayload.id = mapping[key];
+      customFields.push({ id: mapping[key], field_value: value });
+    } else {
+      customFields.push({ key, field_value: value });
     }
-    customFields.push(fieldPayload);
   };
 
   // Core fields
@@ -328,18 +324,15 @@ export async function updateHighLevelContactPartial(
   try {
     const mapping = await getCustomFieldMappings(locationId, token, resellerId);
 
-    const customFields: Array<{ id?: string; key: string; field_value: string }> = [];
+    const customFields: Array<{ id?: string; key?: string; field_value: string }> = [];
 
     const addField = (key: string, value: string | undefined) => {
       if (!value) return;
-      const fieldPayload: { id?: string; key: string; field_value: string } = {
-        key,
-        field_value: value
-      };
       if (mapping[key]) {
-        fieldPayload.id = mapping[key];
+        customFields.push({ id: mapping[key], field_value: value });
+      } else {
+        customFields.push({ key, field_value: value });
       }
-      customFields.push(fieldPayload);
     };
 
     addField('total_connections', fields.total_connections);
