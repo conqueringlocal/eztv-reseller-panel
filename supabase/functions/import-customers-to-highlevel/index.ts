@@ -6,10 +6,8 @@ import { getHighLevelSettings, updateHighLevelContact, HighLevelContactFields } 
 
 const BATCH_SIZE = 200;
 
-// Delay helper for rate limiting
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Mask contact ID for logging
 const maskId = (id: string | null | undefined): string => {
   if (!id) return 'unknown';
   return `${id.slice(0, 4)}...${id.slice(-4)}`;
@@ -27,6 +25,98 @@ interface ConnectionData {
   m3u_url?: string;
 }
 
+interface UpsertResult {
+  contactId: string | null;
+  isNew: boolean;
+}
+
+// Extracted upsert helper — resolves or creates a HighLevel contact by email
+async function resolveHighLevelContact(
+  email: string,
+  name: string,
+  token: string,
+  locationId: string
+): Promise<UpsertResult> {
+  const nameParts = name.trim().split(/\s+/);
+  const firstName = nameParts[0] || 'Customer';
+  const lastName = nameParts.slice(1).join(' ') || '';
+
+  // Try upsert first (idempotent)
+  await delay(150);
+  try {
+    const upsertResponse = await fetch('https://services.leadconnectorhq.com/contacts/upsert', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Version': '2021-07-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ locationId, email, firstName, lastName })
+    });
+
+    if (upsertResponse.ok) {
+      const upsertData = await upsertResponse.json();
+      const contactId = upsertData.contact?.id;
+      if (contactId) {
+        console.log(`✅ Upsert successful: ${maskId(contactId)}, new: ${upsertData.new === true}`);
+        return { contactId, isNew: upsertData.new === true };
+      }
+    } else {
+      console.log(`⚠️ Upsert failed with status ${upsertResponse.status}`);
+    }
+  } catch {
+    console.log(`⚠️ Upsert exception, trying duplicate search`);
+  }
+
+  // Fallback: duplicate search
+  await delay(150);
+  try {
+    const searchResponse = await fetch(
+      `https://services.leadconnectorhq.com/contacts/search/duplicate?locationId=${locationId}&email=${encodeURIComponent(email)}`,
+      {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${token}`, 'Version': '2021-07-28' }
+      }
+    );
+    if (searchResponse.ok) {
+      const searchData = await searchResponse.json();
+      if (searchData.contact?.id) {
+        console.log(`✅ Found existing contact via search: ${maskId(searchData.contact.id)}`);
+        return { contactId: searchData.contact.id, isNew: false };
+      }
+    }
+  } catch {
+    console.log(`⚠️ Duplicate search failed`);
+  }
+
+  // Final fallback: create
+  await delay(150);
+  try {
+    const createResponse = await fetch('https://services.leadconnectorhq.com/contacts/', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Version': '2021-07-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ locationId, email, firstName, lastName })
+    });
+    if (createResponse.ok) {
+      const createData = await createResponse.json();
+      if (createData.contact?.id) {
+        console.log(`✅ Created new contact: ${maskId(createData.contact.id)}`);
+        return { contactId: createData.contact.id, isNew: true };
+      }
+    } else {
+      console.log(`❌ Failed to create contact: ${createResponse.status}`);
+    }
+  } catch {
+    console.log(`❌ Create contact exception`);
+  }
+
+  return { contactId: null, isNew: false };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -34,8 +124,7 @@ serve(async (req) => {
   
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), { 
-      status: 405, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
 
@@ -46,12 +135,11 @@ serve(async (req) => {
   const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
   const supabaseAuth = createClient(supabaseUrl, anonKey);
 
-  // Auth check - require Authorization header
+  // Auth check
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-      status: 401, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
 
@@ -59,31 +147,23 @@ serve(async (req) => {
   const { data: userData, error: authError } = await supabaseAuth.auth.getUser(token);
   if (authError || !userData?.user) {
     return new Response(JSON.stringify({ error: 'Invalid token' }), { 
-      status: 401, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
 
-  // Admin check via has_role
   const { data: isAdmin, error: roleError } = await supabaseAdmin.rpc('has_role', {
-    _user_id: userData.user.id,
-    _role: 'admin'
+    _user_id: userData.user.id, _role: 'admin'
   });
   if (roleError || !isAdmin) {
     return new Response(JSON.stringify({ error: 'Admin access required' }), { 
-      status: 403, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
 
-  // Parse body
   let body: ImportRequest;
-  try { 
-    body = await req.json(); 
-  } catch { 
+  try { body = await req.json(); } catch { 
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { 
-      status: 400, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
   
@@ -91,63 +171,37 @@ serve(async (req) => {
   
   if (!resellerId) {
     return new Response(JSON.stringify({ error: 'reseller_id is required' }), { 
-      status: 400, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
 
-  console.log('🚀 Starting HighLevel customer import:', { 
-    resellerId: maskId(resellerId), 
-    limit, 
-    dryRun 
-  });
+  console.log('🚀 Starting HighLevel customer import:', { resellerId: maskId(resellerId), limit, dryRun });
 
-  // Load HighLevel settings - REQUIRED
   const hlSettings = await getHighLevelSettings(resellerId);
   const hlEnabled = !!hlSettings?.token && !!hlSettings?.locationId && !!hlSettings?.isActive;
   
   if (!hlEnabled) {
-    console.log('❌ HighLevel not configured for reseller');
     return new Response(JSON.stringify({ 
-      error: 'HighLevel integration is not configured or not active for this reseller. Please configure the Private Integration Token and Location ID first.' 
-    }), { 
-      status: 400, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-    });
+      error: 'HighLevel integration is not configured or not active for this reseller.' 
+    }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 
-  console.log('✅ HighLevel configured, proceeding with import');
-
-  // Load reseller profile for M3U domain override
   const { data: reseller, error: resellerErr } = await supabaseAdmin
-    .from('profiles')
-    .select('id')
-    .eq('id', resellerId)
-    .single();
-
+    .from('profiles').select('id').eq('id', resellerId).single();
   if (resellerErr || !reseller) {
     return new Response(JSON.stringify({ error: 'Reseller not found' }), { 
-      status: 404, 
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
     });
   }
 
   const domainOverride: string | null = null;
-  console.log('🔗 M3U domain override:', domainOverride ? 'configured' : 'using default');
 
   // Counters
-  let processed = 0;
-  let createdContacts = 0;
-  let updatedContacts = 0;
-  let skippedNoEmail = 0;
-  let duplicateEmailSkipped = 0;
-  let updatedDbContactId = 0;
-  let hlSynced = 0;
-  let hlFailed = 0;
+  let processed = 0, createdContacts = 0, updatedContacts = 0;
+  let skippedNoEmail = 0, duplicateEmailSkipped = 0, updatedDbContactId = 0;
+  let hlSynced = 0, hlFailed = 0, staleIdsFixed = 0;
 
-  // Track seen emails for duplicate protection within this import run
   const seenEmails = new Set<string>();
-
   let from = 0;
   let shouldContinue = true;
 
@@ -159,221 +213,74 @@ serve(async (req) => {
       .range(from, from + BATCH_SIZE - 1);
 
     if (custErr) {
-      console.error('❌ Failed to load customers batch:', custErr.message);
       return new Response(JSON.stringify({ error: 'Failed to load customers' }), { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
     }
-
     if (!customers || customers.length === 0) break;
 
     console.log(`📦 Processing batch: ${from} to ${from + customers.length - 1}`);
 
     for (const customer of customers) {
-      // Check limit
-      if (limit && processed >= limit) {
-        shouldContinue = false;
-        break;
-      }
-
+      if (limit && processed >= limit) { shouldContinue = false; break; }
       processed++;
 
-      // Email normalization
       const email = (customer.email || '').trim().toLowerCase();
-      if (!email) {
-        skippedNoEmail++;
-        console.log(`⏭️ Skipped customer (no email): ${maskId(customer.id)}`);
-        continue;
-      }
-
-      // Duplicate email protection within this import run
-      if (seenEmails.has(email)) {
-        duplicateEmailSkipped++;
-        console.log(`⏭️ Skipped duplicate email: ${maskId(customer.id)}`);
-        continue;
-      }
+      if (!email) { skippedNoEmail++; continue; }
+      if (seenEmails.has(email)) { duplicateEmailSkipped++; continue; }
       seenEmails.add(email);
 
       try {
         // Build connections array (up to 3)
         const connections: ConnectionData[] = [];
-        
         if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
-          // Use connection_list (up to 3 connections)
-          const connList = customer.connection_list.slice(0, 3);
-          for (const conn of connList) {
-            const connRecord = conn as Record<string, unknown>;
-            const originalUrl = connRecord?.m3u_url as string | undefined;
-            const rewrittenUrl = rewriteM3uDomain(originalUrl, domainOverride, DEFAULT_M3U_DOMAIN);
+          for (const conn of customer.connection_list.slice(0, 3)) {
+            const c = conn as Record<string, unknown>;
             connections.push({
-              username: connRecord?.username as string | undefined,
-              password: connRecord?.password as string | undefined,
-              m3u_url: rewrittenUrl
+              username: c?.username as string | undefined,
+              password: c?.password as string | undefined,
+              m3u_url: rewriteM3uDomain(c?.m3u_url as string | undefined, domainOverride, DEFAULT_M3U_DOMAIN)
             });
           }
         } else if (customer.username || customer.password || customer.m3u_url) {
-          // Use legacy single connection
-          const rewrittenUrl = rewriteM3uDomain(customer.m3u_url, domainOverride, DEFAULT_M3U_DOMAIN);
           connections.push({
             username: customer.username,
             password: customer.password,
-            m3u_url: rewrittenUrl
+            m3u_url: rewriteM3uDomain(customer.m3u_url, domainOverride, DEFAULT_M3U_DOMAIN)
           });
         }
 
-        // Calculate total_connections
-        const actualCount = Math.max(connections.length, 1);
-        const totalConnections = String(Math.min(actualCount, 3));
-
-        // Safe expiration formatting
+        const totalConnections = String(Math.min(Math.max(connections.length, 1), 3));
         const expRaw = customer.expiration_date;
-        const serviceExpiration =
-          typeof expRaw === 'string'
-            ? expRaw.split('T')[0]
-            : expRaw instanceof Date
-              ? expRaw.toISOString().split('T')[0]
-              : '';
+        const serviceExpiration = typeof expRaw === 'string' ? expRaw.split('T')[0]
+          : expRaw instanceof Date ? expRaw.toISOString().split('T')[0] : '';
 
-        // Resolve HighLevel contact ID
+        // Resolve contact ID
         let contactId = customer.highlevel_contact_id;
         let isNewContact = false;
 
         if (!contactId) {
-          // Parse name for HighLevel
-          const nameParts = (customer.name || '').trim().split(/\s+/);
-          const firstName = nameParts[0] || 'Customer';
-          const lastName = nameParts.slice(1).join(' ') || '';
+          const result = await resolveHighLevelContact(email, customer.name || '', hlSettings.token, hlSettings.locationId);
+          contactId = result.contactId;
+          isNewContact = result.isNew;
 
-          // Try upsert first (idempotent)
-          await delay(150);
-          try {
-            const upsertResponse = await fetch('https://services.leadconnectorhq.com/contacts/upsert', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${hlSettings.token}`,
-                'Version': '2021-07-28',
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                locationId: hlSettings.locationId,
-                email: email,
-                firstName: firstName,
-                lastName: lastName
-              })
-            });
-
-            if (upsertResponse.ok) {
-              const upsertData = await upsertResponse.json();
-              contactId = upsertData.contact?.id;
-              // Check if this was a new contact or existing
-              if (upsertData.new === true) {
-                isNewContact = true;
-              }
-              console.log(`✅ Upsert successful: ${maskId(contactId)}, new: ${isNewContact}`);
-            } else {
-              console.log(`⚠️ Upsert failed with status ${upsertResponse.status}, trying duplicate search`);
-            }
-          } catch (upsertErr) {
-            console.log(`⚠️ Upsert exception, trying duplicate search`);
-          }
-
-          // Fallback: try duplicate search
-          if (!contactId) {
-            await delay(150);
-            try {
-              const searchResponse = await fetch(
-                `https://services.leadconnectorhq.com/contacts/search/duplicate?locationId=${hlSettings.locationId}&email=${encodeURIComponent(email)}`,
-                {
-                  method: 'GET',
-                  headers: {
-                    'Authorization': `Bearer ${hlSettings.token}`,
-                    'Version': '2021-07-28'
-                  }
-                }
-              );
-
-              if (searchResponse.ok) {
-                const searchData = await searchResponse.json();
-                contactId = searchData.contact?.id;
-                if (contactId) {
-                  console.log(`✅ Found existing contact via search: ${maskId(contactId)}`);
-                }
-              }
-            } catch (searchErr) {
-              console.log(`⚠️ Duplicate search failed`);
-            }
-          }
-
-          // Final fallback: create new contact
-          if (!contactId) {
-            await delay(150);
-            try {
-              const createResponse = await fetch('https://services.leadconnectorhq.com/contacts/', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${hlSettings.token}`,
-                  'Version': '2021-07-28',
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  locationId: hlSettings.locationId,
-                  email: email,
-                  firstName: firstName,
-                  lastName: lastName
-                })
-              });
-
-              if (createResponse.ok) {
-                const createData = await createResponse.json();
-                contactId = createData.contact?.id;
-                isNewContact = true;
-                console.log(`✅ Created new contact: ${maskId(contactId)}`);
-              } else {
-                console.log(`❌ Failed to create contact: ${createResponse.status}`);
-              }
-            } catch (createErr) {
-              console.log(`❌ Create contact exception`);
-            }
-          }
-
-          // Update counters
           if (contactId) {
-            if (isNewContact) {
-              createdContacts++;
-            } else {
-              updatedContacts++;
-            }
-
-            // Save contact ID to database (unless dry_run)
+            if (isNewContact) createdContacts++; else updatedContacts++;
             if (!dryRun) {
-              const { error: updateErr } = await supabaseAdmin
-                .from('customers')
-                .update({ highlevel_contact_id: contactId })
-                .eq('id', customer.id);
-
-              if (!updateErr) {
-                updatedDbContactId++;
-                console.log(`💾 Saved contact ID to DB: ${maskId(customer.id)}`);
-              } else {
-                console.log(`⚠️ Failed to save contact ID to DB: ${maskId(customer.id)}`);
-              }
+              const { error: updateErr } = await supabaseAdmin.from('customers')
+                .update({ highlevel_contact_id: contactId }).eq('id', customer.id);
+              if (!updateErr) updatedDbContactId++;
             }
           } else {
-            // Could not get contact ID - skip syncing
             hlFailed++;
-            console.log(`❌ Could not resolve HighLevel contact for: ${maskId(customer.id)}`);
             continue;
           }
         } else {
-          // Already had a contact ID
           updatedContacts++;
-          console.log(`📌 Using existing contact ID: ${maskId(contactId)}`);
         }
 
-        // Sync custom fields to HighLevel (unless dry_run)
+        // Sync custom fields
         if (!dryRun && contactId) {
-          // Build fields - use undefined instead of '' to avoid overwriting existing HL fields with blanks
           const fields: HighLevelContactFields = {
             provision_status: 'success',
             service_expiration: serviceExpiration || undefined,
@@ -390,62 +297,58 @@ serve(async (req) => {
           };
 
           await delay(150);
-          const result = await updateHighLevelContact(
-            contactId,
-            hlSettings.token,
-            hlSettings.locationId,
-            resellerId,
-            fields
-          );
+          let result = await updateHighLevelContact(contactId, hlSettings.token, hlSettings.locationId, resellerId, fields);
+
+          // Retry on stale contact ID ("Contact not found")
+          if (!result.success && result.errorBody?.includes('Contact not found')) {
+            console.log(`🔄 Stale contact ID detected for ${maskId(customer.id)}, re-resolving...`);
+            staleIdsFixed++;
+
+            // Clear stale ID in DB
+            await supabaseAdmin.from('customers')
+              .update({ highlevel_contact_id: null }).eq('id', customer.id);
+
+            // Re-resolve via upsert
+            const freshResult = await resolveHighLevelContact(email, customer.name || '', hlSettings.token, hlSettings.locationId);
+            if (freshResult.contactId) {
+              contactId = freshResult.contactId;
+              // Save new ID
+              await supabaseAdmin.from('customers')
+                .update({ highlevel_contact_id: contactId }).eq('id', customer.id);
+              updatedDbContactId++;
+
+              // Retry field sync
+              await delay(150);
+              result = await updateHighLevelContact(contactId, hlSettings.token, hlSettings.locationId, resellerId, fields);
+            }
+          }
 
           if (result.success) {
             hlSynced++;
-            console.log(`✅ Synced fields for: ${maskId(contactId)}`);
           } else {
             hlFailed++;
             console.log(`❌ Failed to sync fields for: ${maskId(contactId)}`);
           }
         } else if (dryRun) {
-          // Dry run - count as synced for reporting
           hlSynced++;
         }
-
       } catch (customerErr) {
         hlFailed++;
         console.error(`❌ Error processing customer ${maskId(customer.id)}:`, customerErr instanceof Error ? customerErr.message : 'Unknown error');
-        continue;
       }
     }
 
-    console.log(`📊 Batch progress: processed=${processed}, created=${createdContacts}, synced=${hlSynced}, failed=${hlFailed}`);
+    console.log(`📊 Batch progress: processed=${processed}, created=${createdContacts}, synced=${hlSynced}, failed=${hlFailed}, staleFixed=${staleIdsFixed}`);
     from += BATCH_SIZE;
   }
 
-  console.log('✅ Import complete:', { 
-    processed, 
-    createdContacts, 
-    updatedContacts,
-    skippedNoEmail,
-    duplicateEmailSkipped,
-    updatedDbContactId, 
-    hlSynced, 
-    hlFailed,
-    dryRun
-  });
+  console.log('✅ Import complete:', { processed, createdContacts, updatedContacts, skippedNoEmail, duplicateEmailSkipped, updatedDbContactId, hlSynced, hlFailed, staleIdsFixed, dryRun });
 
   return new Response(
     JSON.stringify({
-      success: true,
-      resellerId,
-      processed,
-      createdContacts,
-      updatedContacts,
-      skippedNoEmail,
-      duplicateEmailSkipped,
-      updatedDbContactId,
-      hlSynced,
-      hlFailed,
-      dryRun
+      success: true, resellerId, processed, createdContacts, updatedContacts,
+      skippedNoEmail, duplicateEmailSkipped, updatedDbContactId,
+      hlSynced, hlFailed, staleIdsFixed, dryRun
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
