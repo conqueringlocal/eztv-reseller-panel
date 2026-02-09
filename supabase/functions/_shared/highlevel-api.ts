@@ -125,43 +125,17 @@ async function getCustomFieldMappings(
     const mapping: CustomFieldMapping = {};
     for (const field of customFields) {
       const fieldKey = field.fieldKey || field.key || '';
+      const strippedKey = fieldKey.replace(/^contact\./, '');
       const fieldName = (field.name || '').toLowerCase().replace(/\s+/g, '_');
       const fieldId = field.id;
       
-      if (fieldId) {
-        // Core fields
-        if (fieldKey === 'provision_status' || fieldName === 'provision_status') {
-          mapping['provision_status'] = fieldId;
-        } else if (fieldKey === 'service_expiration' || fieldName === 'service_expiration') {
-          mapping['service_expiration'] = fieldId;
-        } else if (fieldKey === 'provision_error' || fieldName === 'provision_error') {
-          mapping['provision_error'] = fieldId;
-        } else if (fieldKey === 'total_connections' || fieldName === 'total_connections') {
-          mapping['total_connections'] = fieldId;
-        }
-        // Connection 1
-        else if (fieldKey === 'service_username_1' || fieldName === 'service_username_1') {
-          mapping['service_username_1'] = fieldId;
-        } else if (fieldKey === 'service_password_1' || fieldName === 'service_password_1') {
-          mapping['service_password_1'] = fieldId;
-        } else if (fieldKey === 'service_m3u_url_1' || fieldName === 'service_m3u_url_1') {
-          mapping['service_m3u_url_1'] = fieldId;
-        }
-        // Connection 2
-        else if (fieldKey === 'service_username_2' || fieldName === 'service_username_2') {
-          mapping['service_username_2'] = fieldId;
-        } else if (fieldKey === 'service_password_2' || fieldName === 'service_password_2') {
-          mapping['service_password_2'] = fieldId;
-        } else if (fieldKey === 'service_m3u_url_2' || fieldName === 'service_m3u_url_2') {
-          mapping['service_m3u_url_2'] = fieldId;
-        }
-        // Connection 3
-        else if (fieldKey === 'service_username_3' || fieldName === 'service_username_3') {
-          mapping['service_username_3'] = fieldId;
-        } else if (fieldKey === 'service_password_3' || fieldName === 'service_password_3') {
-          mapping['service_password_3'] = fieldId;
-        } else if (fieldKey === 'service_m3u_url_3' || fieldName === 'service_m3u_url_3') {
-          mapping['service_m3u_url_3'] = fieldId;
+      if (!fieldId) continue;
+      
+      for (const targetField of requiredFields) {
+        if (!mapping[targetField] && 
+            (fieldKey === targetField || strippedKey === targetField || fieldName === targetField)) {
+          mapping[targetField] = fieldId;
+          break;
         }
       }
     }
