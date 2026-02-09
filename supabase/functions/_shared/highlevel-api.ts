@@ -275,7 +275,7 @@ export async function updateHighLevelContact(
       console.error('❌ HighLevel API error:', {
         status: response.status,
         statusText: response.statusText,
-        hasErrorBody: !!errorText
+        errorBody: errorText?.substring(0, 500)
       });
       return {
         success: false,
