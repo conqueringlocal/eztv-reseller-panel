@@ -1,5 +1,9 @@
 project_id = "hddnqgggjjlildufirof"
 
+[[routes]]
+path = "/import-customers-to-highlevel"
+function = "import-customers-to-highlevel"
+
 # Route all unmatched paths to catch-all function
 [[routes]]
 path = "/*"
