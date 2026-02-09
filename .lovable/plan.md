@@ -1,53 +1,69 @@
 
 
-# Fix: HighLevel 400 Bad Request - Key/ID Mismatch in Custom Fields Payload
+# Fix: Stale HighLevel Contact IDs Causing "Contact not found" Errors
 
 ## Root Cause
 
-The `buildCustomFieldsPayload` function in `supabase/functions/_shared/highlevel-api.ts` sends **both** `id` and `key` in the custom fields payload. The problem:
+The error is **not** a field mapping issue. The actual error from HighLevel is:
 
-- HighLevel stores field keys as `contact.provision_status`, `contact.service_username_1`, etc.
-- The payload sends `key: "provision_status"` (without the `contact.` prefix)
-- HighLevel sees the `id` pointing to one field but the `key` not matching, and rejects the request with **400 Bad Request**
+```
+"Contact not found for id:4fZuBILywT69pHTnPsYk"
+```
 
-The field ID mappings in the cache are correct (all 13 fields resolved). The issue is purely the mismatched `key` in the payload.
+The `highlevel_contact_id` values stored in your database are **stale** -- those contacts no longer exist in HighLevel (likely deleted or from a different location). The import function currently trusts existing contact IDs blindly and skips the upsert/creation step, going straight to updating custom fields, which fails.
 
 ## Solution
 
-Update `buildCustomFieldsPayload` to **omit the `key` field when an `id` is available**. The `id` alone is sufficient and more reliable for HighLevel's API. Only fall back to sending `key` when no `id` is mapped.
+Add a **retry-on-stale-ID** mechanism: when the custom fields update returns a "Contact not found" error, clear the stale contact ID, re-run the upsert flow to get a fresh contact ID, save it to the database, and retry the field sync.
 
 ## Changes
 
-**File: `supabase/functions/_shared/highlevel-api.ts`** -- `buildCustomFieldsPayload` function (lines 164-206)
+**File: `supabase/functions/import-customers-to-highlevel/index.ts`**
 
-Update the `addField` helper to:
-1. When field ID exists: send `{ id, field_value }` only (no key)
-2. When field ID is missing: send `{ key, field_value }` as fallback
+In the section after the field sync call (around line 400), add logic to handle the "Contact not found" case:
+
+1. After `updateHighLevelContact` returns `{ success: false }`, check if the error contains "Contact not found"
+2. If so, clear `highlevel_contact_id` in the database
+3. Re-run the upsert/search/create flow (same code used for customers without a contact ID)
+4. Save the new contact ID to the database
+5. Retry the field sync with the new contact ID
+
+This will be implemented by extracting the upsert logic into a helper function to avoid code duplication, and wrapping the field sync in a retry block.
+
+**File: `supabase/functions/_shared/highlevel-api.ts`**
+
+Update `updateHighLevelContact` to include the error body text in its return value so the caller can distinguish "Contact not found" from other errors:
 
 ```typescript
-function buildCustomFieldsPayload(
-  fields: HighLevelContactFields,
-  mapping: CustomFieldMapping
-): Array<{ id?: string; key?: string; field_value: string }> {
-  const customFields: Array<{ id?: string; key?: string; field_value: string }> = [];
-
-  const addField = (key: string, value: string | undefined) => {
-    if (!value) return;
-    if (mapping[key]) {
-      // Use field ID only - more reliable, avoids key format mismatches
-      customFields.push({ id: mapping[key], field_value: value });
-    } else {
-      // Fallback to key-based update
-      customFields.push({ key, field_value: value });
-    }
-  };
-
-  // ... rest of field additions unchanged
+return {
+  success: false,
+  error: `HighLevel API error: ${response.status} ${response.statusText}`,
+  errorBody: errorText  // Add this
+};
 ```
 
-Also update the same pattern in `updateHighLevelContactPartial` (around line 300) for consistency.
+## Technical Details
+
+```text
+Current flow (broken):
+  Customer has stale contact ID
+    -> Skip upsert
+    -> Try field update
+    -> 400 "Contact not found"
+    -> Mark as failed
+
+Fixed flow:
+  Customer has stale contact ID
+    -> Skip upsert
+    -> Try field update
+    -> 400 "Contact not found"
+    -> Clear stale ID in DB
+    -> Run upsert to get fresh ID
+    -> Save new ID to DB
+    -> Retry field update
+    -> Success
+```
 
 ## Deployment
 
-Redeploy the `import-customers-to-highlevel` function after the change. All other functions using the shared helper will also benefit once redeployed.
-
+Redeploy `import-customers-to-highlevel` after the changes.
