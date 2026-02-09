@@ -212,7 +212,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       .select(`
         reseller_id,
         is_active,
-        profiles!inner(credits, name, provider, m3u_domain_override)
+        profiles!inner(credits, name, provider)
       `)
       .eq('api_key', apiKey)
       .eq('is_active', true)
@@ -228,7 +228,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       credits: apiKeyData.profiles.credits,
       name: apiKeyData.profiles.name,
       provider: 'trex', // Trex-only mode
-      m3uDomainOverride: apiKeyData.profiles.m3u_domain_override || null
+      m3uDomainOverride: null
     };
   } catch (error) {
     console.error('💥 Error getting reseller by API key:', error);
@@ -1352,7 +1352,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
       // Legacy support
       const { data: reseller, error: resellerError } = await supabase
         .from('profiles')
-        .select('id, credits, name, provider, m3u_domain_override')
+        .select('id, credits, name, provider')
         .eq('id', payload.resellerId)
         .single();
       
@@ -1369,7 +1369,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
         credits: reseller.credits,
         name: reseller.name,
         provider: reseller.provider || 'trex',
-        m3uDomainOverride: reseller.m3u_domain_override || null
+        m3uDomainOverride: null
       };
     } else {
       return {
