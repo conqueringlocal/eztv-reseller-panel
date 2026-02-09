@@ -30,6 +30,7 @@ export interface HighLevelContactFields {
 export interface HighLevelUpdateResult {
   success: boolean;
   error?: string;
+  errorBody?: string;
 }
 
 // Tags to add on failure
@@ -279,7 +280,8 @@ export async function updateHighLevelContact(
       });
       return {
         success: false,
-        error: `HighLevel API error: ${response.status} ${response.statusText}`
+        error: `HighLevel API error: ${response.status} ${response.statusText}`,
+        errorBody: errorText
       };
     }
 
