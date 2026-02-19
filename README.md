@@ -3,7 +3,6 @@
 
 ## About EZTV Club
 
-**Platform**: https://reseller.eztvclub.com
 
 EZTV Club is a comprehensive IPTV reseller platform that enables partners to manage their streaming service customers, track credits, and grow their business efficiently.
 
