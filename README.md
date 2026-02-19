@@ -67,12 +67,6 @@ The platform is automatically deployed to production. Contact EZTV Club support 
 
 Enterprise customers can connect custom domains to their reseller platform. Contact support for domain configuration assistance.
 
-## Support
-
-For technical support or business inquiries:
-- Email: support@eztvclub.com
-- Platform: https://app.eztvclub.com
-
 ## API Documentation
 
 API documentation and integration guides are available in the platform dashboard under the "API Keys" section.
