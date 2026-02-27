@@ -67,3 +67,9 @@ verify_jwt = false
 
 [functions.reseller-credit-monitor]
 verify_jwt = false
+
+[functions.create-paypal-order]
+verify_jwt = false
+
+[functions.verify-paypal-order]
+verify_jwt = false
