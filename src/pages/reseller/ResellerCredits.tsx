@@ -8,20 +8,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Check, AlertCircle, Info } from 'lucide-react';
+import { CreditCard, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-// Toggle this flag to re-enable Stripe credit purchases when the account is restored
-const PURCHASES_ENABLED = false;
+const PURCHASES_ENABLED = true;
 
 const creditPackages = [
-  { id: 'price_1RUeGZDUqLxD4hMqrbZxgfR0', name: '5 Credits', price: '$15', description: 'Basic package for small needs', credits: 5 },
-  { id: 'price_1RUeGrDUqLxD4hMqBk7JdjJH', name: '10 Credits', price: '$30', description: 'Standard package, most popular', credits: 10 },
-  { id: 'price_1RUeHFDUqLxD4hMqwhdgyVa8', name: '20 Credits', price: '$60', description: 'Premium package with better value', credits: 20 },
-  { id: 'price_1RUeHXDUqLxD4hMqkX5XE0PR', name: '50 Credits', price: '$150', description: 'Bulk package for best value', credits: 50 }
+  { id: 'credits_5', name: '5 Credits', price: '$15', description: 'Basic package for small needs', credits: 5 },
+  { id: 'credits_10', name: '10 Credits', price: '$30', description: 'Standard package, most popular', credits: 10 },
+  { id: 'credits_20', name: '20 Credits', price: '$60', description: 'Premium package with better value', credits: 20 },
+  { id: 'credits_50', name: '50 Credits', price: '$150', description: 'Bulk package for best value', credits: 50 }
 ];
 
 export default function ResellerCredits() {
@@ -65,25 +63,23 @@ export default function ResellerCredits() {
     fetchResellerInfo();
   }, [user]);
 
-  // Handle success/cancel URL parameters
+  // Handle PayPal success/cancel URL parameters
   useEffect(() => {
-    const success = searchParams.get('success');
-    const sessionId = searchParams.get('session_id');
-    const creditsAdded = searchParams.get('credits');
+    const paypalSuccess = searchParams.get('paypal_success');
+    const creditsParam = searchParams.get('credits');
+    const paypalToken = searchParams.get('token'); // PayPal appends token as order ID
     const canceled = searchParams.get('canceled');
 
-    if (success === 'true' && sessionId && creditsAdded) {
-      handlePaymentSuccess(sessionId, parseInt(creditsAdded));
+    if (paypalSuccess === 'true' && paypalToken) {
+      handlePayPalSuccess(paypalToken, parseInt(creditsParam || '0'));
     } else if (canceled === 'true') {
       toast.error('Payment was canceled. No charges were made.');
-      // Clear URL parameters
       navigate('/reseller/credits', { replace: true });
     }
   }, [searchParams, navigate]);
 
-  const handlePaymentSuccess = async (sessionId: string, creditsAdded: number) => {
+  const handlePayPalSuccess = async (orderId: string, creditsExpected: number) => {
     try {
-      // Verify the payment with our backend
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError || !session?.access_token) {
@@ -92,8 +88,8 @@ export default function ResellerCredits() {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('verify-checkout', {
-        body: { sessionId },
+      const { data, error } = await supabase.functions.invoke('verify-paypal-order', {
+        body: { orderId },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         }
@@ -106,8 +102,7 @@ export default function ResellerCredits() {
       }
 
       if (data?.success) {
-        toast.success(`Successfully added ${creditsAdded} credits to your account!`);
-        // Refresh the app data to update credit balance
+        toast.success(`Successfully added ${data.credits || creditsExpected} credits to your account!`);
         await refreshData();
       } else {
         toast.error('Payment verification failed. Please contact support.');
@@ -116,40 +111,33 @@ export default function ResellerCredits() {
       console.error('Error verifying payment:', error);
       toast.error('Error verifying payment. Please contact support if needed.');
     } finally {
-      // Clear URL parameters
       navigate('/reseller/credits', { replace: true });
     }
   };
 
-  const handlePurchase = async (priceId: string) => {
+  const handlePurchase = async (packageId: string) => {
     if (!user) {
       toast.error('You must be logged in to purchase credits');
       return;
     }
     
-    setIsLoading(priceId);
+    setIsLoading(packageId);
     
     try {
-      console.log('Starting purchase for price ID:', priceId);
-      console.log('User authenticated:', !!user);
+      console.log('Starting PayPal purchase for package:', packageId);
       
-      // Get the current session to ensure we have a valid auth token
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        console.error('Session error:', sessionError);
         throw new Error('Authentication session error: ' + sessionError.message);
       }
       
       if (!session?.access_token) {
-        console.error('No access token found');
         throw new Error('No valid authentication session found. Please log in again.');
       }
       
-      console.log('Valid session found, calling create-checkout function...');
-      
-      const { data, error } = await supabase.functions.invoke('create-checkout', {
-        body: { priceId },
+      const { data, error } = await supabase.functions.invoke('create-paypal-order', {
+        body: { packageId },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         }
@@ -157,34 +145,28 @@ export default function ResellerCredits() {
       
       if (error) {
         console.error('Function invocation error:', error);
-        throw new Error(error.message || 'Failed to create checkout session');
+        throw new Error(error.message || 'Failed to create PayPal order');
       }
       
-      console.log('Function response:', data);
-      
-      if (data?.url) {
-        console.log('Opening Stripe checkout in new tab:', data.url);
-        // Open Stripe checkout in a new tab instead of redirecting current window
-        const newWindow = window.open(data.url, '_blank');
+      if (data?.approvalUrl) {
+        console.log('Opening PayPal checkout in new tab:', data.approvalUrl);
+        const newWindow = window.open(data.approvalUrl, '_blank');
         
         if (!newWindow) {
           toast.error('Pop-up blocked. Please allow pop-ups and try again.');
           return;
         }
         
-        toast.success('Stripe checkout opened in new tab. Complete your payment there.');
+        toast.success('PayPal checkout opened in new tab. Complete your payment there.');
       } else {
         throw new Error('No checkout URL returned from server');
       }
     } catch (error: any) {
       console.error('Purchase error details:', error);
       
-      // Provide more specific error messages
       if (error.message?.includes('Authentication')) {
         toast.error('Authentication error. Please log out and log back in.');
-      } else if (error.message?.includes('Invalid price ID')) {
-        toast.error('Invalid product selected. Please try again.');
-      } else if (error.message?.includes('Stripe not configured')) {
+      } else if (error.message?.includes('PayPal credentials')) {
         toast.error('Payment system is not configured. Please contact support.');
       } else if (error.message?.includes('Pop-up blocked')) {
         toast.error('Pop-up was blocked. Please allow pop-ups for this site and try again.');
@@ -202,7 +184,7 @@ export default function ResellerCredits() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold mb-2">Credits & Usage</h1>
-            <p className="text-gray-500">Monitor your credit usage and EZTV streaming service transaction history</p>
+            <p className="text-muted-foreground">Monitor your credit usage and EZTV streaming service transaction history</p>
           </div>
           <CreditsBadge credits={user?.credits || 0} />
         </div>
@@ -212,7 +194,6 @@ export default function ResellerCredits() {
       <div className="mb-6">
         {resellerInfo?.credit_purchase_enabled ? (
           PURCHASES_ENABLED ? (
-            // Level 1 Reseller - Show purchase options (currently disabled)
             <Card>
               <CardHeader>
                 <CardTitle>Purchase Credits</CardTitle>
@@ -244,27 +225,57 @@ export default function ResellerCredits() {
                         ) : (
                           <span className="flex items-center">
                             <CreditCard className="mr-2" size={16} />
-                            Buy Now
+                            Buy with PayPal
                           </span>
                         )}
                       </Button>
                     </Card>
                   ))}
                 </div>
+                
+                <div className="mt-6 bg-muted p-4 rounded-lg border">
+                  <h4 className="font-medium mb-3">Important Information</h4>
+                  
+                  <div className="space-y-2">
+                    <div className="flex items-start space-x-2">
+                      <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                      <span className="text-sm text-muted-foreground">
+                        Credits are used to provision new customer accounts (1 credit = 1 month of service)
+                      </span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                      <span className="text-sm text-muted-foreground">
+                        All payments are processed securely through PayPal
+                      </span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
+                      <span className="text-sm text-muted-foreground">
+                        Credits never expire and can be used at any time
+                      </span>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <AlertCircle size={20} className="text-blue-500 shrink-0 mt-0.5" />
+                      <span className="text-sm text-muted-foreground">
+                        Checkout will open in a new tab. Complete payment there and return here to see updated balance
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ) : (
-            // Purchases temporarily disabled
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertTitle>Credit Purchases Temporarily Unavailable</AlertTitle>
-              <AlertDescription>
-                Online credit purchases are temporarily unavailable. Please contact your administrator to have credits added to your account manually.
-              </AlertDescription>
-            </Alert>
+            <Card>
+              <CardHeader>
+                <CardTitle>Credit Purchases Temporarily Unavailable</CardTitle>
+                <CardDescription>
+                  Online credit purchases are temporarily unavailable. Please contact your administrator to have credits added to your account manually.
+                </CardDescription>
+              </CardHeader>
+            </Card>
           )
         ) : (
-          // Level 2+ Reseller - Show request credits interface
           resellerInfo && (
             <SubResellerCreditsView
               userCredits={user?.credits || 0}
