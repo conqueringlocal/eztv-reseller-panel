@@ -8,10 +8,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CreditsBadge } from '@/components/dashboard/CreditsBadge';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Check, AlertCircle } from 'lucide-react';
+import { CreditCard, Check, AlertCircle, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+// Toggle this flag to re-enable Stripe credit purchases when the account is restored
+const PURCHASES_ENABLED = false;
 
 const creditPackages = [
   { id: 'price_1RUeGZDUqLxD4hMqrbZxgfR0', name: '5 Credits', price: '$15', description: 'Basic package for small needs', credits: 5 },
@@ -207,78 +211,58 @@ export default function ResellerCredits() {
       {/* Dynamic content based on reseller level */}
       <div className="mb-6">
         {resellerInfo?.credit_purchase_enabled ? (
-          // Level 1 Reseller - Show purchase options
-          <Card>
-            <CardHeader>
-              <CardTitle>Purchase Credits</CardTitle>
-              <CardDescription>
-                Add more credits to your account to provision new customer accounts
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {creditPackages.map((pack) => (
-                  <Card key={pack.id} className="flex flex-col p-4 hover:shadow-md transition-shadow">
-                    <div className="flex-1">
-                      <h3 className="text-xl font-bold">{pack.name}</h3>
-                      <p className="text-2xl font-bold text-eztv-600 my-2">{pack.price}</p>
-                      <p className="text-gray-500 text-sm">{pack.description}</p>
-                    </div>
-                    <Button 
-                      onClick={() => handlePurchase(pack.id)}
-                      disabled={!!isLoading}
-                      className="w-full mt-4"
-                    >
-                      {isLoading === pack.id ? (
-                        <span className="flex items-center">
-                          <span className="animate-spin mr-2">
-                            <CreditCard size={16} />
+          PURCHASES_ENABLED ? (
+            // Level 1 Reseller - Show purchase options (currently disabled)
+            <Card>
+              <CardHeader>
+                <CardTitle>Purchase Credits</CardTitle>
+                <CardDescription>
+                  Add more credits to your account to provision new customer accounts
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {creditPackages.map((pack) => (
+                    <Card key={pack.id} className="flex flex-col p-4 hover:shadow-md transition-shadow">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold">{pack.name}</h3>
+                        <p className="text-2xl font-bold text-primary my-2">{pack.price}</p>
+                        <p className="text-muted-foreground text-sm">{pack.description}</p>
+                      </div>
+                      <Button 
+                        onClick={() => handlePurchase(pack.id)}
+                        disabled={!!isLoading}
+                        className="w-full mt-4"
+                      >
+                        {isLoading === pack.id ? (
+                          <span className="flex items-center">
+                            <span className="animate-spin mr-2">
+                              <CreditCard size={16} />
+                            </span>
+                            Processing...
                           </span>
-                          Processing...
-                        </span>
-                      ) : (
-                        <span className="flex items-center">
-                          <CreditCard className="mr-2" size={16} />
-                          Buy Now
-                        </span>
-                      )}
-                    </Button>
-                  </Card>
-                ))}
-              </div>
-              
-              <div className="mt-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <h4 className="font-medium mb-3">Important Information</h4>
-                
-                <div className="space-y-2">
-                  <div className="flex items-start space-x-2">
-                    <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-600">
-                      Credits are used to provision new customer accounts (1 credit = 1 month of service)
-                    </span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-600">
-                      All payments are processed securely through Stripe
-                    </span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <Check size={20} className="text-green-500 shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-600">
-                      Credits never expire and can be used at any time
-                    </span>
-                  </div>
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle size={20} className="text-blue-500 shrink-0 mt-0.5" />
-                    <span className="text-sm text-gray-600">
-                      Checkout will open in a new tab. Complete payment there and return here to see updated balance
-                    </span>
-                  </div>
+                        ) : (
+                          <span className="flex items-center">
+                            <CreditCard className="mr-2" size={16} />
+                            Buy Now
+                          </span>
+                        )}
+                      </Button>
+                    </Card>
+                  ))}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          ) : (
+            // Purchases temporarily disabled
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertTitle>Credit Purchases Temporarily Unavailable</AlertTitle>
+              <AlertDescription>
+                Online credit purchases are temporarily unavailable. Please contact your administrator to have credits added to your account manually.
+              </AlertDescription>
+            </Alert>
+          )
         ) : (
           // Level 2+ Reseller - Show request credits interface
           resellerInfo && (
