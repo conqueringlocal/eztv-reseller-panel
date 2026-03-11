@@ -180,7 +180,8 @@ serve(async (req) => {
         renewUrl.searchParams.append("action", "renew");
         renewUrl.searchParams.append("type", "mag");
         renewUrl.searchParams.append("mac", connection.mac_address);
-        renewUrl.searchParams.append("sub", planDuration.toString());
+        // Trex renewal API uses 0-indexed sub parameter
+        renewUrl.searchParams.append("sub", (planDuration - 1).toString());
         
         try {
           const iptvResponse = await fetch(renewUrl.toString());
