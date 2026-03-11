@@ -162,7 +162,8 @@ Deno.serve(async (req) => {
 
       // Determine if this is M3U or MAG
       const isMag = !!connection.mac_address;
-      const subParam = planDuration.toString();
+      // Trex renewal API uses 0-indexed sub parameter
+      const subParam = (planDuration - 1).toString();
 
       // Build URL in correct order: action → type → username/password → sub → api_key
       let renewUrl = `${panelUrl}?action=renew`;

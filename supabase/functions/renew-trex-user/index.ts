@@ -16,15 +16,16 @@ interface RenewRequest {
 
 // Helper function to map plan duration to subscription format (same as create-trex-user)
 function mapPlanDurationToSub(planDuration: number): string {
+  // IMPORTANT: Trex renewal API uses 0-indexed subscription package indices
+  // sub=0 → 1 month, sub=1 → 2 months, sub=2 → 3 months, etc.
   const mapping: { [key: number]: string } = {
-    1: '1',    // 1 month
-    3: '3',    // 3 months  
-    6: '6',    // 6 months
-    12: '12',  // 12 months
-    24: '99'   // 24 months -> lifetime
+    1: '0',    // 1 month (index 0)
+    3: '2',    // 3 months (index 2)
+    6: '5',    // 6 months (index 5)
+    12: '11',  // 12 months (index 11)
   };
   
-  return mapping[planDuration] || '1'; // Default to 1 month if not found
+  return mapping[planDuration] || '0'; // Default to 1 month if not found
 }
 
 serve(async (req) => {
