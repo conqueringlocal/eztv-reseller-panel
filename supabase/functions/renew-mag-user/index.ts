@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 interface RenewMagRequest {
@@ -180,8 +180,8 @@ serve(async (req) => {
         renewUrl.searchParams.append("action", "renew");
         renewUrl.searchParams.append("type", "mag");
         renewUrl.searchParams.append("mac", connection.mac_address);
-        // Trex renewal API uses 0-indexed sub parameter
-        renewUrl.searchParams.append("sub", (planDuration - 1).toString());
+        // Per Trex API docs: sub = 1,3,6,12 (subscription length in months)
+        renewUrl.searchParams.append("sub", planDuration.toString());
         
         try {
           const iptvResponse = await fetch(renewUrl.toString());
@@ -243,8 +243,8 @@ serve(async (req) => {
       renewUrl.searchParams.append("action", "renew");
       renewUrl.searchParams.append("type", "mag");
       renewUrl.searchParams.append("mac", customer.mac_address);
-      // Trex renewal API uses 0-indexed sub parameter
-      renewUrl.searchParams.append("sub", (planDuration - 1).toString());
+      // Per Trex API docs: sub = 1,3,6,12 (subscription length in months)
+      renewUrl.searchParams.append("sub", planDuration.toString());
       
       const iptvResponse = await fetch(renewUrl.toString());
       const iptvData = await iptvResponse.json();

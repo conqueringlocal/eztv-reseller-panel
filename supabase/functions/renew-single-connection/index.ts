@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.7';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 interface RenewSingleConnectionRequest {
@@ -162,8 +162,8 @@ Deno.serve(async (req) => {
 
       // Determine if this is M3U or MAG
       const isMag = !!connection.mac_address;
-      // Trex renewal API uses 0-indexed sub parameter
-      const subParam = (planDuration - 1).toString();
+      // Per Trex API docs: sub = 1,3,6,12 (subscription length in months)
+      const subParam = planDuration.toString();
 
       // Build URL in correct order: action → type → username/password → sub → api_key
       let renewUrl = `${panelUrl}?action=renew`;
