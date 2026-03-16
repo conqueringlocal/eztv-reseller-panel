@@ -428,13 +428,13 @@ export default function AdminResellerDetail() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" />
-              Credit Log
+              <Users className="h-5 w-5" />
+              Customers
             </CardTitle>
-            <CardDescription>History of credit transactions for this reseller</CardDescription>
+            <CardDescription>List of customers associated with this reseller</CardDescription>
           </CardHeader>
           <CardContent>
-            <CreditLogTable logs={resellerCreditLogs} />
+            <CustomerTable customers={resellerCustomers} onRefresh={refreshData} />
           </CardContent>
         </Card>
       </div>
@@ -443,13 +443,13 @@ export default function AdminResellerDetail() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Customers
+              <Calendar className="h-5 w-5" />
+              Credit Log
             </CardTitle>
-            <CardDescription>List of customers associated with this reseller</CardDescription>
+            <CardDescription>History of credit transactions for this reseller</CardDescription>
           </CardHeader>
           <CardContent>
-            <CustomerTable customers={resellerCustomers} onRefresh={refreshData} />
+            <CreditLogTable logs={resellerCreditLogs} />
           </CardContent>
         </Card>
       </div>
