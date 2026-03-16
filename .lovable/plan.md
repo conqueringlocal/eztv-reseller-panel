@@ -1,23 +1,16 @@
 
 
-## Fix: PayPal Edge Function Not Working
-
-### Root Causes
-
-1. **Missing CORS headers** — Both `create-paypal-order` and `verify-paypal-order` are missing the newer Supabase client headers (`x-supabase-client-platform`, etc.) in their `Access-Control-Allow-Headers`. This causes the browser's CORS preflight to fail with a non-2xx status.
-
-2. **Possible deployment issue** — Zero logs suggest the function may not have been deployed successfully. We will redeploy both functions after fixing the CORS headers.
+## Plan: Move Credit Log Below Customers + Add Pagination
 
 ### Changes
 
-**File: `supabase/functions/create-paypal-order/index.ts`** (line 5)
-- Update `Access-Control-Allow-Headers` to include all required Supabase client headers:
-  ```
-  authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version
-  ```
+**1. `src/pages/admin/AdminResellerDetail.tsx`**
+Swap the order of the Credit Log card (lines 427-440) and Customers card (lines 442-455) so customers appear first and the credit log is at the bottom of the page.
 
-**File: `supabase/functions/verify-paypal-order/index.ts`** (line 6)
-- Same CORS header fix.
+**2. `src/components/credits/CreditLogTable.tsx`**
+Add pagination (20 rows per page) using the existing `Pagination` UI components. This keeps the credit log compact and avoids endless scrolling. Users can page through older entries as needed.
 
-**Deploy** both `create-paypal-order` and `verify-paypal-order` edge functions.
+- Add `currentPage` state, slice `filteredLogs` to show 20 per page
+- Render pagination controls below the table showing page numbers and prev/next buttons
+- Reset to page 1 when search changes
 
