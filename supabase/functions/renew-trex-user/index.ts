@@ -14,18 +14,9 @@ interface RenewRequest {
   resellerId?: string;    // Required when serviceCall=true
 }
 
-// Helper function to map plan duration to subscription format (same as create-trex-user)
+// Per Trex API docs: sub = 1,3,6,12 (subscription length in months)
 function mapPlanDurationToSub(planDuration: number): string {
-  // IMPORTANT: Trex renewal API uses 0-indexed subscription package indices
-  // sub=0 → 1 month, sub=1 → 2 months, sub=2 → 3 months, etc.
-  const mapping: { [key: number]: string } = {
-    1: '0',    // 1 month (index 0)
-    3: '2',    // 3 months (index 2)
-    6: '5',    // 6 months (index 5)
-    12: '11',  // 12 months (index 11)
-  };
-  
-  return mapping[planDuration] || '0'; // Default to 1 month if not found
+  return planDuration.toString();
 }
 
 serve(async (req) => {
