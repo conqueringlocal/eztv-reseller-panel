@@ -195,7 +195,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
       });
       
       if (success) {
-        toast.success(`${data.accountType.toUpperCase()} customer added successfully with ${data.connections} connection${data.connections > 1 ? 's' : ''}!`);
+        // The customer hook owns result feedback, including duplicate replays.
         form.reset();
         if (onSuccess) onSuccess();
       }

@@ -43,7 +43,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    const { resellerId, customerData, serviceCall = false, consolidate = true }: CreateUserRequest = await req.json();
+    const input = await req.json();
+    const { resellerId, customerData, serviceCall = false, consolidate = true }: CreateUserRequest = input;
 
     console.log(`🚀 Creating consolidated M3U users for reseller: ${resellerId}`);
     console.log(`📊 Customer data:`, customerData);
@@ -120,6 +121,39 @@ serve(async (req) => {
 
     const provider = reseller.provider || '8k';
     console.log(`📱 Using provider: ${provider}`);
+
+    if (provider === 'trex') {
+      // Forward the whole operation with the ORIGINAL identity. The Trex handler owns
+      // duplicate protection, customer persistence, and charging exactly once.
+      const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/create-trex-user`, {
+        method: 'POST',
+        headers: {
+          Authorization: req.headers.get('Authorization') || '',
+          apikey: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ resellerId, customerData, serviceCall,
+          skipCredits: input.skipCredits, operationKey: input.operationKey }),
+      });
+      const result = await response.json();
+      if (result.success && result.customerId) {
+        const { data: saved, error: savedError } = await supabaseClient.from('customers')
+          .select('*').eq('id', result.customerId).eq('reseller_id', resellerId).single();
+        if (savedError || !saved) {
+          return new Response(JSON.stringify({ success: false, needsReview: true, requestId: result.requestId,
+            error: 'The account was already provisioned. Contact support; do not create it again.' }),
+            { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        // Preserve the legacy automation response without provisioning or charging again.
+        result.customers = [saved];
+        result.customer = saved;
+        result.connectionList = saved.connection_list || [];
+      }
+      return new Response(JSON.stringify(result), {
+        status: response.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const connectionsToCreate = customerData.maxConnections || customerData.connections;
     console.log(`🔌 Creating ${connectionsToCreate} separate accounts for consolidation`);
@@ -307,59 +341,6 @@ serve(async (req) => {
             username: username,
             password: password,
             m3u_url: iptvResult.user_info?.m3u_url || null,
-            status: customerData.status
-          });
-
-        } else if (provider === 'trex') {
-          console.log(`📡 Creating Trex M3U user ${i} with 1 connection`);
-          
-          // Call the create-trex-user function for each connection with serviceCall parameter
-          const { data: trexResult, error: trexError } = await supabaseClient.functions.invoke('create-trex-user', {
-            body: {
-              resellerId: resellerId,
-              serviceCall: true,
-              customerData: {
-                name: customerData.name,
-                email: customerData.email,
-                macAddress: customerData.macAddress,
-                deviceType: customerData.deviceType,
-                packageId: customerData.packageId,
-                planDuration: customerData.planDuration,
-                connections: 1,
-                maxConnections: 1,
-                startDate: customerData.startDate,
-                expirationDate: customerData.expirationDate,
-                accountType: 'm3u',
-                status: customerData.status,
-                isDeactivated: customerData.isDeactivated
-              }
-            }
-          });
-
-          if (trexError || !trexResult?.success) {
-            throw new Error(trexResult?.error || trexError?.message || 'Failed to create Trex IPTV user');
-          }
-
-          // Extract the first customer from the Trex result
-          const trexCustomer = trexResult.customers?.[0];
-          if (!trexCustomer) {
-            throw new Error('No customer data returned from Trex API');
-          }
-
-          customerRecord = trexCustomer;
-          iptvResult = {
-            user_info: {
-              m3u_url: trexCustomer.m3u_url,
-              group_id: trexCustomer.customer_group_id
-            }
-          };
-
-          // Add to connection list for consolidation
-          connectionList.push({
-            connection_number: i,
-            username: trexCustomer.username,
-            password: trexCustomer.password,
-            m3u_url: trexCustomer.m3u_url,
             status: customerData.status
           });
 
