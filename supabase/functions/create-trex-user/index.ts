@@ -45,10 +45,10 @@ function parseCreationResponse(raw: unknown) {
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
   if (req.method !== 'POST') return reply({ success: false, error: 'Method not allowed' }, 405);
-  // Safe default for deployment: enable only after the migration + reconciliation checks.
-  if (Deno.env.get('TREX_CREATION_ENABLED') !== 'true') {
-    return reply({ success: false, code: 'creation_paused', error: 'Customer creation is temporarily paused. Contact support about an existing attempt.' }, 503);
-  }
+  // The server secret overrides the admin-managed setting; absent/error always pauses.
+  const creationOverride = Deno.env.get('TREX_CREATION_ENABLED');
+  const paused = () => reply({ success: false, code: 'creation_paused', error: 'Customer creation is temporarily paused. Contact support about an existing attempt.' }, 503);
+  if (creationOverride !== undefined && creationOverride !== 'true') return paused();
 
   let requestId: string | undefined;
   let client: ReturnType<typeof createClient> | undefined;
@@ -57,6 +57,11 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     if (!serviceKey || !supabaseUrl) throw new Error('backend_configuration');
     client = createClient(supabaseUrl, serviceKey);
+    if (creationOverride !== 'true') {
+      const { data: setting, error } = await client.from('system_settings').select('value')
+        .eq('id', 'trex_creation_enabled').single();
+      if (error || setting?.value !== 'true') return paused();
+    }
     const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
     if (!token) return reply({ success: false, error: 'Please sign in again.' }, 401);
     let input;

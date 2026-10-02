@@ -30,7 +30,7 @@ import { checkForExistingCustomer } from '@/utils/customerConsolidation/duplicat
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 // Re-enable only after the Trex backend request guard has been deployed and verified.
-const customerCreationPaused = import.meta.env.VITE_TREX_CREATION_PAUSED !== 'false';
+const customerCreationPaused = import.meta.env.VITE_TREX_CREATION_PAUSED === 'true';
 
 // Form schema with validation - updated to support multi-connection accounts
 const formSchema = z.object({

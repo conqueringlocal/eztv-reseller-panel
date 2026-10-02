@@ -70,7 +70,9 @@ async function setup(options = {}) {
         update(value) { update = value; return chain; },
         async single() {
           if (table === 'profiles') return { data: { name: 'Fixture Reseller', provider: 'trex', use_admin_api: true }, error: null };
-          if (table === 'system_settings') return { data: { value: options.noDefaultPackage ? null : '27228' }, error: null };
+          if (table === 'system_settings') return { data: { value: filters.id === 'trex_creation_enabled'
+            ? (options.dbEnabled ? 'true' : null) : (options.noDefaultPackage ? null : '27228') },
+            error: options.settingFailure ? new Error('unavailable') : null };
           if (table === 'customers') {
             return { data: query(`SELECT row_to_json(c) FROM customers c WHERE id=${q(filters.id)} AND reseller_id=${q(filters.reseller_id)}`), error: null };
           }
@@ -86,7 +88,7 @@ async function setup(options = {}) {
   const context = vm.createContext({
     Response, URL, URLSearchParams, AbortSignal,
     console: { log: value => messages.push(value), warn: value => messages.push(value), error: value => messages.push(value) },
-    Deno: { env: { get: name => ({ TREX_CREATION_ENABLED: options.paused ? 'false' : 'true',
+    Deno: { env: { get: name => ({ TREX_CREATION_ENABLED: options.noOverride ? undefined : options.paused ? 'false' : 'true',
       SUPABASE_URL: 'https://database.invalid', SUPABASE_SERVICE_ROLE_KEY: 'fixture-service-key',
       TREX_API_KEY: options.noKey ? undefined : 'fixture-provider-key', TREX_PANEL_URL: 'https://provider.invalid/api/api.php' })[name] } },
     async fetch(url, init) {
@@ -132,6 +134,18 @@ test('default pause and preflight do not call Trex', async () => {
   assert.equal((await app.invoke()).status, 503);
   assert.equal((await app.handler(new Request('https://example.invalid', { method: 'OPTIONS' }))).status, 200);
   assert.equal(app.calls.length, 0);
+});
+
+test('database enable switch fails closed; explicit server pause overrides it', async () => {
+  for (const options of [{ noOverride: true }, { noOverride: true, dbEnabled: true, settingFailure: true },
+    { paused: true, dbEnabled: true }]) {
+    const app = await setup(options);
+    assert.equal((await app.invoke()).body.code, 'creation_paused');
+    assert.equal(app.calls.length, 0);
+  }
+  const app = await setup({ noOverride: true, dbEnabled: true });
+  assert.equal((await app.invoke()).body.success, true);
+  assert.equal(app.calls.length, 1);
 });
 
 test('documented URL/array response is saved once; literal and encoded plus survive', async () => {

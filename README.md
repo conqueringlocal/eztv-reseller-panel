@@ -65,7 +65,7 @@ The platform is automatically deployed to production. Contact EZTV Club support 
 
 ### Current maintenance and Trex incident
 
-The live frontend is now on Cloudflare Pages (`eztv-reseller-panel`), using the original Supabase backend. Pages deployments are currently uploaded with Wrangler; pushing GitHub alone does not deploy to Pages. Customer creation is temporarily paused in the frontend while the Trex backend fix is prepared. See [Trex provisioning recovery and deployment](docs/TREX_PROVISIONING_RECOVERY.md) for the exact deployment order, backend pause control, and verification steps. Do not re-enable creation before the backend guard is installed and existing uncertain attempts are reconciled.
+The live frontend is on Cloudflare Pages (`eztv-reseller-panel`), using the original Supabase backend. Pages deployments are uploaded with Wrangler; pushing GitHub alone does not deploy to Pages. Trex customer creation uses a durable database guard and atomic customer/credit persistence. See [Trex provisioning recovery and deployment](docs/TREX_PROVISIONING_RECOVERY.md) for deployment, emergency pause controls, and verification.
 
 ## Custom Domain Setup
 
