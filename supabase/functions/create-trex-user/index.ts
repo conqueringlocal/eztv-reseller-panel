@@ -1,636 +1,188 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+const reply = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
+  status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+});
+const reviewMessage = 'This attempt needs review. Do not create the customer again. Contact support with the request reference.';
 
-// M3U streaming domain for Trex provider
-const TREX_M3U_DOMAIN = 'vpn.eztvclub.online';
-
-interface CreateUserRequest {
-  resellerId: string;
-  serviceCall?: boolean; // New parameter to indicate internal service calls
-  customerData: {
-    name: string;
-    email: string;
-    macAddress?: string;
-    deviceType: string;
-    packageId: string;
-    planDuration: number;
-    connections: number;
-    maxConnections?: number;
-    currentConnections?: number;
-    connectionDetails?: any[];
-    startDate: string;
-    expirationDate: string;
-    accountType: 'm3u' | 'mag';
-    status: string;
-    isDeactivated: boolean;
-  };
-}
-
-// Helper function to map plan duration to subscription format
-function mapPlanDurationToSub(planDuration: number): string {
-  const mapping: { [key: number]: string } = {
-    1: '1',    // 1 month
-    3: '3',    // 3 months  
-    6: '6',    // 6 months
-    12: '12',  // 12 months
-    24: '99'   // 24 months -> lifetime
-  };
-  
-  return mapping[planDuration] || '1'; // Default to 1 month if not found
-}
-
-// Helper function to verify a connection exists in the provider panel
-async function verifyConnectionExists(
-  username: string, 
-  password: string, 
-  panelUrl: string, 
-  apiKey: string
-): Promise<{ exists: boolean; expireDate?: string; m3uUrl?: string }> {
-  try {
-    const baseUrl = panelUrl.replace('/api/api.php', '');
-    const verifyUrl = `${baseUrl}/api/api.php?action=device_info&username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&api_key=${apiKey}`;
-    
-    console.log(`🔍 Verifying connection exists: ${username}`);
-    
-    const response = await fetch(verifyUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'IPTV-Management-System/1.0',
-        'Accept': 'application/json, text/plain, */*',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-    
-    const responseText = await response.text();
-    console.log(`📡 Verification response for ${username}: ${responseText.substring(0, 200)}`);
-    
-    if (!response.ok) {
-      console.log(`❌ Verification HTTP error: ${response.status}`);
-      return { exists: false };
-    }
-    
-    // Try to parse as JSON
-    try {
-      const data = JSON.parse(responseText);
-      
-      // Check various success indicators
-      if (data.status === 'true' || data.status === true || data.success === true) {
-        const expireDate = data.user_info?.exp_date || data.expire || data.expiry;
-        const m3uUrl = data.user_info?.url || data.url;
-        console.log(`✅ Connection verified: ${username}, expires: ${expireDate}`);
-        return { exists: true, expireDate, m3uUrl };
-      }
-      
-      // If we get user_info, consider it exists
-      if (data.user_info) {
-        const expireDate = data.user_info.exp_date || data.expire;
-        const m3uUrl = data.user_info.url;
-        console.log(`✅ Connection verified via user_info: ${username}`);
-        return { exists: true, expireDate, m3uUrl };
-      }
-      
-      console.log(`❌ Connection not found in panel: ${username}`);
-      return { exists: false };
-    } catch (parseError) {
-      // Non-JSON response - check for error indicators
-      if (responseText.toLowerCase().includes('error') || 
-          responseText.toLowerCase().includes('not found') ||
-          responseText.toLowerCase().includes('invalid')) {
-        console.log(`❌ Connection verification failed (text): ${username}`);
-        return { exists: false };
-      }
-      
-      // Can't verify - assume doesn't exist for safety
-      console.log(`⚠️ Could not parse verification response for ${username}, assuming not exists`);
-      return { exists: false };
-    }
-  } catch (error) {
-    console.error(`❌ Verification error for ${username}:`, error.message);
-    return { exists: false };
+// Trex returns credentials inside `url`, including in its documented one-item array response.
+// URLSearchParams would turn literal + into spaces; these are credentials, not form data.
+function rawQueryValue(url: string, name: string): string | undefined {
+  const query = url.split('?')[1]?.split('#')[0];
+  for (const part of query?.split('&') ?? []) {
+    const split = part.indexOf('=');
+    if (split >= 0 && part.slice(0, split) === name) return decodeURIComponent(part.slice(split + 1));
   }
+}
+
+function parseCreationResponse(raw: unknown) {
+  const body = Array.isArray(raw) && raw.length === 1 ? raw[0] : raw;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('provider_response_unrecognized');
+  const value = body as Record<string, unknown>;
+  if (value.error || value.status === 'error' || value.status === false || value.status === 'false') {
+    throw new Error('provider_rejected');
+  }
+  if (value.status !== true && value.status !== 'true' && value.success !== true) {
+    throw new Error('provider_response_unrecognized');
+  }
+  const url = typeof value.url === 'string' ? value.url : '';
+  const username = typeof value.username === 'string' && value.username ? value.username : rawQueryValue(url, 'username');
+  const password = typeof value.password === 'string' && value.password ? value.password : rawQueryValue(url, 'password');
+  if (!username || !password) throw new Error('provider_credentials_missing');
+  const query = new URLSearchParams({ username, password, type: 'm3u_plus', output: 'ts' });
+  return {
+    username, password, accountRef: value.user_id == null ? null : String(value.user_id),
+    m3uUrl: `http://vpn.eztvclub.online/get.php?${query}`,
+  };
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
+  if (req.method !== 'POST') return reply({ success: false, error: 'Method not allowed' }, 405);
+  // The server secret overrides the admin-managed setting; absent/error always pauses.
+  const creationOverride = Deno.env.get('TREX_CREATION_ENABLED');
+  const paused = () => reply({ success: false, code: 'creation_paused', error: 'Customer creation is temporarily paused. Contact support about an existing attempt.' }, 503);
+  if (creationOverride !== undefined && creationOverride !== 'true') return paused();
 
+  let requestId: string | undefined;
+  let client: ReturnType<typeof createClient> | undefined;
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-    );
-
-    const { resellerId, customerData, serviceCall = false }: CreateUserRequest = await req.json();
-
-    console.log(`🚀 Creating Trex M3U users for reseller: ${resellerId}`);
-    console.log(`📊 Customer data:`, customerData);
-    console.log(`🔧 Service call mode: ${serviceCall}`);
-
-    // Only verify JWT authentication if this is NOT a service call
-    if (!serviceCall) {
-      // Get the authorization header
-      const authHeader = req.headers.get('Authorization');
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: 'No authorization header' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Verify the JWT token
-      const token = authHeader.replace('Bearer ', '');
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-      
-      if (authError || !user) {
-        console.error('Auth error:', authError);
-        return new Response(
-          JSON.stringify({ error: 'Invalid token' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    } else {
-      console.log('🔐 Bypassing JWT authentication for service call');
+    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    if (!serviceKey || !supabaseUrl) throw new Error('backend_configuration');
+    client = createClient(supabaseUrl, serviceKey);
+    if (creationOverride !== 'true') {
+      const { data: setting, error } = await client.from('system_settings').select('value')
+        .eq('id', 'trex_creation_enabled').single();
+      if (error || setting?.value !== 'true') return paused();
     }
-
-    // Get reseller's profile to check credits and API configuration
-    const { data: reseller, error: resellerError } = await supabaseClient
-      .from('profiles')
-      .select('credits, provider, name, use_admin_api, api_key, panel_url')
-      .eq('id', resellerId)
-      .single();
-
-    if (resellerError || !reseller) {
-      console.error('Reseller not found:', resellerError);
-      return new Response(
-        JSON.stringify({ error: 'Reseller not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const token = req.headers.get('Authorization')?.replace(/^Bearer\s+/i, '');
+    if (!token) return reply({ success: false, error: 'Please sign in again.' }, 401);
+    let input;
+    try { input = await req.json(); } catch { return reply({ success: false, error: 'Invalid request.' }, 400); }
+    const { resellerId, customerData, serviceCall = false } = input ?? {};
+    const isInternal = token === serviceKey;
+    // A caller-controlled serviceCall flag is never authorization.
+    if (serviceCall && !isInternal) return reply({ success: false, error: 'Unauthorized service request.' }, 403);
+    if ((input.skipCredits || input.operationKey) && !isInternal) {
+      return reply({ success: false, error: 'Unauthorized service options.' }, 403);
     }
-
-    console.log(`📋 Reseller: ${reseller.name}, Credits: ${reseller.credits}`);
-
-    // Check if current user is admin (for admin override)
-    let isAdminOverride = false;
-
-    if (!serviceCall) {
-      const authHeader = req.headers.get('Authorization');
-      const token = authHeader?.replace('Bearer ', '');
-      
-      if (token) {
-        const { data: { user: currentUser } } = await supabaseClient.auth.getUser(token);
-        
-        if (currentUser) {
-          // Use secure has_role function
-          const { data: isAdminData } = await supabaseClient.rpc('has_role', {
-            _user_id: currentUser.id,
-            _role: 'admin'
-          });
-          
-          isAdminOverride = isAdminData === true;
-          
-          if (isAdminOverride) {
-            console.log(`⚡ ADMIN OVERRIDE: Admin user creating account for reseller ${reseller.name}`);
-          }
-        }
+    if (input.operationKey && (typeof input.operationKey !== 'string' || !/^[a-zA-Z0-9:._-]{1,160}$/.test(input.operationKey))) {
+      return reply({ success: false, error: 'Invalid operation reference.' }, 400);
+    }
+    let isAdmin = false;
+    if (!isInternal) {
+      const { data: { user }, error } = await client.auth.getUser(token);
+      if (error || !user) return reply({ success: false, error: 'Your session expired. Please sign in again.' }, 401);
+      const { data: admin, error: roleError } = await client.rpc('has_role', { _user_id: user.id, _role: 'admin' });
+      if (roleError) throw new Error('role_lookup_failed');
+      isAdmin = admin === true;
+      if (user.id !== resellerId && !isAdmin) return reply({ success: false, error: 'You cannot create accounts for this reseller.' }, 403);
+    }
+    if (isInternal && customerData && (!customerData.packageId || customerData.packageId === 'default')) {
+      const { data: setting, error } = await client.from('system_settings').select('value')
+        .eq('id', 'trex_default_package_id').single();
+      if (error || !setting?.value || !/^\d+$/.test(String(setting.value))) {
+        return reply({ success: false, code: 'provider_configuration', error: 'A numeric default Trex package must be configured. Contact support.' }, 400);
       }
+      customerData.packageId = String(setting.value);
     }
-
-    const connectionsToCreate = customerData.maxConnections || customerData.connections;
-    console.log(`🔌 Creating ${connectionsToCreate} separate Trex accounts`);
-
-    // Calculate required credits using the database function
-    const { data: creditsRequired, error: creditsError } = await supabaseClient.rpc('calculate_credits_required', {
-      connections: connectionsToCreate,
-      duration_months: customerData.planDuration
+    const connections = customerData?.maxConnections ?? customerData?.connections;
+    const months = customerData?.planDuration;
+    if (typeof resellerId !== 'string' || !/^[0-9a-f-]{36}$/i.test(resellerId) || !customerData
+      || !Number.isInteger(connections) || connections < 1 || connections > 5
+      || ![1, 3, 6, 12].includes(months)
+      || typeof customerData.name !== 'string' || !customerData.name.trim() || customerData.name.length > 200
+      || typeof customerData.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerData.email) || customerData.email.length > 320
+      || typeof customerData.packageId !== 'string' || !/^\d+$/.test(customerData.packageId)
+      || typeof customerData.deviceType !== 'string' || !customerData.deviceType.trim()
+      || customerData.macAddress || (customerData.accountType && customerData.accountType !== 'm3u')
+      || customerData.isTrial) {
+      return reply({ success: false, code: 'invalid_request', error: 'Check the customer details, numeric package, duration, and connection count. This endpoint creates paid M3U accounts only.' }, 400);
+    }
+    const { data: reseller, error: profileError } = await client.from('profiles')
+      .select('name, provider, use_admin_api, api_key, panel_url').eq('id', resellerId).single();
+    if (profileError || !reseller) return reply({ success: false, error: 'Reseller profile could not be loaded.' }, 404);
+    if ((reseller.provider || 'trex') !== 'trex') return reply({ success: false, error: 'This reseller is not configured for Trex.' }, 400);
+    const apiKey = reseller.use_admin_api ? Deno.env.get('TREX_API_KEY') : reseller.api_key;
+    const panelUrl = reseller.use_admin_api ? Deno.env.get('TREX_PANEL_URL') : reseller.panel_url;
+    if (!apiKey || !panelUrl) return reply({ success: false, code: 'provider_configuration', error: 'Trex connection settings are missing. Contact support.' }, 400);
+    const endpoint = new URL(panelUrl);
+    if (endpoint.protocol !== 'https:') throw new Error('provider_configuration');
+    endpoint.pathname = endpoint.pathname.replace(/\/(api\/api\.php|player_api\.php)\/?$/, '').replace(/\/$/, '') + '/api/api.php';
+    endpoint.search = '';
+    endpoint.hash = '';
+    const customer = {
+      name: customerData.name.trim(), email: customerData.email.trim().toLowerCase(),
+      deviceType: customerData.deviceType.trim(), packageId: customerData.packageId,
+      planDuration: months, connections,
+      operationKey: isInternal ? input.operationKey || 'create' : 'create',
+      skipCredits: isInternal && input.skipCredits === true,
+    };
+    const { data: claim, error: claimError } = await client.rpc('claim_trex_provisioning', {
+      p_reseller_id: resellerId, p_customer: customer, p_charge_credits: !isAdmin && !customer.skipCredits,
     });
-
-    if (creditsError) {
-      console.error('Error calculating credits:', creditsError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to calculate required credits' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (claimError || !claim) {
+      // Without durable duplicate protection it is never safe to call the provider.
+      return reply({ success: false, code: 'guard_unavailable', error: 'Customer creation is unavailable. No provider request was sent. Contact support.' }, 503);
     }
-
-    console.log(`💰 Credits required: ${creditsRequired}, Available: ${reseller.credits}`);
-
-    // Idempotency guard: Check for recent account creation attempts to prevent duplicates
-    if (!serviceCall) {
+    if (!claim.claimed) {
+      if (claim.state === 'completed') return reply({ ...claim.response, alreadyProcessed: true });
+      if (claim.state === 'insufficient_credits') return reply({ success: false, code: 'insufficient_credits',
+        error: `Insufficient credits. Required: ${claim.required}, available: ${claim.available}.` }, 400);
+      return reply({ success: false, needsReview: true, code: 'request_already_pending',
+        requestId: claim.requestId, error: reviewMessage }, 409);
+    }
+    requestId = claim.requestId;
+    const receipts = [];
+    let failure: string | null = null;
+    for (let connection = 1; connection <= connections; connection++) {
+      const url = new URL(endpoint);
+      url.search = new URLSearchParams({
+        action: 'new', type: 'm3u', sub: String(months), pack: customer.packageId, api_key: apiKey,
+        // Keep attribution first, even if the provider truncates notes. The durable ledger is authoritative.
+        note: `EZTV ${requestId} | Reseller ${resellerId} ${reseller.name || ''} | Customer ${customer.name} | Line ${connection}/${connections}`,
+      }).toString();
       try {
-        const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const { data: existingLogs, error: existingLogsError } = await supabaseClient
-          .from('credit_logs')
-          .select('id, date')
-          .eq('reseller_id', resellerId)
-          .eq('customer_name', customerData.name)
-          .eq('action', 'account_creation')
-          .eq('credits_used', creditsRequired)
-          .gte('date', tenMinutesAgo)
-          .order('date', { ascending: false })
-          .limit(1);
-
-        if (existingLogsError) {
-          console.warn('⚠️ Idempotency check failed (continuing):', existingLogsError.message);
-        } else if (existingLogs && existingLogs.length > 0) {
-          console.log('🛑 Duplicate account creation detected via recent credit log. Skipping reprocessing.');
-          const tempCustomerGroupId = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
-          return new Response(
-            JSON.stringify({
-              success: true,
-              message: 'Account creation already processed recently; skipping duplicate.',
-              alreadyProcessed: true,
-              customers: [],
-              failedConnections: [],
-              summary: {
-                totalRequested: connectionsToCreate,
-                totalCreated: 0,
-                totalFailed: 0,
-                customerGroup: tempCustomerGroupId
-              },
-              provider: 'trex',
-              creditsUsed: 0
-            }),
-            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-      } catch (idemError) {
-        console.warn('⚠️ Idempotency guard encountered an error, proceeding anyway:', idemError);
-      }
-    }
-
-    // Check if reseller has enough credits (skip if admin override or service call)
-    if (!serviceCall && !isAdminOverride && reseller.credits < creditsRequired) {
-      console.error(`❌ Insufficient credits: ${reseller.credits} available, ${creditsRequired} required`);
-      return new Response(
-        JSON.stringify({ 
-          error: `Insufficient credits. Required: ${creditsRequired}, Available: ${reseller.credits}`,
-          success: false 
-        }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!serviceCall && !isAdminOverride) {
-      console.log(`✅ Credit check passed: ${reseller.credits} >= ${creditsRequired}`);
-    } else if (isAdminOverride) {
-      console.log(`⚡ ADMIN: Skipping credit check (admin override active)`);
-    }
-
-    // Determine which API credentials to use based on reseller configuration
-    let API_KEY: string;
-    let PANEL_URL: string;
-
-    if (reseller.use_admin_api) {
-      // Use admin API keys
-      API_KEY = Deno.env.get('TREX_API_KEY')!;
-      PANEL_URL = Deno.env.get('TREX_PANEL_URL')!;
-      
-      if (!API_KEY || !PANEL_URL) {
-        console.error('Admin Trex API configuration not found');
-        return new Response(
-          JSON.stringify({ error: 'Admin Trex API configuration not found' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      console.log('🔑 Using admin API keys for Trex operations');
-    } else {
-      // Use reseller's own API keys
-      API_KEY = reseller.api_key;
-      PANEL_URL = reseller.panel_url;
-      
-      if (!API_KEY || !PANEL_URL) {
-        console.error('Reseller Trex API configuration not found');
-        return new Response(
-          JSON.stringify({ error: 'Reseller API configuration not found. Please configure your API keys.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      
-      console.log('🔑 Using reseller API keys for Trex operations');
-    }
-
-    // Generate a unique customer group ID
-    const customerGroupId = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${Date.now()}`;
-    console.log(`👥 Using customer group: ${customerGroupId}`);
-
-    const createdCustomers = [];
-    const failedConnections = [];
-
-    // Create separate accounts for each connection
-    for (let i = 1; i <= connectionsToCreate; i++) {
-      try {
-        console.log(`🔄 Creating Trex connection ${i} of ${connectionsToCreate}`);
-
-        // Generate unique username and password for this connection
-        const timestamp = Date.now();
-        const randomNum = Math.floor(Math.random() * 1000);
-        const username = `${customerData.name.toLowerCase().replace(/\s+/g, '')}_${i}_${timestamp}_${randomNum}`.substring(0, 32);
-        const password = `pass_${i}_${timestamp}_${randomNum}`;
-
-        console.log(`🔐 Generated credentials for Trex connection ${i} - Username: ${username}`);
-
-        // Map plan duration to subscription format
-        const subscriptionPeriod = mapPlanDurationToSub(customerData.planDuration);
-
-        console.log(`📦 Creating Trex M3U user ${i} with package ID: ${customerData.packageId}`);
-        console.log(`📅 Subscription period: ${subscriptionPeriod} (${customerData.planDuration} months)`);
-        
-        // Construct the URL with the correct Trex parameters in the specified order
-        // Format: https://activationpanel.net/api/api.php?action=new&type=m3u&sub=12&pack=132&api_key=KEY
-        const baseUrl = PANEL_URL.replace('/api/api.php', '');
-        const apiUrl = new URL(`${baseUrl}/api/api.php`);
-        
-        // Add parameters in the exact order specified by the user
-        apiUrl.searchParams.append('action', 'new');
-        apiUrl.searchParams.append('type', 'm3u');
-        apiUrl.searchParams.append('sub', subscriptionPeriod);
-        apiUrl.searchParams.append('pack', customerData.packageId);
-        apiUrl.searchParams.append('api_key', API_KEY);
-        apiUrl.searchParams.append('note', `Customer: ${customerData.name} | Reseller: ${reseller.name || 'Unknown Reseller'}`);
-        
-        console.log(`🔗 Trex Create API URL for connection ${i}: ${apiUrl.toString().replace(API_KEY, '[REDACTED]')}`);
-
-        const response = await fetch(apiUrl.toString(), {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'IPTV-Management-System/1.0',
-            'Accept': 'application/json, text/plain, */*',
-            'Cache-Control': 'no-cache',
-          },
-          signal: AbortSignal.timeout(30000), // 30 second timeout
+        // Exactly one call for this line. No HTTP retries or post-create device_info gate.
+        const response = await fetch(url.toString(), {
+          headers: { 'User-Agent': 'IPTV-Management-System/1.0', Accept: 'application/json', 'Cache-Control': 'no-cache' },
+          redirect: 'error', signal: AbortSignal.timeout(30000),
         });
-        
-        const responseText = await response.text();
-        console.log(`📡 Trex API Response Status for connection ${i}: ${response.status}`);
-        console.log(`📡 Trex API Response for connection ${i}: ${responseText}`);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        if (!response.ok) throw new Error('provider_http_error');
+        const receipt = parseCreationResponse(await response.json());
+        receipts.push({ ...receipt, connectionNumber: connection });
+        // Persist each successful receipt before attempting another paid line.
+        const { data: saved, error: receiptError } = await client.from('trex_provisioning_requests')
+          .update({ receipts, updated_at: new Date().toISOString() }).eq('id', requestId).eq('state', 'processing').select('id').single();
+        if (receiptError || !saved) {
+          // Leave the durable claim locked: provider success + storage failure must never trigger a new purchase.
+          return reply({ success: false, needsReview: true, requestId, code: 'receipt_storage_failed', error: reviewMessage }, 503);
         }
-
-        // Try to parse as JSON first
-        let apiResult;
-        let credentialsFromApi = false;
-        try {
-          apiResult = JSON.parse(responseText);
-          credentialsFromApi = !!(apiResult.username && apiResult.password);
-        } catch (parseError) {
-          // If it's not JSON, check if it contains credentials in text format
-          console.log(`📄 Parsing text response for connection ${i}`);
-          
-          // Look for common patterns in text responses that might contain credentials
-          if (responseText.includes('username') || responseText.includes('password') || responseText.includes('m3u')) {
-            // Try to extract credentials from text response
-            const lines = responseText.split('\n');
-            let extractedUsername = ''; 
-            let extractedPassword = '';
-            
-            // Look for username/password patterns in the response
-            for (const line of lines) {
-              if (line.toLowerCase().includes('username') && line.includes(':')) {
-                const match = line.split(':')[1]?.trim();
-                if (match) extractedUsername = match;
-              }
-              if (line.toLowerCase().includes('password') && line.includes(':')) {
-                const match = line.split(':')[1]?.trim();
-                if (match) extractedPassword = match;
-              }
-            }
-            
-            if (extractedUsername && extractedPassword) {
-              credentialsFromApi = true;
-              apiResult = {
-                success: true,
-                username: extractedUsername,
-                password: extractedPassword,
-                response: responseText
-              };
-            } else {
-              // Could not extract credentials - DO NOT assume success
-              console.log(`❌ Could not extract credentials from text response for connection ${i}`);
-              throw new Error(`API did not return valid credentials. Response: ${responseText.substring(0, 200)}`);
-            }
-          } else if (responseText.toLowerCase().includes('error') || responseText.toLowerCase().includes('fail')) {
-            throw new Error(`API Error: ${responseText}`);
-          } else {
-            // Unknown response - DO NOT assume success, treat as failure
-            console.log(`❌ Unknown API response format for connection ${i}, treating as failure`);
-            throw new Error(`Unknown API response format. Cannot verify account was created. Response: ${responseText.substring(0, 200)}`);
-          }
-        }
-
-        // Check for API errors in JSON response
-        if (apiResult.error || apiResult.status === 'error') {
-          throw new Error(apiResult.error || apiResult.result || 'Failed to create Trex IPTV user');
-        }
-
-        // Use credentials from API response - require them
-        const finalUsername = apiResult.username;
-        const finalPassword = apiResult.password;
-        
-        if (!finalUsername || !finalPassword) {
-          console.log(`❌ API did not return username/password for connection ${i}`);
-          throw new Error('API did not return valid credentials (username/password)');
-        }
-
-        // CRITICAL: Verify the connection actually exists in the panel before storing
-        console.log(`🔍 Verifying connection ${i} exists in panel after creation...`);
-        const verification = await verifyConnectionExists(finalUsername, finalPassword, PANEL_URL, API_KEY);
-        
-        if (!verification.exists) {
-          console.log(`❌ Connection ${i} verification FAILED - account does not exist in panel`);
-          throw new Error(`Connection was not created in panel. Verification failed for username: ${finalUsername}`);
-        }
-        
-        console.log(`✅ Connection ${i} verified - account exists in panel`);
-
-        // Always construct M3U URL with correct domain (provider returns malformed URLs)
-        const m3uUrl = `http://${TREX_M3U_DOMAIN}/get.php?username=${finalUsername}&password=${finalPassword}&type=m3u_plus&output=ts`;
-        console.log(`🔗 Constructed M3U URL: ${m3uUrl}`);
-
-        // Use expiration from verification if available
-        let expirationDate = customerData.expirationDate;
-        if (verification.expireDate) {
-          expirationDate = verification.expireDate;
-          console.log(`📅 Using expiration from verification: ${expirationDate}`);
-        }
-
-        // Create customer record in database
-        console.log(`💾 Creating Trex customer record for connection ${i}`);
-        const { data: newCustomer, error: createError } = await supabaseClient
-          .from('customers')
-          .insert({
-            reseller_id: resellerId,
-            name: `${customerData.name} (Connection ${i})`,
-            email: customerData.email,
-            username: finalUsername,
-            password: finalPassword,
-            mac_address: customerData.macAddress || null,
-            device_type: customerData.deviceType,
-            package_id: customerData.packageId,
-            plan_duration: customerData.planDuration,
-            max_connections: 1, // Each account has 1 connection
-            current_connections: 0,
-            connection_details: [],
-            start_date: customerData.startDate,
-            expiration_date: expirationDate,
-            status: customerData.status,
-            is_deactivated: customerData.isDeactivated,
-            provider: 'trex',
-            customer_group: customerGroupId, // Group all connections together
-            customer_group_id: apiResult.user_id?.toString() || null,
-            m3u_url: m3uUrl,
-            connection_sequence: i
-          })
-          .select()
-          .single();
-
-        if (createError) {
-          console.error(`Error creating Trex customer record for connection ${i}:`, createError);
-          failedConnections.push({
-            connectionNumber: i,
-            error: createError.message,
-            credentials: { username: finalUsername, password: finalPassword }
-          });
-          continue;
-        }
-
-        createdCustomers.push({
-          ...newCustomer,
-          credentials: {
-            username: finalUsername,
-            password: finalPassword,
-            maxConnections: 1,
-            m3uUrl: m3uUrl
-          }
-        });
-
-        console.log(`✅ Successfully created and verified Trex connection ${i} with credentials: ${finalUsername}/${finalPassword}`);
-
       } catch (error) {
-        console.error(`❌ Failed to create Trex connection ${i}:`, error);
-        failedConnections.push({
-          connectionNumber: i,
-          error: error.message
-        });
+        const allowed = ['provider_rejected', 'provider_credentials_missing', 'provider_response_unrecognized', 'provider_http_error'];
+        failure = error instanceof Error && allowed.includes(error.message) ? error.message : 'provider_outcome_unknown';
+        // Even on timeout or malformed response, stop the remaining lines and block future attempts.
+        break;
       }
     }
-
-    // Only deduct credits if at least one account was created successfully
-    if (createdCustomers.length > 0) {
-      // Calculate actual credits used based on successfully created accounts
-      const actualCreditsUsed = createdCustomers.length * customerData.planDuration;
-      
-      if (!isAdminOverride) {
-        console.log(`💳 Deducting ${actualCreditsUsed} credits from reseller (${createdCustomers.length} accounts created)`);
-        const { error: creditError } = await supabaseClient
-          .from('profiles')
-          .update({ credits: reseller.credits - actualCreditsUsed })
-          .eq('id', resellerId);
-
-        if (creditError) {
-          console.error('Error deducting credits:', creditError);
-          // Customer was created but credits weren't deducted - log this for manual review
-        }
-
-        // Log the credit transaction
-        const { error: logError } = await supabaseClient
-          .from('credit_logs')
-          .insert({
-            reseller_id: resellerId,
-            action: 'account_creation',
-            credits_used: actualCreditsUsed,
-            connections_used: createdCustomers.length,
-            customer_id: createdCustomers[0].id, // Use first customer ID as reference
-            customer_name: customerData.name,
-            notes: `${customerData.name} | ${reseller.name} | ${createdCustomers.length} of ${connectionsToCreate} connections created`
-          });
-
-        if (logError) {
-          console.error('Error logging credit transaction:', logError);
-        }
-      } else {
-        // Admin override - log without credit deduction
-        console.log(`⚡ ADMIN: No credits deducted (admin override)`);
-        
-        const { error: logError } = await supabaseClient
-          .from('credit_logs')
-          .insert({
-            reseller_id: resellerId,
-            action: 'addition',
-            credits_used: 0,
-            connections_used: createdCustomers.length,
-            customer_id: createdCustomers[0].id,
-            customer_name: customerData.name,
-            notes: `ADMIN ACTION: Created ${createdCustomers.length} Trex ${customerData.accountType.toUpperCase()} account(s) without credit charge`
-          });
-
-        if (logError) {
-          console.error('Error logging admin action:', logError);
-        }
-      }
-
-      // Consolidate connections if multiple were created
-      if (createdCustomers.length > 1) {
-        console.log(`🔄 Consolidating ${createdCustomers.length} Trex accounts into single record`);
-        
-        try {
-          const { data: consolidationResult, error: consolidationError } = await supabaseClient
-            .rpc('consolidate_customer_connections', {
-              customer_group_name: customerGroupId,
-              reseller_id_param: resellerId
-            });
-
-          if (consolidationError) {
-            console.error('Error consolidating connections:', consolidationError);
-          } else {
-            console.log('✅ Successfully consolidated Trex connections:', consolidationResult);
-          }
-        } catch (consolidationError) {
-          console.error('Error during consolidation:', consolidationError);
-        }
-      }
+    const { data: result, error: finishError } = await client.rpc('finish_trex_provisioning', {
+      p_request_id: requestId, p_error_code: failure,
+    });
+    if (finishError || !result) {
+      return reply({ success: false, needsReview: true, requestId, code: 'customer_save_failed', error: reviewMessage }, 503);
     }
-
-    const totalCreated = createdCustomers.length;
-    const totalFailed = failedConnections.length;
-
-    console.log(`✅ Trex M3U multi-connection creation complete: ${totalCreated} created, ${totalFailed} failed`);
-
-    return new Response(
-      JSON.stringify({ 
-        success: totalCreated > 0,
-        customers: createdCustomers,
-        failedConnections: failedConnections,
-        summary: {
-          totalRequested: connectionsToCreate,
-          totalCreated: totalCreated,
-          totalFailed: totalFailed,
-          customerGroup: customerGroupId
-        },
-        provider: 'trex',
-        creditsUsed: totalCreated > 0 ? (totalCreated * customerData.planDuration) : 0
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-
-  } catch (error) {
-    console.error('Error in create-trex-user function:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: 'Internal server error', 
-        details: error.message,
-        success: false 
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    // Log only references and outcomes, never URLs, credentials, customer payloads or raw provider responses.
+    console.log(JSON.stringify({ event: 'trex_provisioning', requestId, code: result.code, customerCount: result.customerCount }));
+    return reply(result);
+  } catch {
+    if (requestId) return reply({ success: false, needsReview: true, requestId, code: 'outcome_requires_review', error: reviewMessage }, 503);
+    return reply({ success: false, code: 'creation_unavailable', error: 'Customer creation is unavailable. No provider request was sent. Contact support.' }, 503);
   }
 });

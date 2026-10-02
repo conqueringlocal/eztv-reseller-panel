@@ -566,7 +566,13 @@ async function createConsolidatedAccount(
     console.log('🔗 M3U domain override applied:', !!resellerData.m3uDomainOverride);
 
     // Create the consolidated customer record
-    const { data: consolidatedCustomer, error: consolidateError } = await supabase
+    const { data: consolidatedCustomer, error: consolidateError } = createResult.customerId
+      ? await supabase.from('customers').update({
+          connection_details: rewrittenConnectionDetails,
+          connection_list: rewrittenConnectionDetails,
+          highlevel_contact_id: payload.contact_id,
+        }).eq('id', createResult.customerId).eq('reseller_id', resellerId).select().single()
+      : await supabase
       .from('customers')
       .insert([{
         reseller_id: resellerId,
@@ -602,7 +608,7 @@ async function createConsolidatedAccount(
     }
 
     // Delete the individual connection records created by create-iptv-user
-    if (createResult.customers && createResult.customers.length > 0) {
+    if (!createResult.customerId && createResult.customers && createResult.customers.length > 0) {
       const customerIds = createResult.customers.map((c: any) => c.id);
       await supabase
         .from('customers')
@@ -1141,6 +1147,8 @@ async function upgradeCustomerConnections(
           resellerId: resellerId,
           serviceCall: true,
           skipCredits: true, // We handle credits manually for upgrade
+          // Stable across webhook retries, distinct for each intended extra connection.
+          operationKey: `upgrade:${customer.id}:${newExpirationDateStr}:${requestedConnections}:${connectionNumber}`,
           customerData: {
             name: customer.name,
             email: customer.email,

@@ -63,6 +63,10 @@ This platform is built with modern web technologies:
 
 The platform is automatically deployed to production. Contact EZTV Club support for deployment access and configuration.
 
+### Current maintenance and Trex incident
+
+The live frontend is on Cloudflare Pages (`eztv-reseller-panel`), using the original Supabase backend. Pages deployments are uploaded with Wrangler; pushing GitHub alone does not deploy to Pages. Trex customer creation uses a durable database guard and atomic customer/credit persistence. See [Trex provisioning recovery and deployment](docs/TREX_PROVISIONING_RECOVERY.md) for deployment, emergency pause controls, and verification.
+
 ## Custom Domain Setup
 
 Enterprise customers can connect custom domains to their reseller platform. Contact support for domain configuration assistance.

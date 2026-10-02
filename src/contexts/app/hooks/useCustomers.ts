@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Customer } from '../types';
 import { convertDbCustomerToCustomer } from '../utils/customerUtils';
+import { customerCreationFailure } from '@/utils/customerCreationFeedback';
 
 export const useCustomers = (user: any, authLoading: boolean) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -63,8 +64,6 @@ export const useCustomers = (user: any, authLoading: boolean) => {
   }, [user, authLoading]);
 
   const addCustomer = async (customerData: Omit<Customer, 'id' | 'createdAt'>) => {
-    console.log(`🚀 Adding customer with provider-specific routing`);
-    console.log(`📋 Customer data:`, customerData);
     
     try {
       // Get the user's assigned provider
@@ -110,21 +109,26 @@ export const useCustomers = (user: any, authLoading: boolean) => {
       });
 
       if (error) {
-        console.error(`❌ Error calling ${functionName}:`, error);
-        toast.error(`Failed to create streaming customer: ${error.message}`);
+        let result = null;
+        try {
+          if (error.context instanceof Response) result = await error.context.clone().json();
+        } catch { /* Unreadable response: the outcome is unknown, never advise a retry. */ }
+        toast.error(customerCreationFailure(result), { duration: 15000 });
         return false;
       }
 
-      if (!data.success) {
-        console.error(`❌ ${functionName} returned failure:`, data.error);
-        toast.error(data.error || `Failed to create streaming customer`);
+      if (!data?.success) {
+        toast.error(customerCreationFailure(data), { duration: 15000 });
+        if (data?.customerCount > 0) await fetchCustomers();
         return false;
       }
 
-      console.log(`✅ ${functionName} success:`, data);
-      
-      // Show success message
-      const totalCreated = data.customers?.length || 1;
+      if (data.alreadyProcessed) {
+        toast.info('This customer was already created. No additional account or credit charge was made.');
+        await fetchCustomers();
+        return true;
+      }
+      const totalCreated = data.customerCount || data.customers?.length || 1;
       
       if (totalCreated > 1) {
         toast.success(`EZTV streaming customer created successfully with ${totalCreated} connections!`);
@@ -136,9 +140,8 @@ export const useCustomers = (user: any, authLoading: boolean) => {
       await fetchCustomers();
       return true;
 
-    } catch (error) {
-      console.error('💥 Unexpected error in addCustomer:', error);
-      toast.error('An error occurred while creating the customer');
+    } catch {
+      toast.error(customerCreationFailure(), { duration: 15000 });
       return false;
     }
   };
