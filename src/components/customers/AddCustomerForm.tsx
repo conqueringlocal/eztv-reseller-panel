@@ -29,6 +29,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { checkForExistingCustomer } from '@/utils/customerConsolidation/duplicateDetection';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
+// Re-enable only after the Trex backend request guard has been deployed and verified.
+const customerCreationPaused = import.meta.env.VITE_TREX_CREATION_PAUSED !== 'false';
+
 // Form schema with validation - updated to support multi-connection accounts
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
@@ -143,6 +146,10 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
 
   // Handle form submission
   const onSubmit = async (data: FormData) => {
+    if (customerCreationPaused) {
+      toast.error('Customer creation is temporarily paused. Please contact support about an existing attempt.');
+      return;
+    }
     if (!user) {
       toast.error('You need to be logged in to add a customer.');
       return;
@@ -191,8 +198,6 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         toast.success(`${data.accountType.toUpperCase()} customer added successfully with ${data.connections} connection${data.connections > 1 ? 's' : ''}!`);
         form.reset();
         if (onSuccess) onSuccess();
-      } else {
-        toast.error(`Failed to add ${data.accountType.toUpperCase()} customer. Please check your credits balance.`);
       }
     } catch (error) {
       toast.error(`An error occurred while adding the ${data.accountType.toUpperCase()} customer.`);
@@ -209,6 +214,19 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
     await refetch();
   };
   
+  if (customerCreationPaused) {
+    return (
+      <Alert>
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Customer creation temporarily paused</AlertTitle>
+        <AlertDescription>
+          We are resolving an account-creation issue. If an earlier attempt showed an error,
+          please contact support before trying again. Your existing customers and renewals remain available.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   return (
     <div className="p-1">
       <Form {...form}>
