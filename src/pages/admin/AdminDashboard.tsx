@@ -1,186 +1,31 @@
-
-import React, { useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
-import { RevenueChart } from '@/components/dashboard/RevenueChart';
-
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ProviderCoverage } from '@/components/business/ProviderCoverage';
+import { RenewalWorklist } from '@/components/business/RenewalWorklist';
+import { useBusinessDashboard } from '@/hooks/useBusinessDashboard';
 import { useApp } from '@/contexts/AppContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { useMrrData } from '@/hooks/useMrrData';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, DollarSign, Activity, TrendingUp, AlertCircle, Calculator, Percent } from 'lucide-react';
-import { EmptyState } from '@/components/dashboard/EmptyState';
+import { businessTotals, money, todayUTC } from '@/lib/business';
+import { DollarSign, Users, CreditCard } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function AdminDashboard() {
-  const { customers, resellers, creditLogs, isLoading: appLoading } = useApp();
-  const { isLoading: authLoading } = useAuth();
-  const { mrrData, historicalData, isLoading: mrrLoading, fetchMrrData } = useMrrData();
-
-  // Fetch MRR data when component mounts
-  useEffect(() => {
-    if (!authLoading && !appLoading) {
-      fetchMrrData();
-    }
-  }, [authLoading, appLoading, fetchMrrData]);
-
-  console.log('📊 AdminDashboard: Loading states -', {
-    appLoading,
-    authLoading,
-    customersCount: customers.length,
-    resellersCount: resellers.length,
-    mrrLoading
-  });
-
-  // Show loading state while auth or app data is loading
-  if (authLoading || appLoading) {
-    return (
-      <DashboardLayout>
-        <div className="flex items-center justify-center min-h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-eztv-600"></div>
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  // Calculate stats
-  const totalCustomers = customers.length;
-  const totalResellers = resellers.length;
-  const totalCreditsDistributed = resellers.reduce((sum, reseller) => sum + reseller.credits, 0);
-  
-  // MRR-related calculations
-  const currentMonthRevenue = mrrData?.current_month_revenue || 0;
-  const projectedMrr = mrrData?.projected_mrr || 0;
-  const growthRate = mrrData?.growth_rate || 0;
-  const avgSaleAmount = mrrData?.avg_sale_amount || 0;
-  
-  // Calculate recent activity (last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  
-  const recentActivity = creditLogs.filter(log => {
-    const logDate = new Date(log.date);
-    return logDate >= thirtyDaysAgo;
-  }).length;
-
-  // Recent credit logs for display
-  const recentLogs = creditLogs
-    .slice(0, 10)
-    .map(log => ({
-      id: log.id,
-      action: log.action,
-      credits: log.credits_used,
-      reseller: resellers.find(r => r.id === log.reseller_id)?.name || 'Unknown',
-      customer: log.customer_name || 'N/A',
-      date: new Date(log.date).toLocaleDateString()
-    }));
-
-  return (
-    <DashboardLayout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Admin Dashboard</h1>
-        <p className="text-gray-500">Monitor system performance and manage resellers</p>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        <StatCard
-          title="Total Customers"
-          value={totalCustomers}
-          icon={<Users className="h-5 w-5" />}
-          className="bg-card border-border"
-        />
-        <StatCard
-          title="Total Resellers"
-          value={totalResellers}
-          icon={<TrendingUp className="h-5 w-5" />}
-          className="bg-card border-border"
-        />
-        <StatCard
-          title="Credits Distributed"
-          value={totalCreditsDistributed}
-          icon={<DollarSign className="h-5 w-5" />}
-          className="bg-card border-border"
-        />
-        <StatCard
-          title="Recent Activity"
-          value={recentActivity}
-          icon={<Activity className="h-5 w-5" />}
-          className="bg-card border-border"
-        />
-      </div>
-
-      {/* MRR Dashboard Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-        <StatCard
-          title="Current Month Revenue"
-          value={`$${currentMonthRevenue.toFixed(2)}`}
-          icon={<DollarSign className="h-5 w-5" />}
-          className="bg-card border-border"
-          description="Revenue from credit sales this month"
-        />
-        <StatCard
-          title="Projected MRR"
-          value={`$${projectedMrr.toFixed(2)}`}
-          icon={<Calculator className="h-5 w-5" />}
-          className="bg-card border-border"
-          description="3-month average projection"
-          trend={growthRate > 0 ? 'up' : growthRate < 0 ? 'down' : 'neutral'}
-          trendValue={growthRate !== 0 ? `${growthRate.toFixed(1)}%` : undefined}
-        />
-        <StatCard
-          title="Average Sale Amount"
-          value={`$${avgSaleAmount.toFixed(2)}`}
-          icon={<TrendingUp className="h-5 w-5" />}
-          className="bg-card border-border"
-          description="Average revenue per credit sale"
-        />
-        <StatCard
-          title="Growth Rate"
-          value={`${growthRate.toFixed(1)}%`}
-          icon={<Percent className="h-5 w-5" />}
-          className="bg-card border-border"
-          description="Month-over-month growth"
-          trend={growthRate > 0 ? 'up' : growthRate < 0 ? 'down' : 'neutral'}
-        />
-      </div>
-
-      {/* Revenue Chart */}
-      <div className="mb-6">
-        <RevenueChart historicalData={historicalData} isLoading={mrrLoading} />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Credit Activity</CardTitle>
-          <CardDescription>Latest credit transactions across all resellers</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {recentLogs.length > 0 ? (
-              recentLogs.map((log) => (
-                <div key={log.id} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                  <div>
-                    <p className="font-medium">{log.reseller}</p>
-                    <p className="text-sm text-gray-500">{log.customer} • {log.date}</p>
-                  </div>
-                  <div className={`px-2 py-1 rounded text-sm ${
-                    log.action === 'addition' ? 'bg-green-100 text-green-700' :
-                    log.action === 'deduction' ? 'bg-red-100 text-red-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>
-                    {log.action === 'addition' ? '+' : '-'}{log.credits} credits
-                  </div>
-                </div>
-              ))
-            ) : (
-              <EmptyState
-                title="No Recent Activity"
-                description="No credit transactions have been recorded recently"
-                icon={<AlertCircle className="h-12 w-12" />}
-              />
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </DashboardLayout>
-  );
+  const { customers, resellers } = useApp();
+  const query = useBusinessDashboard(todayUTC().slice(0, 7));
+  const data = query.data;
+  const totals = data ? businessTotals(data) : null;
+  return <DashboardLayout>
+    <div className="mb-6 flex flex-wrap justify-between items-center gap-3"><div><h1 className="text-2xl font-bold">Admin Dashboard</h1><p className="text-muted-foreground">Credit coverage, recorded sales and renewals that need attention</p></div><Button asChild><Link to="/admin/finance">Open Finances</Link></Button></div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+      <StatCard title="Customer records" value={customers.length} description="Includes expired records; not a paying-customer count" icon={<Users className="h-5 w-5" />} />
+      <StatCard title="Resellers" value={resellers.length} icon={<Users className="h-5 w-5" />} />
+      <StatCard title="Recorded sales this month" value={data ? money(data.summary.sales) : '—'} description="Verified purchases and entered historical payments" icon={<DollarSign className="h-5 w-5" />} />
+      <StatCard title="Estimated contribution" value={totals ? money(totals.contribution) : '—'} description="Before overhead; missing fees and costs can overstate this" icon={<CreditCard className="h-5 w-5" />} />
+    </div>
+    {query.isPending && <p role="status" className="mb-6">Loading financial overview…</p>}
+    {query.isError && <p role="alert" className="mb-6 text-destructive">Financial overview could not be refreshed. <button className="underline" onClick={() => void query.refetch()}>Try again</button></p>}
+    {data && <><ProviderCoverage data={data} /><Card className="mb-6"><CardHeader><CardTitle>Owner follow-up</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-4 text-sm"><Link className="underline" to="/admin/credits">{data.pending_payments} pending payments · {data.unresolved_operations} unresolved guarded operations</Link><Link className="underline" to="/admin/finance">{data.summary.missing_fees} payment{data.summary.missing_fees === 1 ? '' : 's'} this month {data.summary.missing_fees === 1 ? 'needs' : 'need'} fees recorded</Link><p className="text-muted-foreground">Historical review items are also listed in Credit Management.</p></CardContent></Card></>}
+    <RenewalWorklist />
+  </DashboardLayout>;
 }

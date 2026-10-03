@@ -10,7 +10,7 @@ const q=x=>`'${String(x).replaceAll("'","''")}'`;const j=x=>`${q(JSON.stringify(
 const sql=s=>execFileSync('docker',['exec','-i',container,'psql','-h','127.0.0.1','-XqAt','-U','postgres','-v','ON_ERROR_STOP=1'],{input:s,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const as=(id,s)=>`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub=${q(id)}; ${s}; COMMIT;`;
 const runAs=(id,s)=>sql(as(id,s));
-const migrationNames=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$/.test(x))];
+const migrationNames=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$/.test(x))];
 before(async()=>{
  execFileSync('docker',['run','-d','--name',container,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
  for(let i=0;i<60;i++){try{sql('SELECT 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
