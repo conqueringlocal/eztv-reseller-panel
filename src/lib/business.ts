@@ -8,7 +8,8 @@ export interface RecordedSale { id: string; reference: string; reseller_id: stri
 export interface BusinessDashboard {
   month: string; unit_cost: number; planning_batch_credits: number; planning_batch_cost: number;
   outstanding_credits: number; held_credits: number; balance_needs_check: boolean;
-  provider_balance: { credits: number; checked_at: string } | null;
+  provider_balance: { credits: number; checked_at: string; source: 'manual' | 'api' } | null;
+  balance_sync_error?: string | null; balance_sync_attempt_at?: string | null;
   pending_payments: number; unresolved_operations: number; completed_credits_used: number; legacy_unpriced_additions: number;
   summary: { sales: number; credits_sold: number; fulfillment_estimate: number; fees: number; refunds: number;
     expenses: number; owner_time: number; provider_purchases: number; provider_credits: number;

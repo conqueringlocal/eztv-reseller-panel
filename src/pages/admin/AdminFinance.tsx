@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { BusinessEntryForm } from '@/components/business/BusinessEntryForm';
-import { ProviderBalanceForm } from '@/components/business/ProviderBalanceForm';
 import { ProviderCoverage } from '@/components/business/ProviderCoverage';
 import { useBusinessDashboard } from '@/hooks/useBusinessDashboard';
 import { businessTotals, entryLabels, money, todayUTC, type BusinessEntry } from '@/lib/business';
@@ -60,7 +59,7 @@ export default function AdminFinance() {
       <div className="grid gap-6 xl:grid-cols-2 mb-6">
         <Card><CardHeader><CardTitle>Record a transaction or cost</CardTitle></CardHeader><CardContent><BusinessEntryForm data={data} /></CardContent></Card>
         <div className="space-y-6">
-          <Card><CardHeader><CardTitle>Update the Trex balance check</CardTitle></CardHeader><CardContent><ProviderBalanceForm /></CardContent></Card>
+          <Card><CardHeader><CardTitle>Automatic Trex balance checks</CardTitle></CardHeader><CardContent className="text-sm text-muted-foreground space-y-2"><p>The available credit balance is read directly from the Trex API every five minutes, and when this page refreshes. Use Refresh Trex balance above after a top-up.</p><p>Purchase costs still come from your actual receipts. A balance check does not purchase credits or change reseller balances.</p></CardContent></Card>
           <Card><CardHeader><CardTitle>Recorded costs this month</CardTitle></CardHeader><CardContent className="space-y-2 text-sm">
             <p>Payment fees: {money(data.summary.fees)} · Refunds: {money(data.summary.refunds)}</p>
             <p>Cash expenses: {money(data.summary.expenses)} · Owner time value: {money(data.summary.owner_time)}</p>
