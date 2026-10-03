@@ -103,3 +103,7 @@ The service-only claim command rate-limits starts to 12 per administrator per 15
 Validation: `npm run test:support` covers role denial, target checks, canonical identity, audit failure, local sign-out, rate concurrency and storage isolation. Browser tests exercise the real two-tab handoff with mocked Auth responses, reseller navigation/refresh, mobile banner, unchanged admin credentials and Return to admin. Existing regression suites are also run. Production checks validate database privileges and anonymous denial without creating real reseller sessions or spending credits. The first owner-initiated login exercises live Supabase session issuance.
 
 Deploy only `20261003203927_admin_reseller_sessions.sql`, the `admin-reseller-session` Edge Function, and the frontend. JWT gateway verification is off on this function because it validates the exact bearer token internally with Auth before any action; anonymous requests are denied. To pause support login, make the start action return unavailable before link generation. Preserve the audit records and normal reseller login paths.
+
+## Automatic Telegram sports feed
+
+Admin setup is at `/admin/sports`; resellers read `/reseller/sports-updates`. The dedicated VPS reader and private feed are independent from the old bot/manual forwarding integration. See [reader operations and setup](../services/telegram-reader/README.md) for the account prerequisite, secure connection steps, recovery, limitations, and service paths. New posts are never routed through the legacy public sports share/SMS flow.
