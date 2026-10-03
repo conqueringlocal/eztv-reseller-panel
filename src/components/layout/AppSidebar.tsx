@@ -56,6 +56,11 @@ export function AppSidebar() {
           icon: <CreditCard className="w-5 h-5" />,
         },
         {
+          title: 'Finances',
+          path: '/admin/finance',
+          icon: <CreditCard className="w-5 h-5" />,
+        },
+        {
           title: 'Logs',
           path: '/admin/logs',
           icon: <FileText className="w-5 h-5" />,

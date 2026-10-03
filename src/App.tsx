@@ -20,6 +20,7 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminResellers from "./pages/admin/AdminResellers";
 import AdminResellerDetail from "./pages/admin/AdminResellerDetail";
 import AdminCustomers from "./pages/admin/AdminCustomers";
+import AdminFinance from "./pages/admin/AdminFinance";
 import AdminCredits from "./pages/admin/AdminCredits";
 import AdminLogs from "./pages/admin/AdminLogs";
 import AdminSettings from "./pages/admin/AdminSettings";
@@ -57,6 +58,7 @@ function App() {
                   <Route path="/sports-update/:updateId" element={<PublicSportsUpdate />} />
                   
                   {/* Protected admin routes */}
+                  <Route path="/admin/finance" element={<ProtectedRoute allowedRoles={["admin"]}><AdminFinance /></ProtectedRoute>} />
                   <Route
                     path="/admin"
                     element={

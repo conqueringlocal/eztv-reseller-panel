@@ -1,5 +1,7 @@
 
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,6 +59,8 @@ export function CustomerTable({
   onStatusFilterChange
 }: CustomerTableProps) {
   const { user } = useAuth();
+  const [search, setSearch] = useState('');
+  const searchId = useId();
   const { getPackageName } = useAllIptvPackages();
   const [editingCustomer, setEditingCustomer] = useState<any>(null);
   const [renewingCustomer, setRenewingCustomer] = useState<any>(null);
@@ -73,7 +77,7 @@ export function CustomerTable({
   const processedCustomers = processCustomersForDisplay(customers);
 
   // Filter customers based on statusFilter if provided
-  const filteredCustomers = statusFilter && statusFilter !== 'all' 
+  const statusCustomers = statusFilter && statusFilter !== 'all'
     ? processedCustomers.filter(customer => {
         const today = new Date();
         const sevenDaysFromNow = new Date();
@@ -101,6 +105,8 @@ export function CustomerTable({
         }
       })
     : processedCustomers;
+
+  const filteredCustomers = statusCustomers.filter(customer => `${getCustomerDisplayName(customer)} ${customer.email || ''}`.toLowerCase().includes(search.trim().toLowerCase()));
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -207,18 +213,10 @@ export function CustomerTable({
     onRefresh();
   };
 
-  if (filteredCustomers.length === 0) {
-    return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <p className="text-gray-500">No customers found</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <>
+      <div className="mb-4"><Label htmlFor={searchId}>Search customers by name or email</Label><Input id={searchId} value={search} onChange={e => setSearch(e.target.value)} placeholder="Find a customer" /></div>
+      {filteredCustomers.length === 0 && <p className="py-6 text-muted-foreground">No customers match this search and status filter.</p>}
       <div className="grid gap-4">
         {filteredCustomers.map((customer) => {
           const expirationDate = getFieldValue(customer, 'expiration_date', 'expirationDate');

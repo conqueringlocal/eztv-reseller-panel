@@ -1022,6 +1022,12 @@ export type Database = {
       }
     }
     Functions: {
+      get_business_dashboard: { Args: { p_month: string }; Returns: Json }
+      get_renewal_worklist: { Args: Record<PropertyKey, never>; Returns: Json }
+      record_business_entry: { Args: { p_id: string; p_kind: string; p_date: string; p_amount: number; p_credits: number; p_reseller: string | null; p_reference: string; p_note: string; p_sale?: string | null }; Returns: string }
+      void_business_entry: { Args: { p_id: string; p_reason: string }; Returns: undefined }
+      record_provider_balance: { Args: { p_id: string; p_credits: number; p_checked_at: string; p_note: string }; Returns: string }
+
       get_operation_review_queue: {Args:never;Returns:Json}
       adjust_reseller_credits: { Args: {p_id:string;p_reseller:string;p_delta:number;p_notes:string}; Returns:number }
       request_manual_credits: { Args: {p_id:string;p_credits:number;p_reference:string}; Returns:string }

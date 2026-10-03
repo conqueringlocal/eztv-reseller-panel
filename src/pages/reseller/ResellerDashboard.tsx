@@ -1,4 +1,5 @@
 
+import { RenewalWorklist } from '@/components/business/RenewalWorklist';
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
@@ -53,7 +54,7 @@ export default function ResellerDashboard() {
             <div>
               <h2 className="text-lg font-medium opacity-90">Your Credit Balance</h2>
               <p className="text-3xl font-bold mt-2">{user?.credits} Credits</p>
-              <p className="text-sm opacity-75 mt-1">1 credit = 1 month of EZTV streaming service</p>
+              <p className="text-sm opacity-75 mt-1">1 credit = 1 month for one connection</p>
             </div>
             <div className="mt-4 md:mt-0">
               <Button 
@@ -86,10 +87,12 @@ export default function ResellerDashboard() {
           title="Available Credits"
           value={user?.credits || 0}
           icon={<CreditCard className="h-5 w-5 text-green-500" />}
-          description="1 credit = 1 month of EZTV streaming service"
+          description="1 credit = 1 month for one connection"
         />
       </div>
       
+      <RenewalWorklist />
+
       {/* Recent Customers */}
       <DashboardCard
         title="Recent Customers"
