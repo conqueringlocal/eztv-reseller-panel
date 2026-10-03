@@ -1,5 +1,5 @@
 
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supportKey } from '@/integrations/supabase/client';
 import { toast } from "sonner";
 import { UserRole } from '../types';
 import { useSecurityAudit } from '@/hooks/useSecurityAudit';
@@ -112,7 +112,7 @@ export const useAuthOperations = () => {
       setUser(null);
       
       // Simple sign out
-      await supabase.auth.signOut();
+      await supabase.auth.signOut(supportKey ? { scope: 'local' } : undefined);
       
       console.log('✅ Logout completed successfully');
       toast.info('You have been logged out');

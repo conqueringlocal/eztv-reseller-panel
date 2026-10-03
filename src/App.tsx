@@ -34,6 +34,9 @@ import ResellerSettings from "./pages/reseller/ResellerSettings";
 import ResellerFunnels from "./pages/reseller/ResellerFunnels";
 import Webhook from "./pages/Webhook";
 
+import SupportReseller from './pages/SupportReseller';
+import { SupportBoundary } from './components/support/SupportBoundary';
+
 const ResellerSales = lazy(() => import('./pages/reseller/ResellerSales'));
 const AdminSalesProgram = lazy(() => import('./pages/admin/AdminSalesProgram'));
 const PublicSalesInquiry = lazy(() => import('./pages/PublicSalesInquiry'));
@@ -50,7 +53,9 @@ function App() {
             <Sonner />
             <Router>
               <div className="min-h-screen bg-gray-50">
+                <SupportBoundary>
                 <Routes>
+                  <Route path="/support/reseller" element={<SupportReseller />} />
                   {/* Redirect root to login */}
                   <Route path="/" element={<Navigate to="/login" replace />} />
                   
@@ -173,6 +178,7 @@ function App() {
                   {/* Catch-all for 404 */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
+                </SupportBoundary>
               </div>
             </Router>
           </TooltipProvider>

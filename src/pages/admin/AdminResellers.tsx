@@ -1,3 +1,4 @@
+import { LoginAsReseller } from '@/components/support/LoginAsReseller';
 
 import React, { useState, useMemo } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -313,6 +314,7 @@ export default function AdminResellers() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
+                          <LoginAsReseller id={reseller.id} name={reseller.name} />
                           <Button
                             variant="outline"
                             size="sm"
