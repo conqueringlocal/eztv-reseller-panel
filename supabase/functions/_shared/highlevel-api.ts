@@ -64,7 +64,7 @@ export async function getHighLevelSettings(resellerId: string): Promise<HighLeve
       isActive: data.is_active
     };
   } catch (error) {
-    console.error('❌ Error fetching HighLevel settings:', error);
+    console.error("❌ Error fetching HighLevel settings:");
     return null;
   }
 }
@@ -96,11 +96,11 @@ async function getCustomFieldMappings(
   
   // Check if cache has all required fields
   if (cachedMappings && requiredFields.every(f => cachedMappings[f])) {
-    console.log('📦 Using cached custom field mappings');
+    console.log("📦 Using cached custom field mappings");
     return cachedMappings;
   }
 
-  console.log('🔄 Fetching custom field mappings from HighLevel...');
+  console.log("🔄 Fetching custom field mappings from HighLevel...");
   
   try {
     const response = await fetch(
@@ -116,7 +116,7 @@ async function getCustomFieldMappings(
     );
 
     if (!response.ok) {
-      console.error('❌ Failed to fetch custom fields:', response.status);
+      console.error("❌ Failed to fetch custom fields:");
       return cachedMappings || {};
     }
 
@@ -141,10 +141,7 @@ async function getCustomFieldMappings(
       }
     }
 
-    console.log('📋 Custom field mapping result:', {
-      fieldsFound: Object.keys(mapping).length,
-      mappedFields: Object.keys(mapping)
-    });
+    console.log("📋 Custom field mapping result:");
 
     // Cache the mappings in database
     if (Object.keys(mapping).length > 0) {
@@ -152,12 +149,12 @@ async function getCustomFieldMappings(
         .from('reseller_highlevel_settings')
         .update({ custom_field_mappings: mapping })
         .eq('reseller_id', resellerId);
-      console.log('💾 Custom field mappings cached');
+      console.log("💾 Custom field mappings cached");
     }
 
     return mapping;
   } catch (error) {
-    console.error('❌ Error fetching custom fields:', error);
+    console.error("❌ Error fetching custom fields:");
     return cachedMappings || {};
   }
 }
@@ -212,19 +209,7 @@ export async function updateHighLevelContact(
   addTags?: string[]
 ): Promise<HighLevelUpdateResult> {
   // SANITIZED LOGGING - never log token, password, or m3u_url
-  console.log('🔗 HighLevel Update Request:', {
-    contactId,
-    hasToken: !!token,
-    tokenLength: token?.length || 0,
-    provision_status: fields.provision_status,
-    totalConnections: fields.total_connections,
-    hasUsername1: !!fields.service_username_1,
-    hasUsername2: !!fields.service_username_2,
-    hasUsername3: !!fields.service_username_3,
-    hasExpiration: !!fields.service_expiration,
-    hasError: !!fields.provision_error,
-    tagsToAdd: addTags?.length || 0
-  });
+  console.log("🔗 HighLevel Update Request:");
 
   try {
     // Get cached or fresh field mappings
@@ -232,16 +217,11 @@ export async function updateHighLevelContact(
     const customFields = buildCustomFieldsPayload(fields, mapping);
 
     if (customFields.length === 0) {
-      console.log('⏭️ No custom fields to update');
+      console.log("⏭️ No custom fields to update");
       return { success: true };
     }
 
-    console.log('📤 Sending custom fields update:', {
-      fieldsCount: customFields.length,
-      fieldKeys: customFields.map(f => f.key),
-      hasFieldIds: customFields.filter(f => f.id).length,
-      tagsToAdd: addTags
-    });
+    console.log("📤 Sending custom fields update:");
 
     // Build the request body
     const requestBody: { customFields: typeof customFields; tags?: string[] } = { customFields };
@@ -265,19 +245,11 @@ export async function updateHighLevelContact(
     );
 
     // SANITIZED LOGGING
-    console.log('📡 HighLevel Update Response:', {
-      contactId,
-      status: response.status,
-      ok: response.ok
-    });
+    console.log("📡 HighLevel Update Response:");
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ HighLevel API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorBody: errorText?.substring(0, 500)
-      });
+      console.error("❌ HighLevel API error:");
       return {
         success: false,
         error: `HighLevel API error: ${response.status} ${response.statusText}`,
@@ -287,7 +259,7 @@ export async function updateHighLevelContact(
 
     return { success: true };
   } catch (error) {
-    console.error('❌ HighLevel API exception:', error instanceof Error ? error.message : 'Unknown error');
+    console.error("❌ HighLevel API exception:");
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -314,14 +286,7 @@ export async function updateHighLevelContactPartial(
 ): Promise<HighLevelUpdateResult> {
   // SANITIZED LOGGING - mask contactId, never log token or URLs
   const maskedContactId = contactId ? `${contactId.slice(0, 4)}...${contactId.slice(-4)}` : 'unknown';
-  console.log('🔗 HighLevel Partial Update:', {
-    contactId: maskedContactId,
-    hasToken: !!token,
-    totalConnections: fields.total_connections,
-    hasM3uUrl1: !!fields.service_m3u_url_1,
-    hasM3uUrl2: !!fields.service_m3u_url_2,
-    hasM3uUrl3: !!fields.service_m3u_url_3
-  });
+  console.log("🔗 HighLevel Partial Update:");
 
   try {
     const mapping = await getCustomFieldMappings(locationId, token, resellerId);
@@ -343,14 +308,11 @@ export async function updateHighLevelContactPartial(
     addField('service_m3u_url_3', fields.service_m3u_url_3);
 
     if (customFields.length === 0) {
-      console.log('⏭️ No partial fields to update');
+      console.log("⏭️ No partial fields to update");
       return { success: true };
     }
 
-    console.log('📤 Sending partial fields update:', {
-      fieldsCount: customFields.length,
-      fieldKeys: customFields.map(f => f.key)
-    });
+    console.log("📤 Sending partial fields update:");
 
     const response = await fetch(
       `https://services.leadconnectorhq.com/contacts/${contactId}`,
@@ -365,11 +327,7 @@ export async function updateHighLevelContactPartial(
       }
     );
 
-    console.log('📡 HighLevel Partial Update Response:', {
-      contactId: maskedContactId,
-      status: response.status,
-      ok: response.ok
-    });
+    console.log("📡 HighLevel Partial Update Response:");
 
     if (!response.ok) {
       return {
@@ -380,7 +338,7 @@ export async function updateHighLevelContactPartial(
 
     return { success: true };
   } catch (error) {
-    console.error('❌ HighLevel Partial Update exception:', error instanceof Error ? error.message : 'Unknown error');
+    console.error("❌ HighLevel Partial Update exception:");
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error'
