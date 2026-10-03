@@ -42,6 +42,7 @@ interface SsoToken {
   name: string;
   is_active: boolean;
   created_at: string;
+  expires_at: string;
   last_used_at: string | null;
   usage_count: number;
 }
@@ -294,10 +295,10 @@ export const SingleResellerSsoManager: React.FC<SingleResellerSsoManagerProps> =
             <TableBody>
               {tokens.map((token) => (
                 <TableRow key={token.id}>
-                  <TableCell className="font-medium">{token.name}</TableCell>
+                  <TableCell className="font-medium">{token.name}<div className="text-xs text-muted-foreground">Expires {new Date(token.expires_at).toLocaleDateString()}</div></TableCell>
                   <TableCell>
                     <Badge variant={token.is_active ? "default" : "secondary"}>
-                      {token.is_active ? 'Active' : 'Revoked'}
+                      {!token.is_active ? 'Revoked' : new Date(token.expires_at) <= new Date() ? 'Expired' : 'Active'}
                     </Badge>
                   </TableCell>
                   <TableCell>{token.usage_count}</TableCell>

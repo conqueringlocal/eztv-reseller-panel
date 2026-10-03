@@ -1,5 +1,7 @@
 
 import React from 'react';
+import { OperationReviewQueue } from '@/components/admin/OperationReviewQueue';
+import { ManualCreditRequests } from '@/components/credits/ManualCreditRequests';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { useApp } from '@/contexts/AppContext';
@@ -16,6 +18,8 @@ export default function AdminCredits() {
         <p className="text-gray-500">View and manage credits across all resellers</p>
       </div>
       
+      <ManualCreditRequests admin />
+      <OperationReviewQueue />
       <Tabs defaultValue="all">
         <TabsList className="mb-6">
           <TabsTrigger value="all">All Transactions</TabsTrigger>

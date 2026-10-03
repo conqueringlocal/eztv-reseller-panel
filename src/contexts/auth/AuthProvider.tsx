@@ -33,7 +33,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await fetchUserProfile(userId);
     } catch (error) {
-      console.error('❌ Error fetching user profile:', error);
+      console.error("❌ Error fetching user profile:");
     }
   }, [fetchUserProfile]);
 
@@ -56,29 +56,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initializeAuth = async () => {
       try {
-        console.log('🔐 Initializing auth system...');
+        console.log("🔐 Initializing auth system...");
         
         // Set up auth state listener first
         authSubscription = supabase.auth.onAuthStateChange(async (event, session) => {
-          console.log('🔄 Auth state changed:', event, session?.user?.id || 'no user');
+          console.log("🔄 Auth state changed:");
           
           if (!mounted) return;
           
           if (session?.user) {
-            console.log('✅ User session found, fetching profile');
+            console.log("✅ User session found, fetching profile");
             // Use setTimeout to prevent potential deadlocks
             setTimeout(() => {
               if (mounted) {
-                stableFetchUserProfile(session.user.id);
+                void stableFetchUserProfile(session.user.id).finally(() => { if(mounted) { setIsLoading(false); setIsInitialized(true); } });
               }
             }, 0);
           } else {
-            console.log('👋 No user session, clearing user state');
+            console.log("👋 No user session, clearing user state");
             setUser(null);
           }
           
           // Set loading to false after handling auth state change
-          if (mounted && !isInitialized) {
+          if (mounted && !session?.user) {
             setIsLoading(false);
             setIsInitialized(true);
           }
@@ -88,11 +88,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('❌ Error getting initial session:', error);
+          console.error("❌ Error getting initial session:");
         } else if (session?.user) {
-          console.log('✅ Existing session found:', session.user.id);
+          console.log("✅ Existing session found:");
         } else {
-          console.log('ℹ️ No existing session found');
+          console.log("ℹ️ No existing session found");
         }
         
         // Set loading to false if no session exists
@@ -101,7 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setIsInitialized(true);
         }
       } catch (error) {
-        console.error('❌ Error initializing auth:', error);
+        console.error("❌ Error initializing auth:");
         if (mounted) {
           setIsLoading(false);
           setIsInitialized(true);
@@ -121,10 +121,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      console.log('👋 Logging out user');
+      console.log("👋 Logging out user");
       await logoutOperation(setUser);
     } catch (error) {
-      console.error('❌ Logout error:', error);
+      console.error("❌ Logout error:");
     }
   };
 

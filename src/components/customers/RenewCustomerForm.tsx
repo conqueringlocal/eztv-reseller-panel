@@ -1,3 +1,4 @@
+import { paidOperationFailure, paidOperationKey, clearPaidOperationKey } from '@/utils/paidOperationFeedback';
 
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
@@ -82,14 +83,14 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
         const { error } = await supabase.from('profiles').select('id').eq('id', user.id).single();
         
         if (error) {
-          console.error('❌ Auth validation failed:', error);
+          console.error("❌ Auth validation failed:");
           setAuthCheckPassed(false);
           toast.error('Authentication expired. Please log in again.');
         } else {
           setAuthCheckPassed(true);
         }
       } catch (error) {
-        console.error('❌ Auth check error:', error);
+        console.error("❌ Auth check error:");
         setAuthCheckPassed(false);
       }
     };
@@ -104,7 +105,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
       
       setIsLoadingCost(true);
       try {
-        console.log(`💰 Calculating renewal cost for customer ${customer.id} with ${planDuration} months`);
+        console.log("Operation event");
         
         const { data, error } = await supabase.rpc('calculate_renewal_credits_required', {
           customer_id_param: customer.id,
@@ -112,14 +113,14 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
         });
 
         if (error) {
-          console.error('Error calculating renewal cost:', error);
+          console.error("Error calculating renewal cost:");
           toast.error('Failed to calculate renewal cost');
           return;
         }
 
         if (data && data.length > 0) {
           const costInfo = data[0];
-          console.log('📊 Renewal cost calculation result:', costInfo);
+          console.log("📊 Renewal cost calculation result:");
           
           setRenewalCostInfo({
             creditsRequired: costInfo.credits_required,
@@ -128,7 +129,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
           });
         }
       } catch (error) {
-        console.error('Unexpected error calculating renewal cost:', error);
+        console.error("Unexpected error calculating renewal cost:");
         toast.error('Failed to calculate renewal cost');
       } finally {
         setIsLoadingCost(false);
@@ -163,12 +164,12 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
     try {
       const accountsInGroup = renewalCostInfo.accountsCount;
       
-      console.log('🔄 Starting renewal process for customer:', customer.id);
-      console.log('   - Customer group:', customer.customer_group);
-      console.log('   - Accounts in group:', accountsInGroup);
-      console.log('   - Plan duration:', data.planDuration, 'months');
-      console.log('   - Credits required:', renewalCostInfo.creditsRequired);
-      console.log('   - Current credits:', currentReseller?.credits || 0);
+      console.log("🔄 Starting renewal process for customer:");
+      console.log("   - Customer group:");
+      console.log("   - Accounts in group:");
+      console.log("   - Plan duration:");
+      console.log("   - Credits required:");
+      console.log("   - Current credits:");
 
       // Show progress toast for multi-account renewals
       if (accountsInGroup > 1) {
@@ -180,6 +181,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
         {
           body: {
             customerId: customer.id,
+            operationKey: paidOperationKey('renew',customer.id,data.planDuration),
             planDuration: data.planDuration,
           }
         }
@@ -192,23 +194,16 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
 
       // Enhanced error handling with retry logic for network/auth issues
       if (error) {
-        console.error('❌ Edge function error:', error);
-        
-        // Check if it's a network or auth error that might be temporary
-        if (error.message?.includes('Failed to fetch') || 
-            error.message?.includes('network') ||
-            error.message?.includes('JWT')) {
-          toast.error("Connection issue. Please try again.");
-        } else {
-          toast.error(`Renewal failed: ${error.message}`);
-        }
+        let result;
+        try { result = await error.context?.json(); } catch { /* Network outcome is unknown. */ }
+        toast.error(paidOperationFailure(result));
         setIsRenewing(false);
         return;
       }
 
       if (!responseData?.success) {
         const errorMessage = responseData?.error || 'Unknown error occurred';
-        console.error('❌ Renewal failed:', responseData);
+        console.error("❌ Renewal failed:");
         
         // Show detailed error information for partial failures
         if (responseData?.failedRenewals?.length > 0) {
@@ -216,7 +211,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
           const successCount = responseData.summary?.successful || 0;
           const failedCount = responseData.summary?.failed || responseData.failedRenewals.length;
           
-          console.error(`   Failed accounts (${failedCount}/${totalAccounts}):`, responseData.failedRenewals);
+          console.error("Operation event");
           
           // Show summary first
           toast.error(
@@ -245,12 +240,13 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
 
       // Success case
       const accountsRenewed = responseData.accountsRenewed || 1;
+      clearPaidOperationKey('renew',customer.id,data.planDuration);
       const creditsUsed = responseData.creditsUsed || renewalCostInfo.creditsRequired;
       
-      console.log('✅ Renewal successful!');
-      console.log('   - Accounts renewed:', accountsRenewed);
-      console.log('   - Credits used:', creditsUsed);
-      console.log('   - Plan duration:', data.planDuration, 'months');
+      console.log("✅ Renewal successful!");
+      console.log("   - Accounts renewed:");
+      console.log("   - Credits used:");
+      console.log("   - Plan duration:");
       
       // Enhanced success message for multi-account renewals
       if (accountsRenewed > 1) {
@@ -274,7 +270,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
       await refreshData();
       onSuccess?.();
     } catch (error) {
-      console.error('❌ Unexpected error during renewal:', error);
+      console.error("❌ Unexpected error during renewal:");
       toast.error('An unexpected error occurred. Please try again.');
     } finally {
       setIsRenewing(false);
@@ -470,21 +466,7 @@ export function RenewCustomerForm({ customer, onSuccess }: RenewCustomerFormProp
               (currentReseller && currentReseller.credits < (renewalCostInfo?.creditsRequired || 0))
             }
             onClick={() => {
-              console.log('🔄 Renew button clicked with state:', {
-                isRenewing,
-                isLoadingCost,
-                renewalCostInfo,
-                isAuthenticated,
-                authCheckPassed,
-                currentResellerCredits: currentReseller?.credits,
-                creditsRequired: renewalCostInfo?.creditsRequired,
-                isDisabled: isRenewing ||
-                  isLoadingCost || 
-                  !renewalCostInfo ||
-                  !isAuthenticated ||
-                  !authCheckPassed ||
-                  (currentReseller && currentReseller.credits < (renewalCostInfo?.creditsRequired || 0))
-              });
+              console.log("🔄 Renew button clicked with state:");
             }}
           >
             {isRenewing ? 'Renewing...' :

@@ -44,6 +44,7 @@ interface SsoToken {
   name: string;
   is_active: boolean;
   created_at: string;
+  expires_at: string;
   last_used_at: string | null;
   usage_count: number;
   profiles: {
@@ -76,6 +77,7 @@ export const SsoTokenManager: React.FC = () => {
           name,
           is_active,
           created_at,
+          expires_at,
           last_used_at,
           usage_count,
           profiles!reseller_id (
@@ -291,10 +293,10 @@ export const SsoTokenManager: React.FC = () => {
                       <div className="text-sm text-gray-500">{token.profiles.email}</div>
                     </div>
                   </TableCell>
-                  <TableCell>{token.name}</TableCell>
+                  <TableCell>{token.name}<div className="text-xs text-muted-foreground">Expires {new Date(token.expires_at).toLocaleDateString()}</div></TableCell>
                   <TableCell>
                     <Badge variant={token.is_active ? "default" : "secondary"}>
-                      {token.is_active ? 'Active' : 'Revoked'}
+                      {!token.is_active ? 'Revoked' : new Date(token.expires_at) <= new Date() ? 'Expired' : 'Active'}
                     </Badge>
                   </TableCell>
                   <TableCell>{token.usage_count}</TableCell>

@@ -1,3 +1,4 @@
+import { paidOperationFailure, paidOperationKey, clearPaidOperationKey } from '@/utils/paidOperationFeedback';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,14 +51,17 @@ export function AddConnectionDialog({
       const { data, error } = await supabase.functions.invoke('add-connection-to-customer', {
         body: {
           customer_id: customer.id,
+          operationKey: paidOperationKey('add',customer.id,parseInt(planDuration)),
           plan_duration: parseInt(planDuration),
         },
       });
 
-      if (error) throw error;
+      if (error) { let result; try { result = await error.context?.json(); } catch { /* Unknown outcome. */ } throw new Error(paidOperationFailure(result)); }
 
       if (data.success) {
         toast.success(`Connection ${data.connection_number} added successfully!`);
+        clearPaidOperationKey('add',customer.id,parseInt(planDuration));
+        window.dispatchEvent(new CustomEvent('creditsUpdated'));
         onSuccess();
         onOpenChange(false);
       } else {

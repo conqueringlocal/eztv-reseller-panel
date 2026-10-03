@@ -9,7 +9,8 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "test:trex": "node --experimental-vm-modules --test tests/trex-provisioning.test.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:stabilization": "node --experimental-vm-modules --test tests/stabilization.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

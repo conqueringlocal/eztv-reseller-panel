@@ -54,15 +54,10 @@ export default function ResetPassword() {
       const refreshToken = hashParams.get('refresh_token');
       const type = hashParams.get('type');
       
-      console.log('Reset flow debug:', { 
-        hasAccessToken: !!accessToken, 
-        hasRefreshToken: !!refreshToken, 
-        type,
-        fullHash: window.location.hash 
-      });
+      console.log("Reset flow debug:");
       
       if (!accessToken || !refreshToken || type !== 'recovery') {
-        console.error('Invalid recovery parameters in URL hash');
+        console.error("Invalid recovery parameters in URL hash");
         setError('Invalid or expired reset link. Please request a new password reset.');
         return;
       }
@@ -73,10 +68,10 @@ export default function ResetPassword() {
         refresh_token: refreshToken
       }).then(({ error }) => {
         if (error) {
-          console.error('Error setting session:', error);
+          console.error("Error setting session:");
           setError('Failed to validate reset link. Please request a new password reset.');
         } else {
-          console.log('Session set successfully for password reset');
+          console.log("Session set successfully for password reset");
         }
       });
     };
@@ -95,7 +90,7 @@ export default function ResetPassword() {
       });
 
       if (error) {
-        console.error('Error updating password:', error);
+        console.error("Error updating password:");
         setError(error.message);
         return;
       }
@@ -107,7 +102,7 @@ export default function ResetPassword() {
       
       navigate('/login');
     } catch (error: any) {
-      console.error('Error updating password:', error);
+      console.error("Error updating password:");
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);

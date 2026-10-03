@@ -46,47 +46,12 @@ export function RenewalAuditTool() {
   };
 
   const refundDuplicateCharges = async (duplicate: DuplicateRenewal) => {
-    setIsRefunding(true);
-    try {
-      const { error } = await supabase.rpc('refund_duplicate_charges', {
-        p_reseller_id: duplicate.reseller_id,
-        p_credits_to_refund: duplicate.total_excess_credits,
-        p_reason: `Duplicate renewal charges for customer ${duplicate.customer_name} (${duplicate.duplicate_count} duplicates)`
-      });
+    toast.info('Verify the Trex outcome and credit history first, then use the reseller credit adjustment form with the operation reference. Automatic duplicate refunds are disabled.');
 
-      if (error) {
-        console.error('Failed to refund duplicate charges:', error);
-        toast.error('Failed to refund duplicate charges');
-        return;
-      }
-
-      toast.success(`Refunded ${duplicate.total_excess_credits} credits to reseller`);
-      
-      // Remove this duplicate from the list
-      setDuplicates(prev => prev.filter(d => d.customer_id !== duplicate.customer_id));
-    } catch (error) {
-      console.error('Error refunding duplicate charges:', error);
-      toast.error('An error occurred while processing refund');
-    } finally {
-      setIsRefunding(false);
-    }
   };
 
   const refundAllDuplicates = async () => {
-    setIsRefunding(true);
-    try {
-      for (const duplicate of duplicates) {
-        await refundDuplicateCharges(duplicate);
-        // Small delay to avoid overwhelming the system
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-      toast.success('All duplicate charges have been refunded');
-    } catch (error) {
-      console.error('Error refunding all duplicates:', error);
-      toast.error('An error occurred while processing refunds');
-    } finally {
-      setIsRefunding(false);
-    }
+    toast.info('Review each provider operation before making a credit adjustment. Bulk refunds are disabled.');
   };
 
   const totalExcessCredits = duplicates.reduce((sum, d) => sum + d.total_excess_credits, 0);
@@ -153,7 +118,7 @@ export function RenewalAuditTool() {
                 className="flex items-center gap-2"
               >
                 <DollarSign className="h-4 w-4" />
-                Refund All ({totalExcessCredits} credits)
+                Review credit adjustments
               </Button>
             </CardTitle>
           </CardHeader>
@@ -183,7 +148,7 @@ export function RenewalAuditTool() {
                     className="flex items-center gap-2"
                   >
                     <DollarSign className="h-4 w-4" />
-                    Refund {duplicate.total_excess_credits} credits
+                    Review {duplicate.total_excess_credits} credits
                   </Button>
                 </div>
               ))}

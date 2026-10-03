@@ -64,16 +64,7 @@ export const CreditRequestDialog: React.FC<CreditRequestDialogProps> = ({
     setIsLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('credit_requests')
-        .insert({
-          requester_id: user.id,
-          parent_reseller_id: parentResellerId,
-          credits_requested: formData.credits,
-          price_per_credit: creditPricePerUnit,
-          total_amount: totalAmount,
-          message: formData.message,
-        });
+      const { error } = await supabase.rpc('request_parent_credits',{p_credits:formData.credits,p_message:formData.message});
 
       if (error) {
         console.error('Error creating credit request:', error);

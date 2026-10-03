@@ -12,7 +12,7 @@ serve(async (req) => {
   try {
     const { token } = await req.json()
 
-    if (!token) {
+    if (typeof token !== 'string' || token.length < 32 || token.length > 256) {
       return new Response(
         JSON.stringify({ error: 'Token is required' }),
         { 
@@ -35,7 +35,7 @@ serve(async (req) => {
     const hashArray = Array.from(new Uint8Array(hashBuffer))
     const tokenHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
 
-    console.log('Looking up token with hash:', tokenHash.substring(0, 8) + '...')
+    console.log("Looking up token with hash:")
 
     // Look up the token in the database
     const { data: tokenData, error: tokenError } = await supabaseAdmin
@@ -45,6 +45,7 @@ serve(async (req) => {
         reseller_id,
         name,
         is_active,
+        expires_at,
         usage_count,
         profiles!reseller_id (
           id,
@@ -55,10 +56,11 @@ serve(async (req) => {
       `)
       .eq('token_hash', tokenHash)
       .eq('is_active', true)
+      .gt('expires_at', new Date().toISOString())
       .single()
 
     if (tokenError || !tokenData) {
-      console.error('Token lookup failed:', tokenError)
+      console.error("Token lookup failed:")
       
       // Log failed attempt
       await supabaseAdmin
@@ -67,7 +69,7 @@ serve(async (req) => {
           action: 'login_failed',
           ip_address: req.headers.get('x-forwarded-for'),
           user_agent: req.headers.get('user-agent'),
-          additional_data: { error: 'Invalid token', token_prefix: token.substring(0, 8) }
+          additional_data: { error: 'Invalid or expired token' }
         })
 
       return new Response(
@@ -79,7 +81,7 @@ serve(async (req) => {
       )
     }
 
-    console.log('Found valid token for reseller:', tokenData.profiles.email)
+    console.log("Found valid token for reseller:")
 
     // Update token usage
     await supabaseAdmin
@@ -107,12 +109,12 @@ serve(async (req) => {
       type: 'magiclink',
       email: tokenData.profiles.email,
       options: {
-        redirectTo: `${req.headers.get('origin')}/reseller`
+        redirectTo: 'https://reseller.eztvclub.com/reseller'
       }
     })
 
     if (authError || !authData) {
-      console.error('Failed to generate auth session:', authError)
+      console.error("Failed to generate auth session:")
       return new Response(
         JSON.stringify({ error: 'Failed to create session' }),
         { 
@@ -135,7 +137,7 @@ serve(async (req) => {
     )
 
   } catch (error) {
-    console.error('SSO authentication error:', error)
+    console.error("SSO authentication error:")
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { 

@@ -76,14 +76,14 @@ function extractAndFlattenCredentials(data: any): {
   credentialsArray: Array<{ username: string; password: string; m3u_url?: string }>;
   primaryCredentials: { username?: string; password?: string; m3u_url?: string };
 } {
-  console.log('🔍 RAW API RESPONSE DUMP:', JSON.stringify(data, null, 2));
+  console.log("🔍 RAW API RESPONSE DUMP:");
   
   const flattenedFields: any = {};
   const credentialsArray: Array<{ username: string; password: string; m3u_url?: string }> = [];
   let primaryCredentials: { username?: string; password?: string; m3u_url?: string } = {};
   
   if (!data) {
-    console.log('❌ No data provided for credential extraction');
+    console.log("❌ No data provided for credential extraction");
     return { flattenedFields, credentialsArray, primaryCredentials };
   }
   
@@ -92,26 +92,20 @@ function extractAndFlattenCredentials(data: any): {
   // Extract customers from different response formats
   if (data.customers && Array.isArray(data.customers)) {
     customers = data.customers;
-    console.log('✅ Found customers array with', customers.length, 'customers');
+    console.log("✅ Found customers array with");
   } else if (data.customer) {
     customers = [data.customer];
-    console.log('✅ Found single customer object');
+    console.log("✅ Found single customer object");
   } else if (data.username || data.password || data.m3u_url) {
     customers = [data];
-    console.log('✅ Data appears to be a customer object');
+    console.log("✅ Data appears to be a customer object");
   }
   
-  console.log('📊 Processing customers for credential extraction:', customers.length);
+  console.log("📊 Processing customers for credential extraction:");
   
   // Process each customer to extract credentials
   customers.forEach((customer, index) => {
-    console.log(`🔐 Processing customer ${index + 1}:`, {
-      id: customer.id,
-      name: customer.name,
-      hasCredentials: !!customer.credentials,
-      hasDirectUsername: !!customer.username,
-      hasConnectionList: !!customer.connection_list
-    });
+    console.log("Operation event");
     
     let username: string | undefined;
     let password: string | undefined;
@@ -119,14 +113,14 @@ function extractAndFlattenCredentials(data: any): {
     
     // Extract credentials from nested credentials object first
     if (customer.credentials && typeof customer.credentials === 'object') {
-      console.log(`📋 Found nested credentials object for customer ${index + 1}:`, customer.credentials);
+      console.log("Operation event");
       username = customer.credentials.username;
       password = customer.credentials.password;
       m3u_url = customer.credentials.m3uUrl || customer.credentials.m3u_url;
     } 
     // Then try direct username/password on customer object
     else if (customer.username && customer.password) {
-      console.log(`📋 Found direct credentials for customer ${index + 1}`);
+      console.log("Operation event");
       username = customer.username;
       password = customer.password;
       m3u_url = customer.m3u_url;
@@ -157,19 +151,15 @@ function extractAndFlattenCredentials(data: any): {
         }
       }
       
-      console.log(`✅ Extracted credentials for customer ${index + 1}:`, { username, password, hasM3u: !!m3u_url });
+      console.log("Operation event");
     } else {
-      console.log(`❌ No valid credentials found for customer ${index + 1}`);
+      console.log("Operation event");
     }
   });
   
   flattenedFields.total_connections = credentialsArray.length;
   
-  console.log('🎯 Final extraction results:', {
-    primaryCredentials,
-    credentialsCount: credentialsArray.length,
-    flattenedFieldsCount: Object.keys(flattenedFields).length
-  });
+  console.log("🎯 Final extraction results:");
   
   return { flattenedFields, credentialsArray, primaryCredentials };
 }
@@ -181,7 +171,7 @@ async function consolidateCustomerIfNeeded(
   customerEmail: string
 ): Promise<{ success: boolean; consolidatedId?: string }> {
   try {
-    console.log('🔄 Checking for consolidation opportunities...');
+    console.log("🔄 Checking for consolidation opportunities...");
     
     // Find customers with the same name and email
     const { data: existingCustomers, error: findError } = await supabase
@@ -192,7 +182,7 @@ async function consolidateCustomerIfNeeded(
       .eq('email', customerEmail);
     
     if (findError || !existingCustomers || existingCustomers.length <= 1) {
-      console.log('No consolidation needed');
+      console.log("No consolidation needed");
       return { success: true };
     }
     
@@ -207,7 +197,7 @@ async function consolidateCustomerIfNeeded(
     });
     
     if (error) {
-      console.error('❌ Consolidation error:', error);
+      console.error("❌ Consolidation error:");
       return { success: false };
     }
     
@@ -215,7 +205,7 @@ async function consolidateCustomerIfNeeded(
     const result = Array.isArray(data) && data.length > 0 ? data[0] : null;
     
     if (result) {
-      console.log('✅ Customer records consolidated:', result);
+      console.log("✅ Customer records consolidated:");
       return { 
         success: true, 
         consolidatedId: result.consolidated_customer_id 
@@ -224,14 +214,14 @@ async function consolidateCustomerIfNeeded(
     
     return { success: true };
   } catch (error) {
-    console.error('💥 Error during consolidation:', error);
+    console.error("💥 Error during consolidation:");
     return { success: false };
   }
 }
 
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
-    console.log('🚀 Processing enhanced webhook payload (Trex-only trials):', payload);
+    console.log("🚀 Processing enhanced webhook payload (Trex-only trials):");
 
     // Validate required fields based on action
     const validationResult = validateWebhookPayload(payload);
@@ -262,7 +252,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
         };
     }
   } catch (error) {
-    console.error('💥 Error processing enhanced webhook:', error);
+    console.error("💥 Error processing enhanced webhook:");
     return {
       success: false,
       message: 'Internal server error',
@@ -322,7 +312,7 @@ function validateWebhookPayload(payload: EnhancedWebhookPayload): {
 
 async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> {
   try {
-    console.log('🆓 Handling trial account creation (Trex only)');
+    console.log("🆓 Handling trial account creation (Trex only)");
 
     // Get reseller information
     const resellerData = await getResellerData(payload);
@@ -351,7 +341,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
     const expirationDate = new Date();
     expirationDate.setHours(expirationDate.getHours() + trialDurationHours);
 
-    console.log(`📅 Trial period: ${startDate.toISOString().split('T')[0]} to ${expirationDate.toISOString().split('T')[0]} (${trialDurationHours} hours)`);
+    console.log("Operation event");
 
     // Create trial account via create-trial-user function (now the unified Trex trial function)
     const { data, error } = await supabase.functions.invoke('create-trial-user', {
@@ -376,7 +366,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
     });
 
     if (error || !data?.success) {
-      console.error('❌ Failed to create trial account:', error || data);
+      console.error("❌ Failed to create trial account:");
       return {
         success: false,
         message: 'Failed to create trial account',
@@ -385,7 +375,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
       };
     }
 
-    console.log('📊 Trial account creation result:', JSON.stringify(data, null, 2));
+    console.log("📊 Trial account creation result:");
 
     // Attempt consolidation after creation
     await consolidateCustomerIfNeeded(
@@ -399,7 +389,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
     
     // Validate credentials exist before continuing
     if (!primaryCredentials.username || !primaryCredentials.password) {
-      console.error('❌ CRITICAL: No valid credentials found in API response');
+      console.error("❌ CRITICAL: No valid credentials found in API response");
       return {
         success: false,
         message: 'Failed to extract valid credentials from trial account creation',
@@ -408,7 +398,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
       };
     }
 
-    console.log('✅ Trial credentials validated successfully');
+    console.log("✅ Trial credentials validated successfully");
 
     return {
       success: true,
@@ -433,7 +423,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
       raw_api_response: data
     };
   } catch (error) {
-    console.error('💥 Error creating trial account:', error);
+    console.error("💥 Error creating trial account:");
     return {
       success: false,
       message: 'Internal error creating trial account',
@@ -444,7 +434,7 @@ async function handleTrialCreation(payload: EnhancedWebhookPayload): Promise<Enh
 
 async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> {
   try {
-    console.log('➕ Handling account creation');
+    console.log("➕ Handling account creation");
 
     // Get reseller information
     const resellerData = await getResellerData(payload);
@@ -501,7 +491,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
     });
 
     if (error || !data?.success) {
-      console.error('❌ Failed to create account:', error || data);
+      console.error("❌ Failed to create account:");
       return {
         success: false,
         message: 'Failed to create account',
@@ -510,7 +500,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
       };
     }
 
-    console.log('📊 Account creation result:', JSON.stringify(data, null, 2));
+    console.log("📊 Account creation result:");
 
     // Attempt consolidation after creation
     await consolidateCustomerIfNeeded(
@@ -524,7 +514,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
     
     // Validate credentials exist before continuing
     if (!primaryCredentials.username || !primaryCredentials.password) {
-      console.error('❌ CRITICAL: No valid credentials found in API response');
+      console.error("❌ CRITICAL: No valid credentials found in API response");
       return {
         success: false,
         message: 'Failed to extract valid credentials from account creation',
@@ -533,7 +523,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
       };
     }
 
-    console.log('✅ Account credentials validated successfully');
+    console.log("✅ Account credentials validated successfully");
 
     return {
       success: true,
@@ -558,7 +548,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
       raw_api_response: data
     };
   } catch (error) {
-    console.error('💥 Error handling account creation:', error);
+    console.error("💥 Error handling account creation:");
     return {
       success: false,
       message: 'Internal error creating account',
@@ -570,7 +560,7 @@ async function handleAccountCreation(payload: EnhancedWebhookPayload): Promise<E
 
 async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> {
   try {
-    console.log('🔄 Handling account renewal');
+    console.log("🔄 Handling account renewal");
 
     // Get reseller information
     const resellerData = await getResellerData(payload);
@@ -612,7 +602,7 @@ async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<En
     });
 
     if (error || !data?.success) {
-      console.error('❌ Failed to renew customer:', error || data);
+      console.error("❌ Failed to renew customer:");
       return {
         success: false,
         message: data?.message || 'Failed to renew customer',
@@ -638,7 +628,7 @@ async function handleAccountRenewal(payload: EnhancedWebhookPayload): Promise<En
       credits_used: data.creditsUsed
     };
   } catch (error) {
-    console.error('💥 Error handling account renewal:', error);
+    console.error("💥 Error handling account renewal:");
     return {
       success: false,
       message: 'Internal error during renewal',
@@ -714,7 +704,7 @@ async function getResellerData(payload: EnhancedWebhookPayload): Promise<Reselle
       errors: ['missing_auth']
     };
   } catch (error) {
-    console.error('💥 Error getting reseller data:', error);
+    console.error("💥 Error getting reseller data:");
     return {
       success: false,
       message: 'Error looking up reseller',
