@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test:stabilization": "node --experimental-vm-modules --test tests/stabilization.test.mjs",
     "test:business": "node --test tests/business.test.mjs",
-    "test:balance": "node --test tests/trex-balance.test.mjs"
+    "test:balance": "node --test tests/trex-balance.test.mjs",
+    "test:sales": "node --test tests/sales.test.mjs tests/sales-inquiry.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

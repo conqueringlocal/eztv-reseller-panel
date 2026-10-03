@@ -1,4 +1,5 @@
 
+import { SalesTodaySummary } from '@/components/sales/SalesTodaySummary';
 import { RenewalWorklist } from '@/components/business/RenewalWorklist';
 import React, { useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -91,6 +92,7 @@ export default function ResellerDashboard() {
         />
       </div>
       
+      <SalesTodaySummary />
       <RenewalWorklist />
 
       {/* Recent Customers */}

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -34,6 +34,10 @@ import ResellerSettings from "./pages/reseller/ResellerSettings";
 import ResellerFunnels from "./pages/reseller/ResellerFunnels";
 import Webhook from "./pages/Webhook";
 
+const ResellerSales = lazy(() => import('./pages/reseller/ResellerSales'));
+const AdminSalesProgram = lazy(() => import('./pages/admin/AdminSalesProgram'));
+const PublicSalesInquiry = lazy(() => import('./pages/PublicSalesInquiry'));
+const salesLoading = <p className="p-6" role="status">Loading sales tools…</p>;
 const queryClient = new QueryClient();
 
 function App() {
@@ -50,6 +54,9 @@ function App() {
                   {/* Redirect root to login */}
                   <Route path="/" element={<Navigate to="/login" replace />} />
                   
+                  <Route path="/reseller/sales" element={<ProtectedRoute allowedRoles={["reseller"]}><Suspense fallback={salesLoading}><ResellerSales /></Suspense></ProtectedRoute>} />
+                  <Route path="/admin/sales" element={<ProtectedRoute allowedRoles={["admin"]}><Suspense fallback={salesLoading}><AdminSalesProgram /></Suspense></ProtectedRoute>} />
+                  <Route path="/r/:slug" element={<Suspense fallback={salesLoading}><PublicSalesInquiry /></Suspense>} />
                   {/* Public routes */}
                   <Route path="/login" element={<Login />} />
                   <Route path="/auth/token" element={<TokenAuth />} />
