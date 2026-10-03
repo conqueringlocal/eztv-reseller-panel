@@ -70,6 +70,7 @@ export function AppSidebar() {
           path: '/admin/logs',
           icon: <FileText className="w-5 h-5" />,
         },
+        { title: 'Sports Updates', path: '/admin/sports', icon: <Tv className="w-5 h-5" /> },
         {
           title: 'Settings',
           path: '/admin/settings',

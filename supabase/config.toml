@@ -109,3 +109,6 @@ verify_jwt = false
 
 [functions.admin-reseller-session]
 verify_jwt = false
+
+[functions.sports-reader]
+verify_jwt = false

@@ -23,6 +23,7 @@ import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminFinance from "./pages/admin/AdminFinance";
 import AdminCredits from "./pages/admin/AdminCredits";
 import AdminLogs from "./pages/admin/AdminLogs";
+import AdminSports from "./pages/admin/AdminSports";
 import AdminSettings from "./pages/admin/AdminSettings";
 import ResellerDashboard from "./pages/reseller/ResellerDashboard";
 import ResellerCustomers from "./pages/reseller/ResellerCustomers";
@@ -128,6 +129,7 @@ function App() {
                     }
                   />
                   
+                  <Route path="/admin/sports" element={<ProtectedRoute allowedRoles={["admin"]}><AdminSports /></ProtectedRoute>} />
                   {/* Reseller Routes */}
                   <Route path="/reseller" element={
                     <ProtectedRoute allowedRoles={['reseller']}>

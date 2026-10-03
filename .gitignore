@@ -25,3 +25,10 @@ dist-ssr
 
 # Supabase CLI local cache
 supabase/.temp/
+
+# Private Telegram reader state and Python cache
+__pycache__/
+*.pyc
+*.session
+*.session-journal
+services/telegram-reader/.env
