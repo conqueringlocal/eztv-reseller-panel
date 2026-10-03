@@ -17,12 +17,13 @@ before(async()=>{
  execFileSync('docker',['run','-d','--name',container,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
  for(let i=0;i<60;i++){try{sql('SELECT 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
  sql(readFileSync('tests/stabilization-schema.sql','utf8'));
- const files=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$/.test(x))];
+ sql(readFileSync('tests/balance-scheduler-schema.sql','utf8'));
+ const files=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_trex_balance_api.sql$/.test(x))];
  for(const file of files)sql(readFileSync(`supabase/migrations/${file}`,'utf8'));
 });
 after(()=>execFileSync('docker',['rm','-f','-v',container],{stdio:'pipe'}));
 beforeEach(()=>{
- sql(`TRUNCATE business_entries,provider_balance_checks,provider_reconciliation_checks,manual_credit_requests,credit_adjustments,trex_paid_operations,trex_provisioning_requests,credit_logs,credit_requests,renewal_transactions,customers,user_roles,profiles CASCADE;
+ sql(`UPDATE trex_balance_sync_state SET claim_id=NULL,checked_at=NULL,lease_until=NULL,last_attempt_at=NULL,last_success_at=NULL,last_error=NULL; TRUNCATE business_entries,provider_balance_checks,provider_reconciliation_checks,manual_credit_requests,credit_adjustments,trex_paid_operations,trex_provisioning_requests,credit_logs,credit_requests,renewal_transactions,customers,user_roles,profiles CASCADE;
  INSERT INTO profiles(id,name,email,role,credits) VALUES(${q(admin)},'Owner','a@example.invalid','admin',0),(${q(reseller)},'Reseller','r@example.invalid','reseller',20),(${q(other)},'Other','o@example.invalid','reseller',15);
  INSERT INTO user_roles(user_id,role) VALUES(${q(admin)},'admin'),(${q(reseller)},'reseller'),(${q(other)},'reseller');
  INSERT INTO customers(id,reseller_id,name,email,username,password,device_type,package_id,plan_duration,start_date,expiration_date,customer_group,connection_list)
@@ -119,4 +120,35 @@ test('balance can be checked after a purchase on the same day',()=>{
 test('inactive group member does not hide an active group or yield a purchase quote',()=>{
  sql(`UPDATE customers SET is_deactivated=true; INSERT INTO customers(id,reseller_id,name,email,username,password,device_type,plan_duration,start_date,expiration_date,customer_group) VALUES(${q(second)},${q(reseller)},'Active member','fixture@example.invalid','second','secret','m3u',1,current_date,current_date+4,'group')`);
  const list=renewals(reseller);assert.equal(list.length,1);assert.equal(list[0].connections,null);assert.ok(list[0].review_reason);
+});
+
+test('scheduler token verification and balance mutation APIs are service-only',()=>{
+ for(const name of ['claim_trex_balance_sync()','finish_trex_balance_sync(uuid,numeric,text)','authorize_trex_balance_sync(text)','enqueue_trex_balance_sync()']){
+  for(const role of ['anon','authenticated'])assert.equal(sql(`SELECT has_function_privilege(${q(role)},${q(name)},'execute')`),'f');
+ }
+ assert.equal(sql(`SELECT authorize_trex_balance_sync('bad')`),'f');
+ assert.equal(sql(`SELECT authorize_trex_balance_sync(decrypted_secret) FROM vault.decrypted_secrets WHERE name='trex_balance_sync_token'`),'t');
+});
+test('concurrent syncs claim once, store zero as a valid API balance and preserve it on failure',async()=>{
+ const claims=await Promise.all(Array.from({length:4},()=>concurrent('SELECT claim_trex_balance_sync()')));
+ const claimed=claims.map(JSON.parse).filter(x=>x.claimed);assert.equal(claimed.length,1);
+ assert.equal(sql(`SELECT finish_trex_balance_sync(${q(claimed[0].claim_id)},0,NULL)`),'t');
+ let d=report();assert.equal(d.provider_balance.credits,0);assert.equal(d.provider_balance.source,'api');assert.equal(d.balance_needs_check,false);
+ sql("UPDATE trex_balance_sync_state SET last_attempt_at=now()-interval '2 minutes'");
+ const next=JSON.parse(sql('SELECT claim_trex_balance_sync()'));
+ sql(`SELECT finish_trex_balance_sync(${q(next.claim_id)},NULL,'provider_unavailable')`);
+ d=report();assert.equal(d.provider_balance.credits,0);assert.equal(d.balance_needs_check,true);assert.equal(d.balance_sync_error,'provider_unavailable');
+});
+test('late responses cannot replace newer balance checks',()=>{
+ const old=JSON.parse(sql('SELECT claim_trex_balance_sync()'));
+ sql("UPDATE trex_balance_sync_state SET lease_until=now()-interval '1 minute',last_attempt_at=now()-interval '2 minutes'");
+ const current=JSON.parse(sql('SELECT claim_trex_balance_sync()'));
+ assert.equal(sql(`SELECT finish_trex_balance_sync(${q(old.claim_id)},999,NULL)`),'f');
+ assert.equal(sql(`SELECT finish_trex_balance_sync(${q(current.claim_id)},40,NULL)`),'t');
+ assert.equal(report().provider_balance.credits,40);
+});
+test('API balance becomes stale after ten minutes and cannot be reset by a failed check',()=>{
+ const claim=JSON.parse(sql('SELECT claim_trex_balance_sync()'));
+ sql(`SELECT finish_trex_balance_sync(${q(claim.claim_id)},40,NULL)`);
+ sql("UPDATE provider_balance_checks SET checked_at=now()-interval '11 minutes'");assert.equal(report().balance_needs_check,true);
 });
