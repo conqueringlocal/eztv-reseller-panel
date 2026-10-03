@@ -82,7 +82,7 @@ async function renewConnectionViaTrex(
     // SANITIZED LOG - only log MASKED identifier
     const rawIdentifier = isMagAccount ? connection.mac_address : connection.username;
     const maskedIdentifier = maskIdentifier(rawIdentifier, isMagAccount);
-    console.log(`📡 Trex renewal API call for ${accountType}: ${maskedIdentifier}`);
+    console.log("Operation event");
     
     const response = await fetch(renewUrl.toString());
     const responseText = await response.text();
@@ -95,13 +95,7 @@ async function renewConnectionViaTrex(
     }
 
     // SANITIZED LOG - only safe metadata
-    console.log(`📡 Trex renewal response for ${maskedIdentifier}:`, {
-      httpStatus: response.status,
-      hasError: !!data.error,
-      hasMessage: !!data.message,
-      status: data.status,
-      success: data.success
-    });
+    console.log("Operation event");
 
     if (!response.ok) {
       return { success: false, error: `HTTP ${response.status}` };
@@ -116,18 +110,16 @@ async function renewConnectionViaTrex(
                       data.success === true || data.status === 'success';
     
     if (isSuccess) {
-      console.log(`✅ Trex renewal succeeded for ${maskedIdentifier}`);
+      console.log("Operation event");
       return { success: true };
     }
 
     // Unclear response = FAILURE
-    console.error(`❌ Trex renewal returned unclear response for ${maskedIdentifier}:`, {
-      status: data.status, success: data.success, hasError: !!data.error
-    });
+    console.error("Operation event");
     return { success: false, error: 'Trex renewal returned unclear response' };
     
   } catch (error) {
-    console.error(`❌ Trex renewal exception:`, error instanceof Error ? error.message : 'Unknown error');
+    console.error("Operation event");
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
@@ -219,7 +211,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       .single();
 
     if (apiKeyError || !apiKeyData) {
-      console.error('❌ Invalid or inactive API key:', apiKeyError);
+      console.error("❌ Invalid or inactive API key:");
       return null;
     }
 
@@ -231,7 +223,7 @@ async function getResellerByApiKey(apiKey: string): Promise<ResellerDataResult['
       m3uDomainOverride: null
     };
   } catch (error) {
-    console.error('💥 Error getting reseller by API key:', error);
+    console.error("💥 Error getting reseller by API key:");
     return null;
   }
 }
@@ -248,7 +240,7 @@ async function syncHighLevelContact(
   successTags?: string[]
 ): Promise<void> {
   if (!contactId) {
-    console.log('⏭️ No contact_id provided, skipping HighLevel sync');
+    console.log("⏭️ No contact_id provided, skipping HighLevel sync");
     return;
   }
 
@@ -256,7 +248,7 @@ async function syncHighLevelContact(
     const hlSettings = await getHighLevelSettings(resellerId);
     
     if (!hlSettings) {
-      console.log('⏭️ HighLevel not configured or inactive for reseller, skipping sync');
+      console.log("⏭️ HighLevel not configured or inactive for reseller, skipping sync");
       return;
     }
 
@@ -317,15 +309,13 @@ async function syncHighLevelContact(
     );
 
     if (result.success) {
-      console.log('✅ HighLevel contact synced successfully:', { contactId });
+      console.log("✅ HighLevel contact synced successfully:");
     } else {
-      console.log('⚠️ HighLevel sync failed (non-blocking):', { contactId, error: result.error });
+      console.log("⚠️ HighLevel sync failed (non-blocking):");
     }
   } catch (error) {
     // NON-BLOCKING - log and continue
-    console.error('⚠️ HighLevel sync exception (non-blocking):', 
-      error instanceof Error ? error.message : 'Unknown error'
-    );
+    console.error("⚠️ HighLevel sync exception (non-blocking):");
   }
 }
 
@@ -338,11 +328,11 @@ async function createTrialAccount(
   resellerData: any
 ): Promise<EnhancedWebhookResult> {
   try {
-    console.log('🆓 Creating trial account via create-trial-user function');
+    console.log("🆓 Creating trial account via create-trial-user function");
 
     // Validate that this is a Trex reseller
     if (provider !== 'trex') {
-      console.log(`❌ Trial creation rejected. Provider: ${provider}, Required: trex`);
+      console.log("Operation event");
       return {
         success: false,
         message: 'Trial accounts are only available for Trex resellers',
@@ -381,7 +371,7 @@ async function createTrialAccount(
     });
 
     if (error || !data?.success) {
-      console.error('❌ Failed to create trial account:', error || data);
+      console.error("❌ Failed to create trial account:");
 
       // Sync failure to HighLevel (non-blocking)
       await syncHighLevelContact(
@@ -401,7 +391,7 @@ async function createTrialAccount(
       };
     }
 
-    console.log('✅ Trial account created successfully');
+    console.log("✅ Trial account created successfully");
 
     // Rewrite M3U URL for domain override (uses reseller's custom domain or platform default)
     const resellerM3uDomainOverride = resellerData?.m3uDomainOverride || null;
@@ -410,7 +400,7 @@ async function createTrialAccount(
       resellerM3uDomainOverride,
       DEFAULT_M3U_DOMAIN
     );
-    console.log('🔗 M3U domain override applied:', !!resellerM3uDomainOverride);
+    console.log("🔗 M3U domain override applied:");
 
     // Sync to HighLevel after successful trial provisioning (non-blocking)
     // Add trial_activated tag on success
@@ -451,7 +441,7 @@ async function createTrialAccount(
       raw_api_response: data
     };
   } catch (error) {
-    console.error('💥 Error creating trial account:', error);
+    console.error("💥 Error creating trial account:");
     return {
       success: false,
       message: 'Internal error creating trial account',
@@ -467,7 +457,7 @@ async function createConsolidatedAccount(
   resellerData: any
 ): Promise<EnhancedWebhookResult> {
   try {
-    console.log('🔄 Creating consolidated multi-connection account');
+    console.log("🔄 Creating consolidated multi-connection account");
 
     const connections = payload.connections || 1;
     const planDuration = payload.customer.plan_duration_months || 1;
@@ -543,7 +533,7 @@ async function createConsolidatedAccount(
     });
 
     if (createError || !createResult?.success) {
-      console.error('❌ Failed to create connections:', createError || createResult);
+      console.error("❌ Failed to create connections:");
       return {
         success: false,
         message: 'Failed to create connections',
@@ -563,7 +553,7 @@ async function createConsolidatedAccount(
       m3u_url: rewriteM3uDomain(conn.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN),
       status: 'active'
     }));
-    console.log('🔗 M3U domain override applied:', !!resellerData.m3uDomainOverride);
+    console.log("🔗 M3U domain override applied:");
 
     // Create the consolidated customer record
     const { data: consolidatedCustomer, error: consolidateError } = createResult.customerId
@@ -599,7 +589,7 @@ async function createConsolidatedAccount(
       .single();
 
     if (consolidateError) {
-      console.error('❌ Failed to create consolidated customer:', consolidateError);
+      console.error("❌ Failed to create consolidated customer:");
       return {
         success: false,
         message: 'Failed to create consolidated customer record',
@@ -616,7 +606,7 @@ async function createConsolidatedAccount(
         .in('id', customerIds);
     }
 
-    console.log('✅ Consolidated account created successfully');
+    console.log("✅ Consolidated account created successfully");
 
     // Prepare response with individual credentials for HighLevel compatibility
     const response: EnhancedWebhookResult = {
@@ -669,7 +659,7 @@ async function createConsolidatedAccount(
 
     return response;
   } catch (error) {
-    console.error('💥 Error creating consolidated account:', error);
+    console.error("💥 Error creating consolidated account:");
     return {
       success: false,
       message: 'Internal error creating consolidated account',
@@ -685,7 +675,7 @@ async function renewCustomerGroup(
   resellerData: any
 ): Promise<EnhancedWebhookResult> {
   try {
-    console.log('🔄 Renewing customer group');
+    console.log("🔄 Renewing customer group");
 
     const planDuration = payload.customer.plan_duration_months || 1;
 
@@ -694,7 +684,7 @@ async function renewCustomerGroup(
 
     // 1. First try to find by highlevel_contact_id if contact_id is provided
     if (payload.contact_id) {
-      console.log(`🔍 Looking up customer by highlevel_contact_id: ${payload.contact_id}`);
+      console.log("Operation event");
       const { data: contactCustomers, error: contactError } = await supabase
         .from('customers')
         .select('*')
@@ -705,15 +695,15 @@ async function renewCustomerGroup(
 
       if (!contactError && contactCustomers && contactCustomers.length > 0) {
         customer = contactCustomers[0];
-        console.log(`✅ Found customer by highlevel_contact_id: ${customer.name}`);
+        console.log("Operation event");
       } else {
-        console.log('⏭️ No customer found by highlevel_contact_id, trying name+email fallback');
+        console.log("⏭️ No customer found by highlevel_contact_id, trying name+email fallback");
       }
     }
 
     // 2. Fallback to name + email lookup if not found by contact_id
     if (!customer && payload.customer.name && payload.customer.email) {
-      console.log(`🔍 Looking up customer by name+email: ${payload.customer.name} / ${payload.customer.email}`);
+      console.log("Operation event");
       const { data: nameEmailCustomers, error: findError } = await supabase
         .from('customers')
         .select('*')
@@ -725,7 +715,7 @@ async function renewCustomerGroup(
 
       if (!findError && nameEmailCustomers && nameEmailCustomers.length > 0) {
         customer = nameEmailCustomers[0];
-        console.log(`✅ Found customer by name+email: ${customer.name}`);
+        console.log("Operation event");
       }
     }
 
@@ -758,7 +748,7 @@ async function renewCustomerGroup(
         .from('customers')
         .update({ highlevel_contact_id: payload.contact_id })
         .eq('id', customer.id);
-      console.log(`🔗 Linked highlevel_contact_id to customer: ${payload.contact_id}`);
+      console.log("Operation event");
     }
 
     // Use the renew-customer-group function with service call pattern
@@ -772,7 +762,7 @@ async function renewCustomerGroup(
     });
 
     if (error || !data?.success) {
-      console.error('❌ Failed to renew customer:', error || data);
+      console.error("❌ Failed to renew customer:");
       
       // Sync failure to HighLevel (non-blocking)
       const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
@@ -819,7 +809,7 @@ async function renewCustomerGroup(
         }];
       }
       
-      console.log('🔗 M3U domain override applied for renewal:', !!resellerData.m3uDomainOverride);
+      console.log("🔗 M3U domain override applied for renewal:");
       
       // Add renewal_success tag on successful renewal
       await syncHighLevelContact(
@@ -835,13 +825,13 @@ async function renewCustomerGroup(
 
     // Trigger post-renewal sync to fetch authoritative dates from provider (non-blocking safety net)
     try {
-      console.log('🔄 Triggering post-renewal sync for customer:', customer.id);
+      console.log("🔄 Triggering post-renewal sync for customer:");
       await supabase.functions.invoke('sync-device-info', {
         body: { customerId: customer.id }
       });
-      console.log('✅ Post-renewal sync triggered successfully');
+      console.log("✅ Post-renewal sync triggered successfully");
     } catch (syncError) {
-      console.log('⚠️ Post-renewal sync failed (non-blocking):', syncError instanceof Error ? syncError.message : 'Unknown error');
+      console.log("⚠️ Post-renewal sync failed (non-blocking):");
     }
 
     return {
@@ -857,7 +847,7 @@ async function renewCustomerGroup(
       credits_used: data.creditsUsed
     };
   } catch (error) {
-    console.error('💥 Error renewing customer:', error);
+    console.error("💥 Error renewing customer:");
     return {
       success: false,
       message: 'Internal error during renewal',
@@ -873,12 +863,12 @@ async function upgradeCustomerConnections(
   resellerData: any
 ): Promise<EnhancedWebhookResult> {
   try {
-    console.log('⬆️ Upgrading customer connections');
+    console.log("⬆️ Upgrading customer connections");
 
     // 1. Extract plan_duration_months (REQUIRED)
     const planDurationMonths = payload.customer.plan_duration_months || payload.plan_duration_months;
     if (!planDurationMonths || planDurationMonths < 1) {
-      console.log('❌ Missing or invalid plan_duration_months');
+      console.log("❌ Missing or invalid plan_duration_months");
       
       await syncHighLevelContact(
         resellerId,
@@ -899,7 +889,7 @@ async function upgradeCustomerConnections(
     // 2. Validate requested connections (must be 2 or 3)
     const requestedConnections = payload.connections || 1;
     if (requestedConnections < 1 || requestedConnections > 3) {
-      console.log(`❌ Invalid requested connections: ${requestedConnections}`);
+      console.log("Operation event");
       
       await syncHighLevelContact(
         resellerId,
@@ -922,7 +912,7 @@ async function upgradeCustomerConnections(
 
     // 3a. First try to find by highlevel_contact_id if contact_id is provided
     if (payload.contact_id) {
-      console.log(`🔍 Looking up customer by highlevel_contact_id: ${payload.contact_id}`);
+      console.log("Operation event");
       const { data: contactCustomers, error: contactError } = await supabase
         .from('customers')
         .select('*')
@@ -933,15 +923,15 @@ async function upgradeCustomerConnections(
 
       if (!contactError && contactCustomers && contactCustomers.length > 0) {
         customer = contactCustomers[0];
-        console.log(`✅ Found customer by highlevel_contact_id: ${customer.name}`);
+        console.log("Operation event");
       } else {
-        console.log('⏭️ No customer found by highlevel_contact_id, trying name+email fallback');
+        console.log("⏭️ No customer found by highlevel_contact_id, trying name+email fallback");
       }
     }
 
     // 3b. Fallback to name + email lookup if not found by contact_id
     if (!customer && payload.customer.name && payload.customer.email) {
-      console.log(`🔍 Looking up customer by name+email: ${payload.customer.name} / ${payload.customer.email}`);
+      console.log("Operation event");
       const { data: nameEmailCustomers, error: findError } = await supabase
         .from('customers')
         .select('*')
@@ -953,7 +943,7 @@ async function upgradeCustomerConnections(
 
       if (!findError && nameEmailCustomers && nameEmailCustomers.length > 0) {
         customer = nameEmailCustomers[0];
-        console.log(`✅ Found customer by name+email: ${customer.name}`);
+        console.log("Operation event");
       }
     }
 
@@ -985,7 +975,7 @@ async function upgradeCustomerConnections(
         .from('customers')
         .update({ highlevel_contact_id: payload.contact_id })
         .eq('id', customer.id);
-      console.log(`🔗 Linked highlevel_contact_id to customer: ${payload.contact_id}`);
+      console.log("Operation event");
     }
 
     // 5. Determine current connection count
@@ -995,18 +985,18 @@ async function upgradeCustomerConnections(
     if (customer.connection_list && Array.isArray(customer.connection_list) && customer.connection_list.length > 0) {
       currentConnections = customer.connection_list.length;
       existingConnectionList = [...customer.connection_list];
-      console.log(`📊 Current connections (from connection_list): ${currentConnections}`);
+      console.log("Operation event");
     } else if (customer.total_connections && customer.total_connections > 0) {
       currentConnections = customer.total_connections;
-      console.log(`📊 Current connections (from total_connections): ${currentConnections}`);
+      console.log("Operation event");
     } else if (customer.username) {
       // Legacy single-connection customer
       currentConnections = 1;
-      console.log(`📊 Current connections (legacy single): ${currentConnections}`);
+      console.log("Operation event");
     }
 
     if (currentConnections === 0) {
-      console.log('❌ Could not determine current connection count');
+      console.log("❌ Could not determine current connection count");
       return {
         success: false,
         message: 'Unable to determine current connection count for customer',
@@ -1016,7 +1006,7 @@ async function upgradeCustomerConnections(
 
     // 6. Validate upgrade is possible
     if (requestedConnections <= currentConnections) {
-      console.log(`⚠️ No upgrade needed: requested=${requestedConnections}, current=${currentConnections}`);
+      console.log("Operation event");
       return {
         success: false,
         message: `Customer already has ${currentConnections} connection(s). No upgrade needed. Use 'renew' to extend subscription.`,
@@ -1027,12 +1017,12 @@ async function upgradeCustomerConnections(
     // 7. Calculate delta and credits required (upgrade = renew + add, so charge for ALL connections)
     const delta = requestedConnections - currentConnections;
     const creditsRequired = requestedConnections * planDurationMonths;
-    console.log(`💰 Credits calculation: connections=${requestedConnections} × duration=${planDurationMonths} = ${creditsRequired} credits (upgrade+renew)`);
+    console.log("Operation event");
 
     // 8. Check reseller credits
     if (resellerData.credits < creditsRequired) {
       const errorMsg = `Insufficient credits. Required: ${creditsRequired}, Available: ${resellerData.credits}`;
-      console.log(`❌ ${errorMsg}`);
+      console.log("Operation event");
       
       await syncHighLevelContact(
         resellerId,
@@ -1052,11 +1042,11 @@ async function upgradeCustomerConnections(
 
     // Calculate unified expiration date for all connections (upgrade = renew + add)
     const newExpirationDateStr = calculateNewExpirationDate(planDurationMonths);
-    console.log(`📅 Unified expiration date: ${newExpirationDateStr} (now + ${planDurationMonths} months)`);
+    console.log("Operation event");
 
     // 9. Migrate primary connection if connection_list is empty
     if (existingConnectionList.length === 0 && customer.username && customer.password) {
-      console.log('📦 Migrating primary connection to connection_list');
+      console.log("📦 Migrating primary connection to connection_list");
       existingConnectionList.push({
         connection_number: 1,
         username: customer.username,
@@ -1069,13 +1059,13 @@ async function upgradeCustomerConnections(
     }
 
     // 10. RENEW EXISTING CONNECTIONS VIA TREX API (provider-side renewal)
-    console.log(`🔄 Renewing ${existingConnectionList.length} existing connection(s) via Trex API...`);
+    console.log("Operation event");
 
     for (let i = 0; i < existingConnectionList.length; i++) {
       const conn = existingConnectionList[i];
       const connNum = conn.connection_number || i + 1;
       
-      console.log(`📡 Renewing existing connection ${connNum}/${existingConnectionList.length}...`);
+      console.log("Operation event");
       
       const renewResult = await renewConnectionViaTrex(
         {
@@ -1088,7 +1078,7 @@ async function upgradeCustomerConnections(
       
       if (!renewResult.success) {
         const errorMsg = `Failed to renew existing connection ${connNum}: ${renewResult.error}`;
-        console.error(`❌ ${errorMsg}`);
+        console.error("Operation event");
         
         await syncHighLevelContact(
           resellerId,
@@ -1112,10 +1102,10 @@ async function upgradeCustomerConnections(
         expiration_date: newExpirationDateStr
       };
       
-      console.log(`✅ Connection ${connNum} renewed and expiration updated to ${newExpirationDateStr}`);
+      console.log("Operation event");
     }
 
-    console.log(`✅ All ${existingConnectionList.length} existing connection(s) renewed via Trex API`);
+    console.log("Operation event");
 
     // 11. Create additional connections (delta) using create-iptv-user
     const newConnections: any[] = [];
@@ -1131,16 +1121,16 @@ async function upgradeCustomerConnections(
         .single();
       
       if (packageSettingError) {
-        console.log('⚠️ Could not load trex_default_package_id from system_settings (using fallback)');
+        console.log("⚠️ Could not load trex_default_package_id from system_settings (using fallback)");
       }
       
       packageId = packageSetting?.value || '27228';
-      console.log(`📦 Using default Trex package ID: ${String(packageId)}`);
+      console.log("Operation event");
     }
 
     for (let i = 0; i < delta; i++) {
       const connectionNumber = existingConnectionList.length + newConnections.length + 1;
-      console.log(`🔧 Creating connection ${connectionNumber} of ${requestedConnections}`);
+      console.log("Operation event");
 
       const { data: createResult, error: createError } = await supabase.functions.invoke('create-iptv-user', {
         body: {
@@ -1168,11 +1158,11 @@ async function upgradeCustomerConnections(
       });
 
       if (createError || !createResult?.success) {
-        console.error(`❌ Failed to create connection ${connectionNumber}:`, createError || createResult);
+        console.error("Operation event");
         
         // Partial failure - we created some but not all
         if (newConnections.length > 0) {
-          console.log(`⚠️ Partial upgrade: created ${newConnections.length} of ${delta} connections`);
+          console.log("Operation event");
         }
         
         await syncHighLevelContact(
@@ -1210,7 +1200,7 @@ async function upgradeCustomerConnections(
         await supabase.from('customers').delete().eq('id', createResult.customer.id);
       }
 
-      console.log(`✅ Connection ${connectionNumber} created successfully`);
+      console.log("Operation event");
     }
 
     // 12. Rewrite M3U URLs for persistence and downstream use
@@ -1219,7 +1209,7 @@ async function upgradeCustomerConnections(
       ...conn,
       m3u_url: rewriteM3uDomain(conn.m3u_url, resellerData.m3uDomainOverride, DEFAULT_M3U_DOMAIN)
     }));
-    console.log('🔗 M3U domain override applied for upgrade:', !!resellerData.m3uDomainOverride);
+    console.log("🔗 M3U domain override applied for upgrade:");
     
     const { error: updateError } = await supabase
       .from('customers')
@@ -1233,7 +1223,7 @@ async function upgradeCustomerConnections(
       .eq('id', customer.id);
 
     if (updateError) {
-      console.error('❌ Failed to update customer record:', updateError);
+      console.error("❌ Failed to update customer record:");
       return {
         success: false,
         message: 'Failed to update customer record with new connections',
@@ -1248,7 +1238,7 @@ async function upgradeCustomerConnections(
       .eq('id', resellerId);
 
     if (creditError) {
-      console.error('⚠️ Failed to deduct credits (non-blocking):', creditError);
+      console.error("⚠️ Failed to deduct credits (non-blocking):");
     }
 
     // 14. Log credit usage
@@ -1261,7 +1251,7 @@ async function upgradeCustomerConnections(
       notes: `Upgrade+Renew: ${currentConnections} → ${requestedConnections} connections for ${planDurationMonths} months`
     }]);
 
-    console.log(`✅ Upgrade completed: ${currentConnections} → ${requestedConnections} connections, ${creditsRequired} credits used`);
+    console.log("Operation event");
 
     // 15. Sync to HighLevel (non-blocking) - use rewritten URLs
     const contactIdToUse = payload.contact_id || customer.highlevel_contact_id;
@@ -1316,7 +1306,7 @@ async function upgradeCustomerConnections(
 
     return response;
   } catch (error) {
-    console.error('💥 Error upgrading customer:', error);
+    console.error("💥 Error upgrading customer:");
     return {
       success: false,
       message: 'Internal error during upgrade',
@@ -1327,7 +1317,7 @@ async function upgradeCustomerConnections(
 
 export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): Promise<EnhancedWebhookResult> => {
   try {
-    console.log('🚀 Processing enhanced webhook payload with consolidated multi-connection support:', JSON.stringify(payload, null, 2));
+    console.log("🚀 Processing enhanced webhook payload with consolidated multi-connection support:");
     
     // Validate payload structure
     if (!payload.action) {
@@ -1340,7 +1330,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
     
     // Validate trial payload - ensure no plan_duration_months for trials
     if (payload.action === 'trial' && payload.customer.plan_duration_months) {
-      console.log('⚠️ WARNING: Trial action should not include plan_duration_months. Removing it.');
+      console.log("⚠️ WARNING: Trial action should not include plan_duration_months. Removing it.");
       delete payload.customer.plan_duration_months;
     }
     
@@ -1387,7 +1377,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
       };
     }
     
-    console.log(`✅ Reseller authenticated: ${resellerData.name} (${resellerData.resellerId}) - Provider: ${resellerData.provider}`);
+    console.log("Operation event");
     
     // Route to appropriate handler based on action
     switch (payload.action) {
@@ -1411,7 +1401,7 @@ export const processEnhancedWebhook = async (payload: EnhancedWebhookPayload): P
         };
     }
   } catch (error) {
-    console.error('💥 Fatal error processing enhanced webhook:', error);
+    console.error("💥 Fatal error processing enhanced webhook:");
     return {
       success: false,
       message: 'Internal server error processing webhook',

@@ -1,17 +1,17 @@
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { User } from '../types';
 
 export const useUserProfile = () => {
   const [user, setUser] = useState<User | null>(null);
 
-  const fetchUserProfile = async (userId: string) => {
+  const fetchUserProfile = useCallback(async (userId: string) => {
     try {
-      console.log('Fetching user profile for ID:', userId);
+
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id,name,email,credits,provider')
         .eq('id', userId)
         .single();
       
@@ -21,12 +21,13 @@ export const useUserProfile = () => {
       }
 
       if (data) {
-        console.log('User profile data:', data);
+        const { data: admin, error: roleError } = await supabase.rpc('is_admin');
+        if(roleError) throw roleError;
         setUser({
           id: data.id,
           name: data.name,
           email: data.email,
-          role: data.role,
+          role: admin ? 'admin' : 'reseller',
           credits: data.credits,
           provider: data.provider
         });
@@ -34,7 +35,7 @@ export const useUserProfile = () => {
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
     }
-  };
+  }, []);
 
   return {
     user,

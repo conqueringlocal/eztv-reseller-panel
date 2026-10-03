@@ -14,6 +14,13 @@ export type Database = {
   }
   public: {
     Tables: {
+      manual_credit_requests: {
+        Row: { id:string; reseller_id:string; credits:number; unit_price:number; currency:string; payment_reference:string; status:string; verified_reference:string|null; reviewed_by:string|null; review_note:string|null; created_at:string; reviewed_at:string|null }
+        Insert: never
+        Update: never
+        Relationships: []
+      }
+
       admin_highlevel_settings: {
         Row: {
           created_at: string | null
@@ -879,6 +886,7 @@ export type Database = {
       }
       sso_tokens: {
         Row: {
+          expires_at: string
           created_at: string
           created_by: string | null
           id: string
@@ -891,6 +899,7 @@ export type Database = {
           usage_count: number
         }
         Insert: {
+          expires_at?: string
           created_at?: string
           created_by?: string | null
           id?: string
@@ -903,6 +912,7 @@ export type Database = {
           usage_count?: number
         }
         Update: {
+          expires_at?: string
           created_at?: string
           created_by?: string | null
           id?: string
@@ -1012,6 +1022,13 @@ export type Database = {
       }
     }
     Functions: {
+      get_operation_review_queue: {Args:never;Returns:Json}
+      adjust_reseller_credits: { Args: {p_id:string;p_reseller:string;p_delta:number;p_notes:string}; Returns:number }
+      request_manual_credits: { Args: {p_id:string;p_credits:number;p_reference:string}; Returns:string }
+      review_manual_credits: { Args: {p_id:string;p_approve:boolean;p_verified_reference:string;p_note:string}; Returns:string }
+      request_parent_credits: { Args: {p_credits:number;p_message:string}; Returns:string }
+      review_parent_credits: { Args: {p_id:string;p_approve:boolean}; Returns:string }
+
       calculate_credits_required: {
         Args: { connections?: number; duration_months?: number }
         Returns: number

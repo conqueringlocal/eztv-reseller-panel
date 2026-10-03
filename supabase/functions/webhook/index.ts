@@ -15,18 +15,18 @@ serve(async (req) => {
   }
 
   try {
-    console.log(`📞 Webhook received: ${req.method} ${req.url}`)
+    console.log("Operation event")
     
     let payload: any;
     
     if (req.method === 'POST') {
       // Handle JSON POST request (standard webhook)
       const contentType = req.headers.get('content-type')
-      console.log(`📋 Content-Type: ${contentType}`)
+      console.log("Operation event")
       
       if (contentType?.includes('application/json')) {
         payload = await req.json()
-        console.log(`📦 JSON Payload received:`, payload)
+        console.log("Operation event")
       } else if (contentType?.includes('application/x-www-form-urlencoded')) {
         // Handle form data
         const formData = await req.formData()
@@ -35,11 +35,11 @@ serve(async (req) => {
           formObj[key] = value
         }
         payload = formObj
-        console.log(`📝 Form Payload received:`, payload)
+        console.log("Operation event")
       } else {
         // Try to parse as text and then JSON
         const text = await req.text()
-        console.log(`📄 Raw payload:`, text)
+        console.log("Operation event")
         try {
           payload = JSON.parse(text)
         } catch {
@@ -87,7 +87,7 @@ serve(async (req) => {
         delete payload.customer.plan_duration_months;
       }
       
-      console.log(`🔗 Query Params Payload:`, payload)
+      console.log("Operation event")
     } else {
       return new Response(
         JSON.stringify({ 
@@ -115,17 +115,17 @@ serve(async (req) => {
       )
     }
 
-    console.log(`🔄 Processing webhook with payload:`, payload)
+    console.log("Operation event")
     
     // Determine which webhook processor to use based on payload structure
     let result;
     
     // Check if this is an enhanced webhook (has action field and connections support)
     if (payload.action && ['create', 'renew', 'trial', 'upgrade'].includes(payload.action)) {
-      console.log('🚀 Using enhanced webhook processor')
+      console.log("🚀 Using enhanced webhook processor")
       result = await processEnhancedWebhook(payload as EnhancedWebhookPayload)
     } else {
-      console.log('📋 Using legacy webhook processor')
+      console.log("📋 Using legacy webhook processor")
       // Convert to legacy format for backwards compatibility
       const legacyPayload: WebhookPayload = {
         api_key: payload.api_key,
@@ -152,7 +152,7 @@ serve(async (req) => {
       result = await processWebhook(legacyPayload)
     }
     
-    console.log(`✅ Webhook processing result:`, result)
+    console.log("Operation event")
     
     return new Response(
       JSON.stringify(result),
@@ -163,7 +163,7 @@ serve(async (req) => {
     )
     
   } catch (error) {
-    console.error('💥 Webhook error:', error)
+    console.error("💥 Webhook error:")
     return new Response(
       JSON.stringify({ 
         success: false, 

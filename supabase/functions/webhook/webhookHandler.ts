@@ -91,14 +91,14 @@ async function getDefaultPackageId(): Promise<string> {
       .single();
 
     if (error || !data) {
-      console.log('⚠️ Default package ID not found in system settings, using fallback value "14826"');
+      console.log("⚠️ Default package ID not found in system settings, using fallback value \"14826\"");
       return '14826'; // Fallback to package ID "14826"
     }
 
-    console.log(`📦 Using default package ID from settings: ${data.value}`);
+    console.log("Operation event");
     return data.value;
   } catch (error) {
-    console.error('❌ Error fetching default package ID:', error);
+    console.error("❌ Error fetching default package ID:");
     return '14826'; // Fallback to package ID "14826"
   }
 }
@@ -117,14 +117,14 @@ async function getResellerHighLevelCredentials(resellerId: string): Promise<{
       .single();
 
     if (error || !data) {
-      console.log('⚠️ No HighLevel settings found for reseller:', resellerId);
+      console.log("⚠️ No HighLevel settings found for reseller:");
       return { apiKey: null, locationId: null };
     }
 
-    console.log('✅ Found HighLevel credentials for reseller:', resellerId);
+    console.log("✅ Found HighLevel credentials for reseller:");
     return { apiKey: data.location_api_key, locationId: data.location_id };
   } catch (error) {
-    console.error('❌ Error fetching HighLevel credentials:', error);
+    console.error("❌ Error fetching HighLevel credentials:");
     return { apiKey: null, locationId: null };
   }
 }
@@ -136,7 +136,7 @@ async function findCustomerByNameAndEmail(
   resellerId: string
 ): Promise<any | null> {
   try {
-    console.log(`🔍 Looking for existing customer: ${customerName} (${customerEmail}) for reseller: ${resellerId}`);
+    console.log("Operation event");
     
     const { data: customers, error } = await supabase
       .from('customers')
@@ -148,20 +148,20 @@ async function findCustomerByNameAndEmail(
       .limit(1);
 
     if (error) {
-      console.error('❌ Error searching for customer:', error);
+      console.error("❌ Error searching for customer:");
       return null;
     }
 
     if (!customers || customers.length === 0) {
-      console.log('⚠️ No matching customer found');
+      console.log("⚠️ No matching customer found");
       return null;
     }
 
     const customer = customers[0];
-    console.log(`✅ Found matching customer: ${customer.id}`);
+    console.log("Operation event");
     return customer;
   } catch (error) {
-    console.error('💥 Error in findCustomerByNameAndEmail:', error);
+    console.error("💥 Error in findCustomerByNameAndEmail:");
     return null;
   }
 }
@@ -174,7 +174,7 @@ async function processCustomerRenewal(
   contactId?: string
 ): Promise<LegacyWebhookResult> {
   try {
-    console.log(`🔄 Processing renewal for customer: ${customer.id} (${additionalMonths} months)`);
+    console.log("Operation event");
 
     // Check if reseller has enough credits
     const { data: reseller, error: resellerError } = await supabase
@@ -184,7 +184,7 @@ async function processCustomerRenewal(
       .single();
 
     if (resellerError || !reseller) {
-      console.error('❌ Error fetching reseller data:', resellerError);
+      console.error("❌ Error fetching reseller data:");
       return {
         success: false,
         message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`,
@@ -193,7 +193,7 @@ async function processCustomerRenewal(
     }
 
     if (reseller.credits < additionalMonths) {
-      console.error('❌ Insufficient credits for renewal');
+      console.error("❌ Insufficient credits for renewal");
       return {
         success: false,
         message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${additionalMonths} are required`,
@@ -202,7 +202,7 @@ async function processCustomerRenewal(
     }
 
     // Call IPTV panel renewal API
-    console.log('🎯 Calling IPTV panel renewal API');
+    console.log("🎯 Calling IPTV panel renewal API");
     const { data, error } = await supabase.functions.invoke('renew-iptv-user', {
       body: {
         customerId: customer.id,
@@ -211,7 +211,7 @@ async function processCustomerRenewal(
     });
 
     if (error || !data?.success) {
-      console.error('❌ Failed to renew IPTV user:', error || data);
+      console.error("❌ Failed to renew IPTV user:");
       return {
         success: false,
         message: "Failed to renew IPTV user in panel",
@@ -219,7 +219,7 @@ async function processCustomerRenewal(
       };
     }
 
-    console.log('✅ IPTV user renewed successfully');
+    console.log("✅ IPTV user renewed successfully");
 
     // Calculate new expiration date
     const currentExpiry = new Date(customer.expiration_date);
@@ -227,7 +227,7 @@ async function processCustomerRenewal(
     newExpiry.setMonth(newExpiry.getMonth() + additionalMonths);
     const newExpirationDate = newExpiry.toISOString().split('T')[0];
 
-    console.log(`📅 New expiration date: ${newExpirationDate}`);
+    console.log("Operation event");
 
     // Update customer record in database
     const { error: updateError } = await supabase
@@ -240,7 +240,7 @@ async function processCustomerRenewal(
       .eq('id', customer.id);
 
     if (updateError) {
-      console.error('❌ Error updating customer record:', updateError);
+      console.error("❌ Error updating customer record:");
       return {
         success: false,
         message: `Failed to update customer record: ${updateError.message}`,
@@ -248,7 +248,7 @@ async function processCustomerRenewal(
       };
     }
 
-    console.log('✅ Customer record updated successfully');
+    console.log("✅ Customer record updated successfully");
 
     // Deduct credits from reseller
     const { error: creditError } = await supabase
@@ -257,7 +257,7 @@ async function processCustomerRenewal(
       .eq('id', resellerId);
 
     if (creditError) {
-      console.error('❌ Error deducting credits:', creditError);
+      console.error("❌ Error deducting credits:");
       return {
         success: false,
         message: `Failed to deduct credits: ${creditError.message}`,
@@ -265,7 +265,7 @@ async function processCustomerRenewal(
       };
     }
 
-    console.log('💳 Credits deducted successfully');
+    console.log("💳 Credits deducted successfully");
 
     // Log the transaction
     const { error: logError } = await supabase
@@ -280,13 +280,13 @@ async function processCustomerRenewal(
       });
 
     if (logError) {
-      console.error('⚠️ Failed to log renewal transaction:', logError);
+      console.error("⚠️ Failed to log renewal transaction:");
     }
 
     // Send renewal confirmation via HighLevel if contact ID is available
     if (contactId || customer.highlevel_contact_id) {
       const finalContactId = contactId || customer.highlevel_contact_id;
-      console.log('📨 Sending renewal confirmation via HighLevel');
+      console.log("📨 Sending renewal confirmation via HighLevel");
       
       await sendHighLevelCredentials(
         finalContactId,
@@ -298,7 +298,7 @@ async function processCustomerRenewal(
       );
     }
 
-    console.log('🎉 Customer renewal completed successfully');
+    console.log("🎉 Customer renewal completed successfully");
 
     // Return flattened response for HighLevel compatibility
     return {
@@ -316,7 +316,7 @@ async function processCustomerRenewal(
       credits_used: additionalMonths
     };
   } catch (error) {
-    console.error('💥 Error in processCustomerRenewal:', error);
+    console.error("💥 Error in processCustomerRenewal:");
     return {
       success: false,
       message: error instanceof Error ? error.message : "Unknown error during renewal",
@@ -333,7 +333,7 @@ async function syncContactWithMultiCredentials(
   customers: any[]
 ): Promise<void> {
   try {
-    console.log('🔄 Syncing contact with multi-credential support:', contactId);
+    console.log("🔄 Syncing contact with multi-credential support:");
 
     // Prepare credentials for syncing (up to 3 sets)
     const credentialsToSync: any = {};
@@ -360,7 +360,7 @@ async function syncContactWithMultiCredentials(
       credentialsToSync['device_type_optional'] = customerData.deviceType;
     }
 
-    console.log('🔐 Credentials to sync:', Object.keys(credentialsToSync));
+    console.log("🔐 Credentials to sync:");
 
     // First create/update the contact with basic info
     const { data: createContactResult, error: createContactError } = await supabase.functions.invoke('create-highlevel-contact', {
@@ -375,14 +375,14 @@ async function syncContactWithMultiCredentials(
     });
 
     if (createContactError || !createContactResult?.success) {
-      console.error('❌ Failed to create/update HighLevel contact:', createContactError || createContactResult);
+      console.error("❌ Failed to create/update HighLevel contact:");
       return;
     }
 
-    console.log('✅ Successfully synced contact with multi-credentials');
+    console.log("✅ Successfully synced contact with multi-credentials");
     
   } catch (error) {
-    console.error('💥 Error syncing contact with multi-credentials:', error);
+    console.error("💥 Error syncing contact with multi-credentials:");
   }
 }
 
@@ -396,17 +396,17 @@ async function sendHighLevelCredentials(
   m3uUrl?: string
 ): Promise<void> {
   try {
-    console.log('📨 Attempting to send credentials via HighLevel to contact:', contactId);
+    console.log("📨 Attempting to send credentials via HighLevel to contact:");
 
     // Get reseller's HighLevel credentials
     const { apiKey, locationId } = await getResellerHighLevelCredentials(resellerId);
 
     if (!apiKey || !locationId) {
-      console.log('⚠️ No HighLevel credentials configured for reseller:', resellerId);
+      console.log("⚠️ No HighLevel credentials configured for reseller:");
       return;
     }
 
-    console.log('✅ Found HighLevel credentials for reseller, sending message');
+    console.log("✅ Found HighLevel credentials for reseller, sending message");
 
     const { data, error } = await supabase.functions.invoke('send-highlevel-message', {
       body: {
@@ -423,25 +423,25 @@ async function sendHighLevelCredentials(
     });
 
     if (error || !data?.success) {
-      console.error('❌ Failed to send HighLevel message:', error || data);
+      console.error("❌ Failed to send HighLevel message:");
     } else {
-      console.log('✅ HighLevel credentials sent successfully:', data);
+      console.log("✅ HighLevel credentials sent successfully:");
     }
   } catch (error) {
-    console.error('💥 Error sending HighLevel credentials:', error);
+    console.error("💥 Error sending HighLevel credentials:");
   }
 }
 
 // Process incoming webhook with flattened response
 export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWebhookResult> => {
   try {
-    console.log(`🔄 Processing webhook payload:`, payload);
+    console.log("Operation event");
     
     let resellerId: string;
 
     // Try to identify reseller by API key first, then fall back to direct reseller ID
     if (payload.api_key) {
-      console.log('🔍 Looking up reseller by API key');
+      console.log("🔍 Looking up reseller by API key");
       
       // Find the reseller by API key
       const { data: apiKeyData, error: apiKeyError } = await supabase
@@ -452,7 +452,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
         .single();
 
       if (apiKeyError || !apiKeyData) {
-        console.error('❌ Invalid or inactive API key:', payload.api_key);
+        console.error("❌ Invalid or inactive API key:");
         return {
           success: false,
           message: "Invalid or inactive API key",
@@ -461,7 +461,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       }
 
       resellerId = apiKeyData.reseller_id;
-      console.log(`✅ Found reseller ID: ${resellerId}`);
+      console.log("Operation event");
 
       // Update API key usage
       const { error: updateError } = await supabase
@@ -473,14 +473,14 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
         .eq('api_key', payload.api_key);
 
       if (updateError) {
-        console.error('⚠️ Failed to update API key usage:', updateError);
+        console.error("⚠️ Failed to update API key usage:");
       }
     } else if (payload.resellerId) {
       // Legacy support for direct reseller ID
       resellerId = payload.resellerId;
-      console.log(`📋 Using legacy reseller ID: ${resellerId}`);
+      console.log("Operation event");
     } else {
-      console.error('❌ Missing API key or reseller ID in webhook payload');
+      console.error("❌ Missing API key or reseller ID in webhook payload");
       return {
         success: false,
         message: "Missing API key or reseller ID in webhook payload",
@@ -499,11 +499,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
     // Check if this is a trial account
     const isTrialAccount = payload.is_trial || false;
     
-    console.log(`🎯 Processing ${action} action for customer: ${customerName} (${customerEmail}) - Trial: ${isTrialAccount}`);
+    console.log("Operation event");
     
     // Validate payload
     if (!customerName || !customerEmail || !planDuration) {
-      console.error('❌ Missing required customer fields');
+      console.error("❌ Missing required customer fields");
       return {
         success: false,
         message: "Missing required customer fields in webhook payload",
@@ -513,7 +513,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
 
     // Handle renewal action
     if (action === 'renew') {
-      console.log('🔄 Processing renewal request');
+      console.log("🔄 Processing renewal request");
       
       // Find existing customer
       const existingCustomer = await findCustomerByNameAndEmail(customerName, customerEmail, resellerId);
@@ -538,7 +538,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
     }
 
     // Handle create action (existing logic with trial support and enhanced HighLevel integration)
-    console.log('➕ Processing customer creation request');
+    console.log("➕ Processing customer creation request");
     
     const macAddress = payload.customer?.mac || payload.macAddress;
     const deviceType = payload.customer?.device_type || payload.deviceType || 'Smart TV';
@@ -549,20 +549,11 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
     // Extract HighLevel contact ID for sending credentials
     const contactId = payload.contact_id || payload.contactId;
     
-    console.log(`👤 Customer data extracted:`, { 
-      customerName, 
-      customerEmail, 
-      macAddress, 
-      deviceType, 
-      planDuration,
-      packageId,
-      contactId,
-      isTrialAccount
-    });
+    console.log("Operation event");
     
     // Validate required fields for creation
     if (!macAddress) {
-      console.error('❌ MAC address is required for customer creation');
+      console.error("❌ MAC address is required for customer creation");
       return {
         success: false,
         message: "MAC address is required for customer creation",
@@ -580,7 +571,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
         .single();
 
       if (resellerError || !resellerData) {
-        console.error('❌ Reseller not found:', resellerError?.message);
+        console.error("❌ Reseller not found:");
         return {
           success: false,
           message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`,
@@ -589,10 +580,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       }
 
       reseller = resellerData;
-      console.log(`💰 Reseller credits: ${reseller.credits}, required: ${planDuration}`);
+      console.log("Operation event");
 
       if (reseller.credits < planDuration) {
-        console.error('❌ Insufficient credits');
+        console.error("❌ Insufficient credits");
         return {
           success: false,
           message: `Insufficient credits: Reseller has ${reseller.credits} credits, but ${planDuration} are required`,
@@ -600,7 +591,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
         };
       }
     } else {
-      console.log('🆓 Trial account - skipping credit check');
+      console.log("🆓 Trial account - skipping credit check");
       
       // Get reseller info for trial account
       const { data: resellerData, error: resellerError } = await supabase
@@ -610,7 +601,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
         .single();
 
       if (resellerError || !resellerData) {
-        console.error('❌ Reseller not found:', resellerError?.message);
+        console.error("❌ Reseller not found:");
         return {
           success: false,
           message: `Reseller not found: ${resellerError?.message || 'Unknown error'}`,
@@ -625,7 +616,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
     const fallbackUsername = generateUsername(customerName);
     const fallbackPassword = generatePassword();
 
-    console.log(`🔑 Generated fallback credentials - Username: ${fallbackUsername}, Password: ${fallbackPassword}`);
+    console.log("Operation event");
 
     // Calculate dates
     const today = new Date();
@@ -635,14 +626,14 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
     expiryDate.setMonth(expiryDate.getMonth() + planDuration);
     const expirationDate = expiryDate.toISOString().split('T')[0];
 
-    console.log(`📅 Subscription dates - Start: ${startDate}, Expiry: ${expirationDate}`);
+    console.log("Operation event");
 
     // Get the package ID to use (from payload or default)
     const finalPackageId = packageId || await getDefaultPackageId();
-    console.log(`📦 Using package ID: ${finalPackageId}`);
+    console.log("Operation event");
 
     // Call IPTV API via edge function
-    console.log('📡 Creating IPTV user via edge function');
+    console.log("📡 Creating IPTV user via edge function");
     const { data, error } = await supabase.functions.invoke('create-iptv-user', {
       body: {
         userParams: {
@@ -660,7 +651,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
     });
     
     if (error || !data?.success) {
-      console.error('❌ Failed to create IPTV user:', error || data);
+      console.error("❌ Failed to create IPTV user:");
       return {
         success: false,
         message: "Failed to create IPTV user",
@@ -668,7 +659,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       };
     }
 
-    console.log('✅ IPTV user created successfully');
+    console.log("✅ IPTV user created successfully");
 
     // Extract the actual credentials from the API response
     let finalUsername = fallbackUsername;
@@ -678,9 +669,9 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
     if (data.user && data.user.username && data.user.password) {
       finalUsername = data.user.username;
       finalPassword = data.user.password;
-      console.log(`🔑 Using actual credentials from API - Username: ${finalUsername}, Password: ${finalPassword}`);
+      console.log("Operation event");
     } else {
-      console.log(`⚠️ API did not return credentials, using fallback - Username: ${finalUsername}, Password: ${finalPassword}`);
+      console.log("Operation event");
     }
 
     // Create customer record in database with the actual credentials
@@ -700,7 +691,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       trial_created_at: isTrialAccount ? new Date().toISOString() : null
     };
 
-    console.log('💾 Inserting customer into database with actual credentials');
+    console.log("💾 Inserting customer into database with actual credentials");
     const { data: customer, error: customerError } = await supabase
       .from('customers')
       .insert(customerData)
@@ -708,7 +699,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       .single();
 
     if (customerError) {
-      console.error('❌ Failed to add customer to database:', customerError);
+      console.error("❌ Failed to add customer to database:");
       return {
         success: false,
         message: `Failed to add customer to database: ${customerError.message}`,
@@ -716,18 +707,18 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       };
     }
 
-    console.log('✅ Customer added to database with ID:', customer.id);
+    console.log("✅ Customer added to database with ID:");
 
     // Deduct credits from reseller only if not a trial account
     if (!isTrialAccount) {
-      console.log('💳 Deducting credits from reseller');
+      console.log("💳 Deducting credits from reseller");
       const { error: creditError } = await supabase
         .from('profiles')
         .update({ credits: reseller.credits - planDuration })
         .eq('id', resellerId);
 
       if (creditError) {
-        console.error('❌ Failed to deduct credits:', creditError);
+        console.error("❌ Failed to deduct credits:");
         return {
           success: false,
           message: `Failed to deduct credits: ${creditError.message}`,
@@ -736,7 +727,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       }
 
       // Log the transaction
-      console.log('📝 Logging credit transaction with actual credentials');
+      console.log("📝 Logging credit transaction with actual credentials");
       const { error: logError } = await supabase
         .from('credit_logs')
         .insert({
@@ -749,15 +740,15 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
         });
 
       if (logError) {
-        console.error("⚠️ Failed to log transaction:", logError);
+        console.error("⚠️ Failed to log transaction:");
       }
     } else {
-      console.log('🆓 Trial account - skipping credit deduction and logging');
+      console.log("🆓 Trial account - skipping credit deduction and logging");
     }
 
     // Enhanced HighLevel integration with multi-credential support
     if (contactId) {
-      console.log('🎯 HighLevel contact ID provided, syncing with multi-credential support');
+      console.log("🎯 HighLevel contact ID provided, syncing with multi-credential support");
       
       // Create mock customers array for sync function (single customer for now)
       const customersForSync = [{
@@ -790,10 +781,10 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
         data.user?.m3u_url
       );
     } else {
-      console.log('ℹ️ No HighLevel contact ID provided, skipping HighLevel integration');
+      console.log("ℹ️ No HighLevel contact ID provided, skipping HighLevel integration");
     }
 
-    console.log('🎉 Webhook processing completed successfully');
+    console.log("🎉 Webhook processing completed successfully");
 
     // Return flattened success response for HighLevel compatibility
     return {
@@ -811,7 +802,7 @@ export const processWebhook = async (payload: WebhookPayload): Promise<LegacyWeb
       credits_used: isTrialAccount ? 0 : planDuration
     };
   } catch (error) {
-    console.error("💥 Error processing webhook:", error);
+    console.error("💥 Error processing webhook:");
     return {
       success: false,
       message: error instanceof Error ? error.message : "Unknown error",

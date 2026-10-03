@@ -90,70 +90,8 @@ export const ParentCreditManagement: React.FC = () => {
     setProcessingRequest(requestId);
 
     try {
-      // If approving, first check if parent has enough credits
-      if (action === 'approved') {
-        const { data: parentProfile, error: parentError } = await supabase
-          .from('profiles')
-          .select('credits')
-          .eq('id', user.id)
-          .single();
-
-        if (parentError || !parentProfile) {
-          toast({
-            title: "Error",
-            description: "Failed to check your credit balance",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (parentProfile.credits < request.credits_requested) {
-          toast({
-            title: "Insufficient Credits",
-            description: `You need ${request.credits_requested} credits but only have ${parentProfile.credits}`,
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Use the proper credit transfer function
-        const { data: transferResult, error: transferError } = await supabase
-          .rpc('transfer_credits_to_sub_reseller', {
-            parent_reseller_id_param: user.id,
-            sub_reseller_id_param: request.requester_id,
-            credits_to_transfer: request.credits_requested,
-            notes_param: `Credits received from parent reseller`
-          });
-
-        if (transferError || !transferResult || !transferResult[0]?.success) {
-          console.error('Error transferring credits:', transferError);
-          toast({
-            title: "Error",
-            description: transferResult?.[0]?.error_message || "Failed to transfer credits",
-            variant: "destructive",
-          });
-          return;
-        }
-      }
-
-      // Update request status
-      const { error: requestUpdateError } = await supabase
-        .from('credit_requests')
-        .update({
-          status: action,
-          processed_at: new Date().toISOString(),
-        })
-        .eq('id', requestId);
-
-      if (requestUpdateError) {
-        console.error('Error updating request status:', requestUpdateError);
-        toast({
-          title: "Error",
-          description: "Failed to update request status",
-          variant: "destructive",
-        });
-        return;
-      }
+      const { error } = await supabase.rpc('review_parent_credits', {p_id:requestId,p_approve:action==='approved'});
+      if(error) throw error;
 
       toast({
         title: "Success",

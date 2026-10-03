@@ -21,7 +21,7 @@ export const convertDbCustomerToCustomer = (dbCustomer: any): Customer => {
     connectionDetails: dbCustomer.connection_details || [],
     startDate: dbCustomer.start_date,
     expirationDate: dbCustomer.expiration_date,
-    status: dbCustomer.status,
+    status: dbCustomer.status === 'active' && dbCustomer.expiration_date && dbCustomer.expiration_date.slice(0,10) < new Date().toISOString().slice(0,10) ? 'expired' : dbCustomer.status,
     isDeactivated: dbCustomer.is_deactivated || false,
     provider: dbCustomer.provider || 'trex',
     customer_group: dbCustomer.customer_group,

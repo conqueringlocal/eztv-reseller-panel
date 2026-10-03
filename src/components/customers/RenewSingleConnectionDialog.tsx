@@ -1,3 +1,4 @@
+import { paidOperationFailure, paidOperationKey, clearPaidOperationKey } from '@/utils/paidOperationFeedback';
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -65,12 +66,13 @@ export const RenewSingleConnectionDialog = ({
       const { data, error } = await supabase.functions.invoke("renew-single-connection", {
         body: {
           customerId,
+          operationKey: paidOperationKey('single',customerId,parseInt(planDuration),connectionNumber),
           connectionNumber,
           planDuration: parseInt(planDuration),
         },
       });
 
-      if (error) throw error;
+      if (error) { let result; try { result = await error.context?.json(); } catch { /* Unknown outcome. */ } throw new Error(paidOperationFailure(result)); }
 
       if (data?.success) {
         const creditsUsedMsg = isAdmin 
@@ -80,6 +82,8 @@ export const RenewSingleConnectionDialog = ({
         toast.success(
           `Connection ${connectionNumber} for ${customerName} renewed successfully${creditsUsedMsg}. New expiration: ${data.newExpirationDate}`
         );
+        clearPaidOperationKey('single',customerId,parseInt(planDuration),connectionNumber);
+        window.dispatchEvent(new CustomEvent('creditsUpdated'));
         onSuccess();
         onOpenChange(false);
       } else {

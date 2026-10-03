@@ -10,7 +10,7 @@ const resellerId = '11111111-1111-4111-8111-111111111111';
 const otherResellerId = '22222222-2222-4222-8222-222222222222';
 const q = value => `'${String(value).replaceAll("'", "''")}'`;
 const json = value => `${q(JSON.stringify(value))}::jsonb`;
-const sql = source => execFileSync('docker', ['exec', '-i', container, 'psql', '-XAt', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1'],
+const sql = source => execFileSync('docker', ['exec', '-i', container, 'psql', '-h', '127.0.0.1', '-XAt', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1'],
   { input: source, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
 const query = source => JSON.parse(sql(source));
 const customer = (overrides = {}) => ({ name: 'Fixture Customer', email: 'fixture@example.invalid',
@@ -305,7 +305,7 @@ test('request receipts and privileged RPCs are inaccessible to browser roles', (
 test('separate database sessions contend atomically for one claim', async () => {
   const command = `SELECT claim_trex_provisioning(${q(resellerId)},${json(customer())},true);`;
   const concurrent = () => new Promise((resolve, reject) => {
-    const proc = spawn('docker', ['exec', '-i', container, 'psql', '-XAt', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1']);
+    const proc = spawn('docker', ['exec', '-i', container, 'psql', '-h', '127.0.0.1', '-XAt', '-U', 'postgres', '-v', 'ON_ERROR_STOP=1']);
     let output = '';
     proc.stdout.on('data', chunk => { output += chunk; });
     proc.on('error', reject);
