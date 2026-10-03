@@ -188,7 +188,7 @@ BEGIN
  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator required'; END IF;
   RETURN QUERY
   WITH duplicate_logs AS (
-    SELECT 
+    SELECT
       cl.customer_id,
       cl.reseller_id,
       cl.credits_used,
@@ -197,19 +197,19 @@ BEGIN
       -- Get customer name from first matching record
       (SELECT name FROM public.customers WHERE id = cl.customer_id LIMIT 1) as customer_name
     FROM public.credit_logs cl
-    WHERE 
+    WHERE
       cl.action = 'account_creation'
       AND cl.notes LIKE 'Group renewal for%'
       AND cl.date > (NOW() - (p_hours_back || ' hours')::INTERVAL)
       AND cl.customer_id IS NOT NULL
-    GROUP BY 
-      cl.customer_id, 
-      cl.reseller_id, 
+    GROUP BY
+      cl.customer_id,
+      cl.reseller_id,
       cl.credits_used,
       DATE_TRUNC('minute', cl.date) -- Group by minute to catch rapid duplicates
     HAVING COUNT(*) > 1
   )
-  SELECT 
+  SELECT
     dl.customer_id,
     dl.customer_name,
     dl.reseller_id,
@@ -232,7 +232,7 @@ BEGIN
  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator required'; END IF;
   RETURN QUERY
   WITH normalized_customers AS (
-    SELECT 
+    SELECT
       id,
       name,
       email,
@@ -251,13 +251,13 @@ BEGIN
     c2.id as customer2_id,
     c2.name as customer2_name,
     c2.email as customer2_email,
-    CASE 
+    CASE
       WHEN c1.normalized_email = c2.normalized_email THEN 'exact_email_match'
       WHEN c1.normalized_name = c2.normalized_name THEN 'exact_name_match'
       ELSE 'similar'
     END as match_type
   FROM normalized_customers c1
-  INNER JOIN normalized_customers c2 
+  INNER JOIN normalized_customers c2
     ON c1.reseller_id = c2.reseller_id
     AND c1.id < c2.id  -- Avoid duplicate pairs and self-matches
     AND (c1.customer_group IS NULL OR c2.customer_group IS NULL OR c1.customer_group != c2.customer_group)  -- Exclude already consolidated customers
@@ -281,35 +281,35 @@ BEGIN
  IF NOT public.is_admin() THEN RAISE EXCEPTION 'Administrator required'; END IF;
     -- Delete existing metrics
     DELETE FROM public.security_dashboard_metrics;
-    
+
     -- Insert fresh metrics
     INSERT INTO public.security_dashboard_metrics (metric_name, metric_value, description) VALUES
-    ('failed_logins_24h', 
-     (SELECT COUNT(*)::text FROM public.security_audit_logs 
+    ('failed_logins_24h',
+     (SELECT COUNT(*)::text FROM public.security_audit_logs
       WHERE action = 'login_failed' AND created_at > (now() - interval '24 hours')),
      'Failed login attempts in last 24 hours');
-    
+
     INSERT INTO public.security_dashboard_metrics (metric_name, metric_value, description) VALUES
-    ('successful_logins_24h', 
-     (SELECT COUNT(*)::text FROM public.security_audit_logs 
+    ('successful_logins_24h',
+     (SELECT COUNT(*)::text FROM public.security_audit_logs
       WHERE action = 'login_success' AND created_at > (now() - interval '24 hours')),
      'Successful logins in last 24 hours');
-    
+
     INSERT INTO public.security_dashboard_metrics (metric_name, metric_value, description) VALUES
-    ('blocked_ips_active', 
-     (SELECT COUNT(DISTINCT identifier)::text FROM public.auth_rate_limits 
+    ('blocked_ips_active',
+     (SELECT COUNT(DISTINCT identifier)::text FROM public.auth_rate_limits
       WHERE blocked_until > now()),
      'Currently blocked IP addresses/emails');
-    
+
     INSERT INTO public.security_dashboard_metrics (metric_name, metric_value, description) VALUES
-    ('password_resets_24h', 
-     (SELECT COUNT(*)::text FROM public.security_audit_logs 
+    ('password_resets_24h',
+     (SELECT COUNT(*)::text FROM public.security_audit_logs
       WHERE action = 'password_reset_requested' AND created_at > (now() - interval '24 hours')),
      'Password reset requests in last 24 hours');
-    
+
     INSERT INTO public.security_dashboard_metrics (metric_name, metric_value, description) VALUES
-    ('permission_denials_24h', 
-     (SELECT COUNT(*)::text FROM public.security_audit_logs 
+    ('permission_denials_24h',
+     (SELECT COUNT(*)::text FROM public.security_audit_logs
       WHERE action = 'permission_denied' AND created_at > (now() - interval '24 hours')),
      'Permission denials in last 24 hours');
 END;
@@ -332,17 +332,17 @@ BEGIN
   -- Get the primary customer (first one created in the group)
   SELECT * INTO primary_customer
   FROM public.customers
-  WHERE customer_group = customer_group_name 
+  WHERE customer_group = customer_group_name
   AND reseller_id = reseller_id_param
   ORDER BY connection_sequence ASC
   LIMIT 1;
-  
+
   IF primary_customer.id IS NULL THEN
     RETURN;
   END IF;
-  
+
   -- Build connection details from all customers in the group
-  SELECT 
+  SELECT
     COALESCE(jsonb_agg(
       jsonb_build_object(
         'connection_number', connection_sequence,
@@ -355,24 +355,24 @@ BEGIN
     COUNT(*)::INTEGER
   INTO connection_data, total_conn
   FROM public.customers
-  WHERE customer_group = customer_group_name 
+  WHERE customer_group = customer_group_name
   AND reseller_id = reseller_id_param;
-  
+
   -- Update the primary customer with consolidated data
   UPDATE public.customers
-  SET 
+  SET
     name = TRIM(REPLACE(primary_customer.name, CONCAT('(Connection ', connection_sequence, ')'), '')),
     total_connections = total_conn,
     connection_list = connection_data,
     max_connections = total_conn
   WHERE id = primary_customer.id;
-  
+
   -- Delete the other connection records (keep only the primary)
   DELETE FROM public.customers
-  WHERE customer_group = customer_group_name 
+  WHERE customer_group = customer_group_name
   AND reseller_id = reseller_id_param
   AND id != primary_customer.id;
-  
+
   RETURN QUERY SELECT primary_customer.id, total_conn, connection_data;
 END;
 $function$

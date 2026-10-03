@@ -15,7 +15,7 @@ serve(async (req) => {
 
   try {
     console.log("🎯 Create Trex trial user function called")
-    
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -31,19 +31,19 @@ serve(async (req) => {
       if(roleError || (!admin && user.id!==resellerId)) return new Response(JSON.stringify({error:'Not authorized'}),{status:403,headers:corsHeaders});
     }
 
-    
+
     console.log("📦 Trex trial creation request:")
 
     // Validate required fields
     if (!customerData || !resellerId) {
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Missing required fields: customerData and resellerId' 
+        JSON.stringify({
+          success: false,
+          error: 'Missing required fields: customerData and resellerId'
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
+          status: 400
         }
       )
     }
@@ -58,13 +58,13 @@ serve(async (req) => {
     if (resellerError || !resellerData) {
       console.error("❌ Error getting reseller data:")
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Reseller not found' 
+        JSON.stringify({
+          success: false,
+          error: 'Reseller not found'
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
+          status: 400
         }
       )
     }
@@ -73,20 +73,20 @@ serve(async (req) => {
     if (resellerData.provider !== 'trex') {
       console.log("Operation event")
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'This reseller is not authorized to create Trex trial accounts' 
+        JSON.stringify({
+          success: false,
+          error: 'This reseller is not authorized to create Trex trial accounts'
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 403 
+          status: 403
         }
       )
     }
 
     // Check daily trial limit for Trex provider
     const today = new Date().toISOString().split('T')[0];
-    
+
     // Get the daily trial limit from system settings
     const { data: trialLimitData, error: trialLimitError } = await supabase
       .from('system_settings')
@@ -112,13 +112,13 @@ serve(async (req) => {
     if (currentTrialCount >= dailyLimit) {
       console.log("Operation event")
       return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: `Daily trial limit exceeded for Trex provider (${currentTrialCount}/${dailyLimit})` 
+        JSON.stringify({
+          success: false,
+          error: `Daily trial limit exceeded for Trex provider (${currentTrialCount}/${dailyLimit})`
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 429 
+          status: 429
         }
       )
     }
@@ -161,15 +161,15 @@ serve(async (req) => {
     // Get API configuration
     const API_KEY = Deno.env.get('TREX_API_KEY')
     const PANEL_URL = Deno.env.get('TREX_PANEL_URL') || 'https://activationpanel.net'
-    
+
     if (!API_KEY) {
       console.error("❌ Trex API key not configured")
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: 'Trex API key not configured'
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 500,
         },
@@ -182,7 +182,7 @@ serve(async (req) => {
       // Use the correct API format as specified by the user
       const baseUrl = PANEL_URL.replace('/api/api.php', '').replace('/player_api.php', '');
       const apiUrl = new URL(`${baseUrl}/api/api.php`);
-      
+
       // Add parameters in the exact order specified by the user
       // https://activationpanel.net/api/api.php?action=new&type=m3u&sub=12&pack=132&api_key=KEY
       apiUrl.searchParams.append('action', 'new');
@@ -191,9 +191,9 @@ serve(async (req) => {
       apiUrl.searchParams.append('pack', packageId);
       apiUrl.searchParams.append('note', `${customerData.name} | 24 hour trial`);
       apiUrl.searchParams.append('api_key', API_KEY);
-      
+
       console.log("Operation event")
-      
+
       const response = await fetch(apiUrl.toString(), {
         method: 'GET',
         headers: {
@@ -203,7 +203,7 @@ serve(async (req) => {
         },
         signal: AbortSignal.timeout(30000), // 30 second timeout
       })
-      
+
       const responseText = await response.text()
       console.log("Operation event")
       console.log("Operation event")
@@ -211,8 +211,8 @@ serve(async (req) => {
       if (!response.ok) {
         console.log("Operation event")
         return new Response(
-          JSON.stringify({ 
-            success: false, 
+          JSON.stringify({
+            success: false,
             error: `Trex trial API HTTP ${response.status}: ${response.statusText}`,
             debug_info: {
               panel_url: PANEL_URL,
@@ -220,7 +220,7 @@ serve(async (req) => {
               response_text: responseText
             }
           }),
-          { 
+          {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 400,
           },
@@ -234,14 +234,14 @@ serve(async (req) => {
       } catch (parseError) {
         // If it's not JSON, check if it contains credentials in text format
         console.log("Operation event");
-        
+
         // Look for common patterns in text responses that might contain credentials
         if (responseText.includes('username') || responseText.includes('password') || responseText.includes('m3u')) {
           // Try to extract credentials from text response
           const lines = responseText.split('\n');
           let extractedUsername = username; // fallback to generated username
           let extractedPassword = password; // fallback to generated password
-          
+
           // Look for username/password patterns in the response
           for (const line of lines) {
             if (line.toLowerCase().includes('username') && line.includes(':')) {
@@ -253,7 +253,7 @@ serve(async (req) => {
               if (match) extractedPassword = match;
             }
           }
-          
+
           apiResult = {
             success: true,
             username: extractedUsername,
@@ -351,13 +351,13 @@ serve(async (req) => {
       if (customerError) {
         console.error("❌ Error creating Trex trial customer record:")
         return new Response(
-          JSON.stringify({ 
-            success: false, 
-            error: `Failed to create Trex trial customer record: ${customerError.message}` 
+          JSON.stringify({
+            success: false,
+            error: `Failed to create Trex trial customer record: ${customerError.message}`
           }),
-          { 
+          {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 500 
+            status: 500
           }
         )
       }
@@ -407,8 +407,8 @@ serve(async (req) => {
       console.log("🎉 Trex trial account creation completed successfully")
 
       return new Response(
-        JSON.stringify({ 
-          success: true, 
+        JSON.stringify({
+          success: true,
           message: '24-hour Trex trial account created successfully',
           customer: {
             id: customer.id,
@@ -420,17 +420,17 @@ serve(async (req) => {
             provider: 'trex'
           }
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
+          status: 200
         }
       )
 
     } catch (error) {
       console.error("💥 Error during Trex trial API call:")
       return new Response(
-        JSON.stringify({ 
-          success: false, 
+        JSON.stringify({
+          success: false,
           error: `Trex trial API call failed: ${error.message}`,
           debug_info: {
             panel_url: PANEL_URL,
@@ -438,7 +438,7 @@ serve(async (req) => {
             error_details: error.stack
           }
         }),
-        { 
+        {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400,
         },
@@ -448,15 +448,14 @@ serve(async (req) => {
   } catch (error) {
     console.error("💥 Error in create-trex-trial-user function:")
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message || 'Internal server error' 
+      JSON.stringify({
+        success: false,
+        error: error.message || 'Internal server error'
       }),
-      { 
+      {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 500
       }
     )
   }
 })
-

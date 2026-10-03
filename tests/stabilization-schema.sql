@@ -43,7 +43,7 @@ BEGIN
   SELECT COALESCE(SUM(revenue_amount), 0.00), COUNT(*)
   INTO current_revenue, sales_count
   FROM public.credit_logs
-  WHERE action = 'addition' 
+  WHERE action = 'addition'
   AND DATE_TRUNC('month', date) = current_month
   AND revenue_amount > 0;
 
@@ -51,7 +51,7 @@ BEGIN
   SELECT COALESCE(SUM(revenue_amount), 0.00)
   INTO last_month_revenue
   FROM public.credit_logs
-  WHERE action = 'addition' 
+  WHERE action = 'addition'
   AND DATE_TRUNC('month', date) = last_month
   AND revenue_amount > 0;
 
@@ -61,7 +61,7 @@ BEGIN
   FROM (
     SELECT SUM(revenue_amount) as monthly_total
     FROM public.credit_logs
-    WHERE action = 'addition' 
+    WHERE action = 'addition'
     AND DATE_TRUNC('month', date) >= three_months_ago
     AND revenue_amount > 0
     GROUP BY DATE_TRUNC('month', date)
@@ -77,7 +77,7 @@ BEGIN
     avg_amount := current_revenue / sales_count;
   END IF;
 
-  RETURN QUERY SELECT 
+  RETURN QUERY SELECT
     current_revenue,
     three_month_avg,
     calculated_growth_rate,
@@ -106,8 +106,8 @@ CREATE OR REPLACE FUNCTION public.can_purchase_credits(reseller_id uuid)
  STABLE SECURITY DEFINER
  SET search_path TO ''
 AS $function$
-  SELECT reseller_level = 1 
-  FROM public.profiles 
+  SELECT reseller_level = 1
+  FROM public.profiles
   WHERE id = reseller_id AND role = 'reseller';
 $function$;
 
@@ -149,21 +149,21 @@ BEGIN
   SELECT * INTO customer_record
   FROM public.customers
   WHERE id = customer_id_param;
-  
+
   IF customer_record.id IS NULL THEN
     RAISE EXCEPTION 'Customer not found';
   END IF;
-  
+
   -- Determine actual number of connections
-  IF customer_record.total_connections IS NOT NULL 
+  IF customer_record.total_connections IS NOT NULL
      AND customer_record.total_connections > 0 THEN
     connections_count := customer_record.total_connections;
-    
-  ELSIF customer_record.connection_list IS NOT NULL 
+
+  ELSIF customer_record.connection_list IS NOT NULL
         AND jsonb_array_length(customer_record.connection_list) > 0 THEN
     -- Only use connection_list if it has actual entries
     connections_count := jsonb_array_length(customer_record.connection_list);
-    
+
   ELSE
     -- Fall back to counting rows in customer_group
     SELECT COUNT(*) INTO connections_count
@@ -171,8 +171,8 @@ BEGIN
     WHERE customer_group = customer_record.customer_group
     AND status != 'cancelled';
   END IF;
-  
-  RETURN QUERY SELECT 
+
+  RETURN QUERY SELECT
     (connections_count * duration_months)::integer as credits_required,
     connections_count::integer as accounts_count,
     customer_record.customer_group as customer_group_name;
@@ -207,7 +207,7 @@ BEGIN
     COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
     NEW.email,
     COALESCE((NEW.raw_user_meta_data->>'role')::public.user_role, 'reseller'::public.user_role),
-    CASE 
+    CASE
       WHEN COALESCE((NEW.raw_user_meta_data->>'role')::public.user_role, 'reseller'::public.user_role) = 'admin'::public.user_role THEN 1000
       ELSE 0
     END
@@ -222,4 +222,3 @@ $function$;
 
 CREATE FUNCTION get_reseller_path(uuid) RETURNS text LANGUAGE sql AS $$SELECT ''::text$$; CREATE FUNCTION get_highlevel_status(uuid) RETURNS text LANGUAGE sql AS $$SELECT ''::text$$; CREATE FUNCTION calculate_credits_required(integer,integer) RETURNS integer LANGUAGE sql AS $$SELECT $1*$2$$;
  GRANT USAGE ON SCHEMA auth,public TO anon,authenticated,service_role; GRANT ALL ON ALL TABLES IN SCHEMA public TO anon,authenticated,service_role;
-
