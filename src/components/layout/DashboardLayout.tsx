@@ -1,3 +1,6 @@
+import { supportKey } from '@/integrations/supabase/client';
+import { endSupportSession } from '@/lib/endSupportSession';
+import { toast } from 'sonner';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useApp } from '@/contexts/AppContext';
@@ -38,6 +41,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   }, [currentReseller?.accentColor, user?.role]);
 
   const handleLogout = () => {
+    if (supportKey) { void endSupportSession().catch((error) => toast.error(error.message)); return; }
     logout();
     navigate('/login');
   };

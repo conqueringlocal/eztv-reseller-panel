@@ -1,3 +1,4 @@
+import { LoginAsReseller } from '@/components/support/LoginAsReseller';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -255,7 +256,8 @@ export default function AdminResellerDetail() {
             <h1 className="text-2xl font-bold mb-2">{reseller.name}</h1>
             <p className="text-gray-500">Manage reseller account and monitor activity</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <LoginAsReseller id={reseller.id} name={reseller.name} />
             <Badge variant="secondary">
               Reseller ID: {reseller.id}
             </Badge>

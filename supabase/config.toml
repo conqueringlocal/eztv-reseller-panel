@@ -106,3 +106,6 @@ verify_jwt = false
 
 [functions.public-sales-inquiry]
 verify_jwt = false
+
+[functions.admin-reseller-session]
+verify_jwt = false
