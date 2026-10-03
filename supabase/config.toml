@@ -103,3 +103,6 @@ verify_jwt = true
 
 [functions.sync-trex-balance]
 verify_jwt = false
+
+[functions.public-sales-inquiry]
+verify_jwt = false

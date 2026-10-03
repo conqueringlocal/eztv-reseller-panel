@@ -1022,6 +1022,17 @@ export type Database = {
       }
     }
     Functions: {
+      get_sales_workspace: { Args: Record<PropertyKey, never>; Returns: Json }
+      get_sales_program_summary: { Args: Record<PropertyKey, never>; Returns: Json }
+      save_sales_lead: { Args: {p_id:string;p_revision:number;p_command:string;p_data:Json}; Returns:string }
+      record_sales_contact: { Args: {p_id:string;p_lead:string;p_note:string;p_minutes:number;p_next:string|null}; Returns:undefined }
+      import_sales_trial: { Args: {p_customer:string}; Returns:string }
+      save_sales_page: { Args: {p_revision:number;p_data:Json}; Returns:undefined }
+      create_sales_referral: { Args: {p_customer:string;p_label:string}; Returns:string }
+      set_sales_referral_enabled: { Args: {p_id:string;p_enabled:boolean}; Returns:undefined }
+      record_sales_reward: { Args: {p_lead:string;p_credits:number;p_cash:number;p_reference:string;p_note:string}; Returns:undefined }
+      get_public_sales_page: { Args: {p_slug:string}; Returns:Json }
+
       get_business_dashboard: { Args: { p_month: string }; Returns: Json }
       get_renewal_worklist: { Args: Record<PropertyKey, never>; Returns: Json }
       record_business_entry: { Args: { p_id: string; p_kind: string; p_date: string; p_amount: number; p_credits: number; p_reseller: string | null; p_reference: string; p_note: string; p_sale?: string | null }; Returns: string }

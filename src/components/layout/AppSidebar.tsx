@@ -56,6 +56,11 @@ export function AppSidebar() {
           icon: <CreditCard className="w-5 h-5" />,
         },
         {
+          title: 'Sales program',
+          path: '/admin/sales',
+          icon: <Zap className="w-5 h-5" />,
+        },
+        {
           title: 'Finances',
           path: '/admin/finance',
           icon: <CreditCard className="w-5 h-5" />,
@@ -82,6 +87,11 @@ export function AppSidebar() {
           title: 'Customers',
           path: '/reseller/customers',
           icon: <Users className="w-5 h-5" />,
+        },
+        {
+          title: 'Sales tools',
+          path: '/reseller/sales',
+          icon: <Zap className="w-5 h-5" />,
         },
         {
           title: 'Sports Updates',
