@@ -83,12 +83,24 @@ before(async () => {
     }
   }
   sql(
-    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$; GRANT USAGE ON SCHEMA auth,public TO anon,authenticated,service_role; CREATE TABLE profiles(id uuid PRIMARY KEY); CREATE TABLE user_roles(user_id uuid,role text); GRANT SELECT ON profiles TO authenticated; CREATE SCHEMA storage; CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]); CREATE TABLE storage.objects(id uuid,bucket_id text,name text); ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY; GRANT USAGE ON SCHEMA storage TO anon,authenticated; GRANT SELECT ON storage.objects TO anon,authenticated;`,
+    `CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$; GRANT USAGE ON SCHEMA auth,public TO anon,authenticated,service_role; CREATE TABLE profiles(id uuid PRIMARY KEY); CREATE TABLE user_roles(user_id uuid,role text); GRANT SELECT ON profiles,user_roles TO authenticated; CREATE SCHEMA storage; CREATE TABLE storage.buckets(id text PRIMARY KEY,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]); CREATE TABLE storage.objects(id uuid,bucket_id text,name text); ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY; GRANT USAGE ON SCHEMA storage TO anon,authenticated; GRANT SELECT ON storage.objects TO anon,authenticated;`,
   );
   sql(readFileSync("tests/balance-scheduler-schema.sql", "utf8"));
   sql(
     readFileSync(
       "supabase/migrations/20261003213307_automatic_telegram_sports.sql",
+      "utf8",
+    ),
+  );
+  sql(
+    readFileSync(
+      "supabase/migrations/20261004014043_sports_today_us_feed.sql",
+      "utf8",
+    ),
+  );
+  sql(
+    readFileSync(
+      "supabase/migrations/20261004014924_sports_region_labels.sql",
       "utf8",
     ),
   );
@@ -187,7 +199,7 @@ test("private feed and attachments are unavailable anonymously, paging handles e
     ),
   );
   const first = JSON.parse(
-    run("authenticated", reseller, "SELECT get_sports_feed()"),
+    run("authenticated", admin, "SELECT get_sports_feed()"),
   );
   assert.equal(first.posts.length, 100);
   assert.equal(first.status.enabled, true);
@@ -196,7 +208,7 @@ test("private feed and attachments are unavailable anonymously, paging handles e
     second = JSON.parse(
       run(
         "authenticated",
-        reseller,
+        admin,
         `SELECT get_sports_feed('${tail.posted_at}','${tail.id}')`,
       ),
     );
@@ -207,7 +219,7 @@ test("private feed and attachments are unavailable anonymously, paging handles e
   );
   assert.equal(run("anon", "", "SELECT count(*) FROM storage.objects"), "0");
   assert.equal(
-    run("authenticated", reseller, "SELECT count(*) FROM storage.objects"),
+    run("authenticated", admin, "SELECT count(*) FROM storage.objects"),
     "1",
   );
   assert.equal(
@@ -225,4 +237,147 @@ test("cursor never regresses and old generation sync cannot change current state
     sql("SELECT last_error_code FROM sports_reader_state"),
     "sync_failed",
   );
+});
+const filter = (
+  content,
+  posted = "2026-10-03T12:00:00Z",
+  today = "2026-10-03",
+) =>
+  sql(
+    `SELECT coalesce(sports_us_today_content(${q(content)},${q(posted)},${q(today)}),'HIDDEN')`,
+  );
+const eventDay = (line, ref = "2026-10-03") =>
+  sql(`SELECT sports_event_day(${q(line)},${q(ref)})`);
+test("US footer qualifies shared events but foreign-only and unlabelled channels stay hidden", () => {
+  assert.equal(
+    filter(
+      "Boxing 1 : A vs B 8pm\nUK| PPV EVENT\nUS| PPV EVENT\nEnjoy.\nTeam 8K",
+    ),
+    "Boxing 1 : A vs B 8pm\n\nUS| PPV EVENT",
+  );
+  assert.equal(filter("US team at 8pm\nCA| SPORTSNET"), "HIDDEN");
+  assert.equal(
+    filter("New Events For MAX US\nGame 1 @ Oct 3 8pm\nUK| MAX PPV"),
+    "HIDDEN",
+  );
+  assert.equal(filter("Flo College 01 @ Oct 3 8pm\nFLO COLLEGE PPV"), "HIDDEN");
+  assert.equal(
+    filter("UK| SKY\nForeign game 1\nUS| ESPN\nUS game 2"),
+    "HIDDEN",
+  );
+});
+test("mixed-day posts retain only today’s event lines and remove stale totals", () => {
+  const content =
+    "New Events For Tennis\nTotal Events: 3\nTennis 01 @ Oct 2 8pm\nTennis 02 @ Oct 3 8pm\nTennis 03 @ Oct 4 8pm\nUS| TENNIS PPV";
+  assert.equal(filter(content), "Tennis 02 @ Oct 3 8pm\n\nUS| TENNIS PPV");
+  assert.equal(
+    filter(content, "2026-10-02T12:00:00Z"),
+    "Tennis 02 @ Oct 3 8pm\n\nUS| TENNIS PPV",
+  );
+  assert.equal(filter("Game 1 @ Oct 2 8pm\nUS| PPV"), "HIDDEN");
+});
+test("undated posts use original Eastern publication day, never edit/import time", () => {
+  assert.match(
+    filter("Game 1 at 8pm\nUS| PPV", "2026-10-04T01:00:00Z"),
+    /Game 1/,
+  );
+  assert.equal(
+    filter("Game 1 at 8pm\nUS| PPV", "2026-10-03T03:59:59Z"),
+    "HIDDEN",
+  );
+  assert.equal(
+    filter("Game 1 at 8pm\nUS| PPV", "2026-10-04T01:00:00Z", "2026-10-04"),
+    "HIDDEN",
+  );
+  assert.match(
+    filter("Game 1 at 8pm\nUS| PPV", "2026-11-01T04:30:00Z", "2026-11-01"),
+    /Game 1/,
+  );
+  assert.equal(
+    filter("Game 1 at 8pm\nUS| PPV", "2026-11-02T04:30:00Z", "2026-11-02"),
+    "HIDDEN",
+  );
+});
+test("Eastern date wins across midnight and provider start dates ignore following stop dates", () => {
+  assert.equal(
+    eventDay("Paramount 1 // UK Sun 4 Oct 1am // ET Sat 3 Oct 8pm"),
+    "2026-10-03",
+  );
+  assert.equal(
+    filter(
+      "Paramount 1 // UK Sun 4 Oct 1am // ET Sat 3 Oct 8pm\nUS| PARAMOUNT",
+    ),
+    "Paramount 1 // ET Sat 3 Oct 8pm\n\nUS| PARAMOUNT",
+  );
+  assert.equal(
+    eventDay("Peacock 01 start:2026-10-03 23:00:00 stop:2026-10-04 02:00:00"),
+    "2026-10-03",
+  );
+  assert.equal(eventDay("Game 1 @ Jan 1 8pm", "2026-12-31"), "2027-01-01");
+  assert.equal(eventDay("Game 1 @ Dec 31 8pm", "2027-01-01"), "2026-12-31");
+  assert.equal(eventDay("Game 1 @ February 30 8pm"), "-infinity");
+  assert.equal(filter("Game 1 @ 10/03/2026 8pm\nUS| PPV"), "HIDDEN");
+});
+test("reseller API is restricted to today, selected source and sanitized text; originals stay admin-only", () => {
+  ready();
+  const today = sql("SELECT (now() AT TIME ZONE 'America/New_York')::date"),
+    yesterday = sql("SELECT (now() AT TIME ZONE 'America/New_York')::date-1");
+  const latest = sql("SELECT now()");
+  ingest({
+    ...post(1, `Game 1 start:${today} 8pm\nUK| PPV\nUS| PPV`),
+    posted_at: latest,
+    media: [{ path: "fixture.jpg", mime: "image/jpeg" }],
+  });
+  ingest({
+    ...post(2, `Old 2 start:${yesterday} 8pm\nUS| PPV`),
+    posted_at: latest,
+    edited_at: latest,
+  });
+  ingest({
+    ...post(3, `Foreign 3 start:${today} 8pm\nCA| PPV`),
+    posted_at: latest,
+  });
+  const feed = JSON.parse(
+    run("authenticated", reseller, "SELECT get_sports_feed()"),
+  );
+  assert.equal(feed.status.scope, "us_today");
+  assert.equal(feed.status.feed_date, today);
+  assert.equal(feed.status.timezone, "America/New_York");
+  assert.equal(feed.posts.length, 1);
+  assert.deepEqual(feed.posts[0].media, []);
+  assert.ok(!feed.posts[0].content.includes("UK|"));
+  assert.equal(
+    run(
+      "authenticated",
+      reseller,
+      "SELECT count(*) FROM telegram_sports_posts",
+    ),
+    "0",
+  );
+  sql(
+    "INSERT INTO storage.objects VALUES(gen_random_uuid(),'sports-reader-media','fixture.jpg')",
+  );
+  assert.equal(
+    run("authenticated", reseller, "SELECT count(*) FROM storage.objects"),
+    "0",
+  );
+  assert.equal(
+    JSON.parse(run("authenticated", admin, "SELECT get_sports_feed()")).posts
+      .length,
+    3,
+  );
+  sql("UPDATE sports_reader_state SET source_id='-100999'");
+  assert.equal(
+    JSON.parse(run("authenticated", reseller, "SELECT get_sports_feed()")).posts
+      .length,
+    0,
+  );
+});
+
+test("new country labels cannot leak into mixed US posts", () => {
+  assert.equal(
+    filter("Event 1 at 8pm\nJP| SPORTS 01\nMX| SPORTS 02\nUS| PPV"),
+    "Event 1 at 8pm\n\nUS| PPV",
+  );
+  assert.equal(filter("Event 1 at 8pm\nJP| SPORTS 01"), "HIDDEN");
 });

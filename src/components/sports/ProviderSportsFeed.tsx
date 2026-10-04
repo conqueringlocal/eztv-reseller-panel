@@ -24,11 +24,20 @@ type Feed = {
     last_post_at: string | null;
     last_error_code: string | null;
     timezone: string;
+    scope: "original" | "us_today";
+    feed_date: string;
   };
   posts: Post[];
 };
-export const sportsTime = (value?: string | null) =>
-  value ? new Date(value).toLocaleString() : "Not yet";
+export const sportsTime = (value?: string | null, eastern = false) =>
+  value
+    ? new Date(value).toLocaleString(
+        [],
+        eastern
+          ? { timeZone: "America/New_York", timeZoneName: "short" }
+          : undefined,
+      )
+    : "Not yet";
 function Attachment({ media }: { media: Media }) {
   const result = useQuery({
     queryKey: ["sports-media", media.path],
@@ -73,13 +82,25 @@ function Attachment({ media }: { media: Media }) {
     </a>
   );
 }
+const easternDay = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 export function ProviderSportsFeed() {
+  const [today, setToday] = useState(easternDay);
+  useEffect(() => {
+    const timer = setInterval(() => setToday(easternDay()), 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [search, setSearch] = useState("");
   const [cursor, setCursor] = useState<{ date: string; id: string } | null>(
     null,
   );
   const feed = useQuery({
-    queryKey: ["provider-sports", cursor],
+    queryKey: ["provider-sports", cursor, today],
     queryFn: async () => {
       const { data, error } = await supabase.rpc(
         "get_sports_feed" as never,
@@ -102,17 +123,23 @@ export function ProviderSportsFeed() {
     Date.now() - Date.parse(status.last_seen_at) < 180000 &&
     status.last_sync_at &&
     Date.now() - Date.parse(status.last_sync_at) < 300000;
-  const posts = feed.data?.posts || [];
+  const original = status?.scope === "original";
+  const posts =
+    original || status?.feed_date === today ? feed.data?.posts || [] : [];
   // Reset archive filters when switching between pages.
   useEffect(() => setSearch(""), [cursor]);
+  useEffect(() => setCursor(null), [today]);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold">Provider sports updates</h2>
+          <h2 className="text-2xl font-semibold">
+            {original ? "Original provider posts" : "Today’s US sports updates"}
+          </h2>
           <p className="text-sm text-muted-foreground">
-            Original schedules and announcements. Event times are preserved as
-            posted by the provider.
+            {original
+              ? "Admin archive of the original posts. Resellers see only today’s US listings."
+              : "US channel listings for today in Eastern time. Event times are preserved as supplied by the provider."}
           </p>
         </div>
         <Button
@@ -135,13 +162,14 @@ export function ProviderSportsFeed() {
                   : "Connection needs attention"}
           </Badge>
           <p className="text-sm text-muted-foreground">
-            Last checked: {sportsTime(status.last_sync_at)} · Latest post:{" "}
-            {sportsTime(status.last_post_at)}
+            Last checked: {sportsTime(status.last_sync_at, !original)} · Latest
+            post: {sportsTime(status.last_post_at, !original)}
           </p>
           {!healthy && posts.length > 0 && (
             <p className="text-sm">
-              Saved posts remain available. Check their dates before using a
-              schedule.
+              {original
+                ? "Saved original posts remain available."
+                : "Today’s saved listings remain available while the connection recovers."}
             </p>
           )}
         </div>
@@ -161,10 +189,15 @@ export function ProviderSportsFeed() {
       {!feed.isLoading && !feed.isError && posts.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center">
-            <p className="font-medium">No provider posts imported yet</p>
+            <p className="font-medium">
+              {original
+                ? "No provider posts imported yet"
+                : "No US updates for today yet"}
+            </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Posts will appear here after the administrator connects the
-              provider channel.
+              {original
+                ? "Posts will appear after the provider channel is connected."
+                : "Only listings marked for US channels and today’s Eastern date appear here. Check back after the next provider update."}
             </p>
           </CardContent>
         </Card>
@@ -175,13 +208,14 @@ export function ProviderSportsFeed() {
           <Card key={post.id}>
             <CardContent className="p-4 sm:p-6 space-y-4">
               <div className="text-xs text-muted-foreground">
-                Posted {sportsTime(post.posted_at)}
-                {post.edited_at && ` · Edited ${sportsTime(post.edited_at)}`}
+                Posted {sportsTime(post.posted_at, !original)}
+                {post.edited_at &&
+                  ` · Edited ${sportsTime(post.edited_at, !original)}`}
               </div>
               <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed">
                 {post.content}
               </p>
-              {post.media.map((m) => (
+              {(original ? post.media : []).map((m) => (
                 <Attachment key={m.path} media={m} />
               ))}
               {post.media_notice && (
@@ -194,16 +228,11 @@ export function ProviderSportsFeed() {
         search &&
         !posts.some((p) =>
           p.content.toLowerCase().includes(search.toLowerCase()),
-        ) && (
-          <p>
-            No matching text on this page. Image and PDF contents are not
-            searched.
-          </p>
-        )}
+        ) && <p>No matching listings on this page.</p>}
       <div className="flex gap-3">
         {cursor && (
           <Button variant="outline" onClick={() => setCursor(null)}>
-            Latest posts
+            {original ? "Latest posts" : "Latest today"}
           </Button>
         )}
         {posts.length === 100 && (
@@ -214,7 +243,7 @@ export function ProviderSportsFeed() {
               setCursor({ date: p.posted_at, id: p.id });
             }}
           >
-            Older posts
+            {original ? "Older posts" : "More from today"}
           </Button>
         )}
       </div>
