@@ -89,6 +89,47 @@ export function createSportsHandler(db: any) {
       if (!b || typeof b !== "object")
         return reply({ error: "Invalid request" }, 400);
       if (worker) {
+        if (b.action === "verification_work")
+          return reply(await rpc("sports_verification_work"));
+        if (
+          b.action === "verification_save" &&
+          int(b.generation) &&
+          uuid(b.post_id) &&
+          /^\d{4}-\d{2}-\d{2}$/.test(b.date) &&
+          /^[a-f0-9]{32}$/.test(b.content_hash) &&
+          Array.isArray(b.items) &&
+          b.items.length <= 1000 &&
+          JSON.stringify(b.items).length <= 200000
+        ) {
+          await rpc("save_sports_verification", {
+            p_generation: b.generation,
+            p_day: b.date,
+            p_post: b.post_id,
+            p_hash: b.content_hash,
+            p_items: b.items,
+          });
+          return reply({ ok: true });
+        }
+        if (
+          b.action === "verification_health" &&
+          Array.isArray(b.sources) &&
+          b.sources.length === 4 &&
+          b.sources.every(
+            (s: any) =>
+              ["NHL", "MLB", "NBA", "NFL"].includes(s.league) &&
+              typeof s.ok === "boolean" &&
+              int(s.events),
+          )
+        ) {
+          await rpc("sports_verification_health", {
+            p_sources: b.sources.map((s: any) => ({
+              league: s.league,
+              ok: s.ok,
+              events: s.events,
+            })),
+          });
+          return reply({ ok: true });
+        }
         if (b.action === "poll") return reply(await rpc("poll_sports_reader"));
         if (
           b.action === "job_result" &&
