@@ -104,13 +104,19 @@ before(async () => {
       "utf8",
     ),
   );
+  sql(
+    readFileSync(
+      "supabase/migrations/20261004021122_sports_schedule_verification.sql",
+      "utf8",
+    ),
+  );
 });
 after(() =>
   execFileSync("docker", ["rm", "-f", "-v", container], { stdio: "pipe" }),
 );
 beforeEach(() =>
   sql(
-    `TRUNCATE sports_reader_jobs,telegram_sports_posts,profiles,user_roles,vault.secrets,storage.objects; DELETE FROM sports_reader_state; INSERT INTO sports_reader_state(id) VALUES(true); INSERT INTO profiles VALUES('${admin}'),('${reseller}'); INSERT INTO user_roles VALUES('${admin}','admin'),('${reseller}','reseller');`,
+    `TRUNCATE sports_event_checks,sports_reader_jobs,telegram_sports_posts,profiles,user_roles,vault.secrets,storage.objects; DELETE FROM sports_reader_state; INSERT INTO sports_reader_state(id) VALUES(true); INSERT INTO profiles VALUES('${admin}'),('${reseller}'); INSERT INTO user_roles VALUES('${admin}','admin'),('${reseller}','reseller');`,
   ),
 );
 test("service secrets and ingestion are inaccessible to anon and reseller, including admin browser JWT", () => {
@@ -380,4 +386,116 @@ test("new country labels cannot leak into mixed US posts", () => {
     "Event 1 at 8pm\n\nUS| PPV",
   );
   assert.equal(filter("Event 1 at 8pm\nJP| SPORTS 01"), "HIDDEN");
+});
+function verificationFixture() {
+  ready();
+  const today = sql("SELECT (now() AT TIME ZONE 'America/New_York')::date");
+  ingest({
+    ...post(1, `NHL Blackhawks at Sabres start:${today} 7pm ET\nUS| NHL PPV`),
+    posted_at: sql("SELECT now()"),
+  });
+  const work = JSON.parse(sql("SELECT sports_verification_work()"));
+  const row = work.posts[0];
+  const item = {
+    text: row.content.split("\n\n")[0],
+    status: "verified",
+    reason: "matched",
+    source_name: "NHL",
+    source_url: "https://www.nhl.com/gamecenter/123",
+    start_at: today + "T23:00:00Z",
+    event_state: "upcoming",
+  };
+  const save = (
+    items = [item],
+    hash = row.content_hash,
+    day = today,
+    generation = 1,
+  ) =>
+    sql(
+      `SELECT save_sports_verification(${generation},${q(day)},${q(row.id)},${q(hash)},${q(JSON.stringify(items))})`,
+    );
+  return { today, row, item, save };
+}
+const resellerFeed = () =>
+  JSON.parse(run("authenticated", reseller, "SELECT get_sports_feed()"));
+test("verification work and results are service-only and raw base RPC is not a bypass", () => {
+  for (const role of ["anon", "authenticated"])
+    for (const fn of [
+      "sports_verification_work()",
+      "save_sports_verification(integer,date,uuid,text,jsonb)",
+      "sports_verification_health(jsonb)",
+      "get_sports_feed_base(timestamptz,uuid)",
+    ])
+      assert.equal(
+        sql(`SELECT has_function_privilege('${role}',${q(fn)},'EXECUTE')`),
+        "f",
+      );
+  assert.equal(
+    sql(
+      "SELECT has_table_privilege('authenticated','sports_event_checks','SELECT')",
+    ),
+    "f",
+  );
+});
+test("saved evidence appears per event and stale evidence loses verification automatically", () => {
+  const f = verificationFixture();
+  f.save();
+  let feed = resellerFeed();
+  assert.equal(feed.posts[0].verification.items[0].status, "verified");
+  assert.equal(feed.posts[0].verification.fresh, true);
+  sql("UPDATE sports_event_checks SET checked_at=now()-interval '31 minutes'");
+  feed = resellerFeed();
+  assert.equal(feed.posts[0].verification.items[0].status, "unverified");
+  assert.equal(feed.posts[0].verification.items[0].reason, "stale");
+});
+test("changed provider content invalidates evidence and stale worker writes are rejected", () => {
+  const f = verificationFixture();
+  f.save();
+  sql(
+    "UPDATE telegram_sports_posts SET content=replace(content,'Sabres','Bruins')",
+  );
+  assert.equal(resellerFeed().posts[0].verification.items[0].reason, "pending");
+  assert.throws(() => f.save());
+  assert.throws(() => f.save([f.item], f.row.content_hash, f.today, 99));
+});
+test("cancellations are withheld from reseller output but preserved in admin archive", () => {
+  const f = verificationFixture();
+  f.save([
+    {
+      ...f.item,
+      status: "review",
+      reason: "cancelled",
+      event_state: "cancelled",
+    },
+  ]);
+  const feed = resellerFeed();
+  assert.equal(feed.posts.length, 0);
+  assert.equal(feed.verification.withheld, 1);
+  const adminFeed = JSON.parse(
+    run("authenticated", admin, "SELECT get_sports_feed()"),
+  );
+  assert.equal(adminFeed.posts.length, 1);
+  assert.equal(adminFeed.posts[0].verification.items[0].reason, "cancelled");
+});
+test("date conflicts and unverified listings remain visible for review", () => {
+  const f = verificationFixture();
+  f.save([{ ...f.item, status: "review", reason: "different_date" }]);
+  assert.equal(
+    resellerFeed().posts[0].verification.items[0].reason,
+    "different_date",
+  );
+  f.save([
+    { text: f.item.text, status: "unverified", reason: "source_unavailable" },
+  ]);
+  assert.equal(resellerFeed().posts.length, 1);
+});
+test("evidence cannot insert extra lines, change listing text, or link to untrusted sites", () => {
+  const f = verificationFixture();
+  assert.throws(() => f.save([{ ...f.item, text: "Injected event" }]));
+  assert.throws(() => f.save([f.item, f.item]));
+  assert.throws(() =>
+    f.save([{ ...f.item, source_url: "https://evil.invalid" }]),
+  );
+  assert.throws(() => f.save([{ ...f.item, source_name: null }]));
+  assert.throws(() => f.save([{ ...f.item, source_url: null }]));
 });

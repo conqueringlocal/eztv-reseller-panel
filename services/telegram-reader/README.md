@@ -72,3 +72,33 @@ Recognized event dates (`start:YYYY-MM-DD`, `@ Oct 3`, or `// ET Sat 3 Oct`) tak
 Original images/PDFs cannot be reliably filtered by channel/date, so resellers receive text only. Direct access to the originals table and original Storage attachments is now administrator-only. Admin → Sports Updates retains the raw archive for review. Previously issued signed links expire within ten minutes. The old manually shared `sports_ppv_updates` system remains separate.
 
 The reseller page removes old listings at the Eastern date change (checked every second), refetches that day's feed, and only paginates within today's results. Source timezone settings do not override this agreed Eastern display rule.
+
+## Independent schedule verification
+
+`eztv-sports-verifier.timer` runs the separate one-shot `eztv-sports-verifier.service` at boot and every 15 minutes after completion. It uses the same scoped backend credential, with no Telegram session access in its code. Public schedule requests contain only league/date parameters; provider messages are never sent to those sites. The importer remains a separate service.
+
+Sources: NHL's `api-web.nhle.com/v1/schedule`, MLB's `statsapi.mlb.com/api/v1/schedule`, and ESPN's `site.api.espn.com` NBA/NFL scoreboards. These public endpoints were checked live during implementation but are not contracted feeds; schemas or access may change. A failed source is recorded as unavailable and affected events remain Unverified. No paid API subscription was added. Each cycle makes eight public requests at most (one NHL, one MLB, three daily requests each for NBA/NFL); requests have a 25-second timeout and 6 MB response limit.
+
+Matching is limited to explicit NHL, MLB, NBA or NFL identifiers in a listing or its US category footer. Both teams must match whole normalized names/nicknames/abbreviations from the schedule; city-only or fuzzy matching is not used. Multiple possible games, doubleheaders, or more than two identified teams remain ambiguous. Sources cover the adjacent days as well as today to flag possible date conflicts. A different-date match is a review warning, not proof that a same-day event could not exist.
+
+- **Schedule verified:** unique same-day team pair and a supplied explicitly Eastern time within 15 minutes of the scheduled start.
+- **Date verified:** unique same-day team pair, but the provider's time or timezone cannot be safely compared, or the source start time is TBD.
+- **Needs review:** time/date conflicts, delays, cancellations or postponements. Confirmed same-day cancellations/postponements are withheld from reseller output; originals/evidence remain available to admins. Other review cases remain visible.
+- **Unverified:** outside coverage, ambiguous match, no match, source outage, pending check or expired evidence. Absence of a match is never treated as cancellation.
+
+Cards link to NHL/MLB/ESPN event pages and show official start, check time and source state when available. Live/Finished/Upcoming describe the source at its last check, not a stream probe. The feature cannot verify provider channel carriage or playback availability. UFC, boxing, racing, college events and other sports have no matcher in this first release.
+
+Evidence is in service-only `sports_event_checks`, bound to post ID, Eastern day and an MD5 fingerprint of the exact filtered listing. Edits/source changes/day rollover reject stale writes and invalidate displayed results. The public RPC validates membership, returns per-line results and withholds confirmed cancelled/postponed lines server-side. `get_sports_feed_base` cannot be called by browser roles. Direct evidence writes/reads are not granted to browser roles. Only allowed source domains may be stored as evidence links.
+
+Evidence expires after 30 minutes. The UI also checks evidence age every 15 seconds, and the server replaces expired results with Unverified. Completed checks are retained for seven days; source health and last completed run are in `sports_verification_state`. Each run handles up to 200 current-day posts. If that limit is reached regularly, add checkpointed batching before increasing volume.
+
+Operations:
+
+```
+systemctl list-timers eztv-sports-verifier.timer
+systemctl show eztv-sports-verifier.service -p Result -p ExecMainStatus
+journalctl -u eztv-sports-verifier.service -n 20 --no-pager
+systemctl start eztv-sports-verifier.service
+```
+
+Code is `/opt/eztv-sports-reader/verifier.py`. To pause independent checks, disable/stop the timer; stop a currently running one-shot too if necessary. Keep the Telegram reader running. Badges expire automatically. Preserve the wrapper RPC and private grants on frontend rollback to avoid re-exposing original posts. Updates to the verifier require its Python tests and a source-health check; updates to the verification schema require the sports database tests. Browser checks must cover expired badges and Eastern midnight as well as source links.

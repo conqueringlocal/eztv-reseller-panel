@@ -1,3 +1,4 @@
+import { SportsVerification, type Verification } from "./SportsVerification";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +15,7 @@ type Post = {
   edited_at: string | null;
   media: Media[];
   media_notice: string;
+  verification?: Verification;
 };
 type Feed = {
   status: {
@@ -28,6 +30,12 @@ type Feed = {
     feed_date: string;
   };
   posts: Post[];
+  next_cursor?: { date: string; id: string } | null;
+  verification?: {
+    last_run_at: string | null;
+    sources: { league: string; ok: boolean; events: number }[];
+    withheld: number;
+  };
 };
 export const sportsTime = (value?: string | null, eastern = false) =>
   value
@@ -91,8 +99,14 @@ const easternDay = () =>
   }).format(new Date());
 export function ProviderSportsFeed() {
   const [today, setToday] = useState(easternDay);
+  const [verificationTick, setVerificationTick] = useState(() =>
+    Math.floor(Date.now() / 15000),
+  );
   useEffect(() => {
-    const timer = setInterval(() => setToday(easternDay()), 1000);
+    const timer = setInterval(() => {
+      setToday(easternDay());
+      setVerificationTick(Math.floor(Date.now() / 15000));
+    }, 1000);
     return () => clearInterval(timer);
   }, []);
   const [search, setSearch] = useState("");
@@ -174,6 +188,30 @@ export function ProviderSportsFeed() {
           )}
         </div>
       )}
+      {!original && (
+        <div className="rounded-lg border bg-white p-4 text-sm space-y-1">
+          <p className="font-medium">Independent schedule checks</p>
+          <p className="text-muted-foreground">
+            NHL and MLB league feeds · NBA and NFL via ESPN. Checks run every 15
+            minutes. Channel availability is still supplied by the provider.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Last run: {sportsTime(feed.data?.verification?.last_run_at, true)}
+          </p>
+          {!!feed.data?.verification?.sources.some((s) => !s.ok) && (
+            <p className="text-amber-800">
+              Some schedule sources are unavailable. Affected listings remain
+              unverified.
+            </p>
+          )}
+          {!!feed.data?.verification?.withheld && (
+            <p className="text-muted-foreground">
+              {feed.data.verification.withheld} cancelled or postponed
+              listing(s) withheld from this page.
+            </p>
+          )}
+        </div>
+      )}
       <Input
         aria-label="Search displayed sports posts"
         placeholder="Search these posts by team, sport or channel…"
@@ -212,9 +250,49 @@ export function ProviderSportsFeed() {
                 {post.edited_at &&
                   ` · Edited ${sportsTime(post.edited_at, !original)}`}
               </div>
-              <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed">
-                {post.content}
-              </p>
+              {original ? (
+                <>
+                  <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm leading-relaxed">
+                    {post.content}
+                  </p>
+                  {post.verification && (
+                    <details>
+                      <summary className="cursor-pointer text-sm text-primary">
+                        Independent schedule checks for today’s US listings
+                      </summary>
+                      <div className="mt-3">
+                        <SportsVerification
+                          verification={post.verification}
+                          now={verificationTick * 15000}
+                        />
+                      </div>
+                    </details>
+                  )}
+                </>
+              ) : (
+                <>
+                  <SportsVerification
+                    verification={
+                      post.verification || {
+                        items: post.content
+                          .split("\n\n")[0]
+                          .split("\n")
+                          .map((text) => ({
+                            text,
+                            status: "unverified",
+                            reason: "pending",
+                          })),
+                        checked_at: null,
+                        fresh: false,
+                      }
+                    }
+                    now={verificationTick * 15000}
+                  />
+                  <p className="whitespace-pre-wrap text-sm font-medium">
+                    {post.content.split("\n\n").slice(1).join("\n\n")}
+                  </p>
+                </>
+              )}
               {(original ? post.media : []).map((m) => (
                 <Attachment key={m.path} media={m} />
               ))}
@@ -235,12 +313,14 @@ export function ProviderSportsFeed() {
             {original ? "Latest posts" : "Latest today"}
           </Button>
         )}
-        {posts.length === 100 && (
+        {(feed.data?.next_cursor ||
+          (feed.data?.next_cursor === undefined && posts.length === 100)) && (
           <Button
             variant="outline"
             onClick={() => {
+              const next = feed.data?.next_cursor;
               const p = posts[posts.length - 1];
-              setCursor({ date: p.posted_at, id: p.id });
+              setCursor(next || { date: p.posted_at, id: p.id });
             }}
           >
             {original ? "Older posts" : "More from today"}

@@ -1,0 +1,9 @@
+[Unit]
+Description=Check independent sports schedules every 15 minutes
+[Timer]
+OnBootSec=45
+OnUnitInactiveSec=15min
+AccuracySec=10s
+Unit=eztv-sports-verifier.service
+[Install]
+WantedBy=timers.target

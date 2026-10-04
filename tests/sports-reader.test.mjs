@@ -218,3 +218,33 @@ test("backend errors and malformed bodies never expose credentials", async () =>
   assert.ok(!(await r.text()).includes("PRIVATE"));
   assert.equal((await fixture().request(null)).status, 400);
 });
+test("schedule verification actions require the worker token, including writes", async () => {
+  const f = fixture();
+  assert.equal((await f.request({ action: "verification_work" })).status, 400);
+  assert.equal(
+    (await f.request({ action: "verification_work" }, true, "wrong")).status,
+    401,
+  );
+  assert.equal(
+    (await f.request({ action: "verification_work" }, true)).status,
+    200,
+  );
+  const body = {
+    action: "verification_save",
+    generation: 1,
+    date: "2026-10-03",
+    post_id: id,
+    content_hash: "a".repeat(32),
+    items: [],
+  };
+  assert.equal((await f.request(body)).status, 400);
+  assert.equal(
+    (await f.request({ ...body, content_hash: "invalid" }, true)).status,
+    400,
+  );
+  assert.equal((await f.request(body, true)).status, 200);
+  assert.equal(
+    f.calls.filter((c) => c[0] === "save_sports_verification").length,
+    1,
+  );
+});
