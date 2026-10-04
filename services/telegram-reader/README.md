@@ -62,3 +62,13 @@ npm run build
 ```
 
 Database tests run in disposable PostgreSQL with no network. Worker tests use fake Telegram/backend clients and never request login codes. Browser tests should mock Auth, admin setup, and feed APIs; do not send test codes to real Telegram accounts. Live checks can verify heartbeat, paused state, private grants, and unauthenticated endpoint rejection without connecting Telegram.
+
+## Reseller display rules (October 4 update)
+
+The reseller RPC now returns only the selected provider channel's US listings for the current date in `America/New_York`, including DST. Explicit `US|` / `USA|` category labels determine eligibility; US team names and ambiguous/unlabelled services do not. Shared UK/US footer posts retain event text and US labels only. Unsupported category-section layouts are hidden rather than guessed.
+
+Recognized event dates (`start:YYYY-MM-DD`, `@ Oct 3`, or `// ET Sat 3 Oct`) take precedence over original publication date. In dual UK/ET schedules the ET date wins and the parallel UK timestamp is removed. Undated entries use the original Eastern publication date, never edit/import time. Candidate posts are limited to the preceding seven days; stale totals and excluded event lines are removed. Unrecognized or invalid explicit dates are hidden.
+
+Original images/PDFs cannot be reliably filtered by channel/date, so resellers receive text only. Direct access to the originals table and original Storage attachments is now administrator-only. Admin → Sports Updates retains the raw archive for review. Previously issued signed links expire within ten minutes. The old manually shared `sports_ppv_updates` system remains separate.
+
+The reseller page removes old listings at the Eastern date change (checked every second), refetches that day's feed, and only paginates within today's results. Source timezone settings do not override this agreed Eastern display rule.
