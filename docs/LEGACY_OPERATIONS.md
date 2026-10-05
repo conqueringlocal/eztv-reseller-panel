@@ -107,3 +107,13 @@ Deploy only `20261003203927_admin_reseller_sessions.sql`, the `admin-reseller-se
 ## Automatic Telegram sports feed
 
 Admin setup is at `/admin/sports`; resellers read `/reseller/sports-updates`. The dedicated VPS reader and private feed are independent from the old bot/manual forwarding integration. See [reader operations and setup](../services/telegram-reader/README.md) for the account prerequisite, secure connection steps, recovery, limitations, and service paths. New posts are never routed through the legacy public sports share/SMS flow.
+
+## Legacy connection renewal repair (October 5, 2026)
+
+A saved `connection_list` containing explicit connection 1 is authoritative for paid operations. An older top-level username/password is not an additional account. Secondary-only lists still inherit the top-level primary exactly once. Duplicate numbers, missing credentials and malformed numbers continue to block before provider calls. This matches the existing credential editor, which edits the saved list.
+
+Individual renewals and added connections return the confirmed expiry of the affected line. The customer-wide expiry remains the earliest of all connections, so an unrelated expired line can still make the overall customer appear expired; inspect individual connection dates. Group results return the earliest confirmed date across the renewed lines.
+
+Known validation rejections now say the attempt did not contact Trex or deduct credits. An unknown reservation/RPC failure does not promise an unchanged balance. Unknown provider results keep the existing review hold and persistent operation key. Safe logs include the customer reference, requested connection and failure category, never credentials.
+
+Validation: 29 stabilization tests with a disposable database and mocked provider, including stale primary credentials, separate renewals of lines 2/3, per-line returned expiry, credit debits, duplicate replay suppression and preflight failures. Mobile browser verification exercises the real forms with mocked Auth/API calls. Live diagnosis uses read-only device_info; paid calls are never used for release testing.
