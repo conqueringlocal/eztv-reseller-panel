@@ -10,7 +10,7 @@ const q=x=>`'${String(x).replaceAll("'","''")}'`;const j=x=>`${q(JSON.stringify(
 const sql=s=>execFileSync('docker',['exec','-i',container,'psql','-h','127.0.0.1','-XqAt','-U','postgres','-v','ON_ERROR_STOP=1'],{input:s,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const as=(id,s)=>`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub=${q(id)}; ${s}; COMMIT;`;
 const runAs=(id,s)=>sql(as(id,s));
-const migrationNames=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$/.test(x))];
+const migrationNames=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_legacy_connection_renewals.sql$/.test(x))];
 before(async()=>{
  execFileSync('docker',['run','-d','--name',container,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
  for(let i=0;i<60;i++){try{sql('SELECT 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
@@ -79,6 +79,37 @@ test('canonical list counts secondary-only legacy lists and quote matches reserv
  sql(`UPDATE customers SET connection_list='[{"connection_number":2,"username":"fixture2","password":"pass"},{"connection_number":3,"username":"fixture3","password":"pass"}]',total_connections=3,max_connections=3 WHERE id=${q(customer)}`);
  assert.equal(runAs(reseller,`SELECT credits_required FROM calculate_renewal_credits_required(${q(customer)},3)`),'9');const result=claim('renew',3);assert.equal(result.lines.length,3);assert.equal(balance(),91);
 });
+const stalePrimaryLines=[
+ {connection_number:1,username:'listed-primary',password:'listed-pass',expiration_date:'2026-01-15'},
+ {connection_number:2,username:'listed-second',password:'second-pass',expiration_date:'2026-10-06'},
+ {connection_number:3,username:'listed-third',password:'third-pass',expiration_date:'2026-10-08'},
+];
+function stalePrimary(){sql(`UPDATE customers SET connection_list=${j(stalePrimaryLines)},total_connections=3,max_connections=3 WHERE id=${q(customer)}`);}
+test('explicit primary in saved list supersedes stale top-level credentials for quotes and renewals',()=>{
+ stalePrimary();assert.equal(runAs(reseller,`SELECT credits_required FROM calculate_renewal_credits_required(${q(customer)},1)`),'3');
+ const c=claim();assert.deepEqual(c.lines.map(l=>l.username),stalePrimaryLines.map(l=>l.username));assert.equal(balance(),97);
+});
+test('single renewals of connections 2 and 3 complete independently with correct dates and one debit each',async()=>{
+ stalePrimary();const a=await app();
+ for(const connectionNumber of [2,3]){
+  const r=await a.invoke('single',{connectionNumber});assert.equal(r.body.success,true);assert.equal(r.body.newExpirationDate,'2027-02-01');
+ }
+ const paid=a.calls.filter(u=>u.searchParams.get('action')==='renew');assert.deepEqual(paid.map(u=>u.searchParams.get('username')),['listed-second','listed-third']);
+ assert.equal(balance(),98);const lines=JSON.parse(sql('SELECT connection_list FROM customers'));
+ assert.equal(lines.length,3);assert.equal(lines[0].expiration_date,'2026-01-15');assert.equal(lines[1].expiration_date,'2027-02-01');assert.equal(lines[2].expiration_date,'2027-02-01');
+ assert.equal(sql('SELECT expiration_date FROM customers'),'2026-01-15');
+ await a.invoke('single',{connectionNumber:2});assert.equal(a.calls.filter(u=>u.searchParams.get('action')==='renew').length,2);assert.equal(balance(),98);
+});
+test('adding a connection to a saved list does not resurrect a stale primary',async()=>{
+ stalePrimary();const a=await app();const r=await a.invoke('add');assert.equal(r.body.success,true);assert.equal(r.body.connection_number,4);assert.equal(r.body.newExpirationDate,'2027-02-01');
+ const lines=JSON.parse(sql('SELECT connection_list FROM customers'));assert.equal(lines.length,4);assert.equal(lines[0].username,'listed-primary');assert.equal(balance(),99);
+});
+test('genuine duplicate numbers, missing credentials, and invalid line numbers still fail before debit',()=>{
+ for(const lines of [[...stalePrimaryLines,stalePrimaryLines[0]],[{connection_number:1,username:'broken'}],[{connection_number:null,username:'broken',password:'pass'}]]){
+  sql(`UPDATE customers SET connection_list=${j(lines)} WHERE id=${q(customer)}`);assert.throws(()=>claim());assert.equal(balance(),100);
+ }
+ assert.equal(sql('SELECT count(*) FROM trex_paid_operations'),'0');
+});
 test('insufficient multi-connection credits do not claim or spend',()=>{
  sql(`UPDATE profiles SET credits=2 WHERE id=${q(reseller)};UPDATE customers SET connection_list='[{"connection_number":2,"username":"fixture2","password":"pass"},{"connection_number":3,"username":"fixture3","password":"pass"}]' WHERE id=${q(customer)}`);assert.equal(claim().state,'insufficient_credits');assert.equal(balance(),2);assert.equal(sql('SELECT count(*) FROM trex_paid_operations'),'0');
 });
@@ -99,6 +130,7 @@ async function app(options={}){
  const calls=[];const client={auth:{getUser:async()=>({data:{user:options.invalid?null:{id:reseller}},error:null})},rpc:async(name,args)=>{
   try{
    if(name==='has_role')return {data:false,error:null};
+   if(name==='claim_trex_paid_operation' && options.claimError)return {data:null,error:{message:options.claimError}};
    const data=name==='claim_trex_paid_operation'?claim(args.p_kind,args.p_months,args.p_connection,args.p_actor||reseller,args.p_internal):JSON.parse(sql(`SELECT finish_trex_paid_operation(${q(args.p_id)})`));return {data,error:null};
   }catch{return {data:null,error:{message:'database check failed'}};}
  },from(table){let updates,filters={};const chain={select(){return chain},eq(k,v){filters[k]=v;return chain},update(v){updates=v;return chain},async single(){
@@ -121,6 +153,13 @@ async function app(options={}){
  return {calls,invoke:async(kind='renew',input={})=>{const response=await mod.namespace.paidHandler(kind)(new Request('https://fixture.invalid',{method:'POST',headers:{Authorization:'Bearer fixture-user'},body:JSON.stringify({customerId:customer,planDuration:1,...input})}));return {status:response.status,body:await response.json()};}};
 }
 test('forged serviceCall flag does not bypass session authentication',async()=>{const a=await app({invalid:true});assert.equal((await a.invoke('renew',{serviceCall:true,resellerId:reseller})).status,401);assert.equal(a.calls.length,0);});
+test('preflight errors say no operation started and make no provider calls or deductions',async()=>{
+ for(const message of ['Connection details require review','An earlier renewal needs review; contact support','unexpected database problem']){
+  const a=await app({claimError:message});const r=await a.invoke('single',{connectionNumber:2});assert.equal(r.status,409);
+  assert.equal(r.body.code,message==='Connection details require review'?'connection_details_invalid':message==='unexpected database problem'?'reservation_unconfirmed':'not_started');assert.equal(a.calls.length,0);assert.equal(balance(),100);
+  assert.ok(!JSON.stringify(r.body).includes('unexpected database problem'));
+ }
+});
 test('URL/array add response saves credentials and appends without creating another customer',async()=>{const a=await app();const r=await a.invoke('add');assert.equal(r.body.success,true);assert.equal(sql('SELECT count(*) FROM customers'),'1');const lines=JSON.parse(sql('SELECT connection_list FROM customers'));assert.equal(lines.length,2);assert.equal(lines[1].username,'added+user');assert.equal(lines[1].password,'plus+password');assert.equal(balance(),99);});
 test('renewal array response and provider-confirmed expiry finalize safely',async()=>{const a=await app();const r=await a.invoke();assert.equal(r.body.success,true);assert.equal(balance(),99);assert.equal(a.calls.filter(u=>u.searchParams.get('action')==='renew').length,1);await a.invoke();assert.equal(a.calls.filter(u=>u.searchParams.get('action')==='renew').length,1);});
 test('timeout and receipt failure stop retries and keep the claim for review',async()=>{for(const options of [{timeout:true},{storageFailure:true}]){sql('TRUNCATE trex_paid_operations,credit_logs');sql(`UPDATE profiles SET credits=100 WHERE id=${q(reseller)}`);const a=await app(options);assert.equal((await a.invoke()).body.needsReview,true);await a.invoke();assert.equal(a.calls.filter(u=>u.searchParams.get('action')==='renew').length,1);assert.equal(balance(),99);}});

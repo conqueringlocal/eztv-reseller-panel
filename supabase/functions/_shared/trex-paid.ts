@@ -40,7 +40,9 @@ export function paidHandler(kind: 'renew' | 'single' | 'add') {
    const { data: claim, error: claimError } = await client.rpc('claim_trex_paid_operation',{p_customer:customerId,p_actor:user?.id || null,p_internal:internal,p_kind:kind,p_months:months,p_connection:kind==='single'?input.connectionNumber:null,p_client_key:typeof input.operationKey==='string'&&/^[0-9a-f-]{36}$/i.test(input.operationKey)?input.operationKey:null});
    if(claimError || !claim) {
     const allowed = ['An earlier renewal needs review; contact support','A creation attempt needs review; contact support','Connection limit reached or existing connections require review','Connection details require review','Duplicate connection details require review'];
-    return reply({success:false,error:allowed.includes(claimError?.message)?claimError.message:'The operation could not be started. No provider request was sent. Contact support.'},409);
+    const code = ['Connection details require review','Duplicate connection details require review','Connection not found','Invalid connection list'].includes(claimError?.message) ? 'connection_details_invalid' : allowed.includes(claimError?.message) ? 'not_started' : 'reservation_unconfirmed';
+    console.log(JSON.stringify({event:'trex_paid_not_started',customerId,kind,connectionNumber:input.connectionNumber,code}));
+    return reply({success:false,code,error:allowed.includes(claimError?.message)?claimError.message:'The operation could not be started. Contact support.'},409);
    }
    requestId=claim.requestId;
    if(!claim.claimed) {
