@@ -16,7 +16,7 @@ const tabs = {
   quote: "Quote calculator",
   setup: "Setup kit",
   referrals: "Referrals",
-  page: "Page & setup settings",
+  page: "Website & setup · Coming soon",
 };
 export default function ResellerSales() {
   const [params, setParams] = useSearchParams();

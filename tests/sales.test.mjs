@@ -462,3 +462,26 @@ test("calculator preserves unknown costs, validates inputs and calculates a marg
   assert.equal(needsFollowUp({ stage: "new", follow_up_at: null }), true);
   assert.equal(leadMessage({ do_not_contact: true }), "");
 });
+
+test('coming-soon publishing gate preserves drafts, blocks old clients, and closes public reads/intake', () => {
+  publish();
+  const migration = readdirSync('supabase/migrations').find(x=>x.endsWith('_reseller_websites_coming_soon.sql'));
+  const original = readFileSync('supabase/migrations/20261003184139_reseller_sales_tools.sql','utf8');
+  const restore = original.slice(original.indexOf('CREATE FUNCTION public.save_sales_page('),original.indexOf('CREATE FUNCTION public.create_sales_referral(')).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
+  sql(readFileSync(`supabase/migrations/${migration}`,'utf8'));
+  try {
+    assert.equal(workspace().page.published,false);
+    assert.equal(workspace().page.setup_notes,'PRIVATE GUIDE');
+    assert.equal(workspace(other).page,null);
+    assert.equal(sql("SET ROLE anon; SELECT get_public_sales_page('fixture-page') IS NULL"),'t');
+    assert.throws(()=>page({published:true,public_details_confirmed:true},2),/coming soon/);
+    assert.throws(()=>sql('UPDATE reseller_sales_pages SET published=true'),/reseller_websites_coming_soon/);
+    assert.throws(()=>sql(inquiry()),/unavailable/i);
+    page({setup_notes:'Updated private guide',published:false},2);
+    assert.equal(workspace().page.setup_notes,'Updated private guide');
+    assert.equal(workspace().page.published,false);
+    assert.equal(sql('SELECT count(*) FROM sales_leads'),'0');
+  } finally {
+    sql('ALTER TABLE reseller_sales_pages DROP CONSTRAINT reseller_websites_coming_soon;'+restore);
+  }
+});

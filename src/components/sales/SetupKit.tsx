@@ -44,7 +44,7 @@ export function SetupKit({ page }: { page: SalesPage | null }) {
           <p className="text-sm">
             Add your approved app instructions and tutorial link in{" "}
             <Link className="underline" to="/reseller/sales?tab=page">
-              Page & setup settings
+              Website & setup settings
             </Link>
             .
           </p>

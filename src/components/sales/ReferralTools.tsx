@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { useRefreshSales } from "@/hooks/useSalesWorkspace";
 import { type SalesWorkspace } from "@/lib/sales";
 import { money } from "@/lib/business";
-import { CopyText } from "./CopyText";
 import { salesSelect } from "./LeadEditor";
 import { toast } from "sonner";
 export function ReferralTools({ data }: { data: SalesWorkspace }) {
@@ -96,19 +95,15 @@ export function ReferralTools({ data }: { data: SalesWorkspace }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Give a customer a personal inquiry link. Leads and paid outcomes are
-            attributed to that code. Define any reward with the customer first
-            and include its cost in your quote calculation.
+            Keep referral codes and track recorded outcomes here. Shareable referral
+            links will become available with website publishing. Define any reward
+            with the customer first and include its cost in your quote calculation.
           </p>
-          {!data.page?.published && (
-            <p className="rounded bg-amber-50 border p-3 text-sm">
-              Publish your{" "}
-              <Link className="underline" to="/reseller/sales?tab=page">
-                inquiry page
-              </Link>{" "}
-              before sharing referral links.
-            </p>
-          )}
+          <p className="rounded bg-muted/40 border p-3 text-sm">
+            Website publishing and referral links are coming soon. You can save your{' '}
+            <Link className="underline" to="/reseller/sales?tab=page">website draft</Link>{' '}
+            while continuing to track referrals here.
+          </p>
           <form onSubmit={create} className="space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
@@ -154,9 +149,6 @@ export function ReferralTools({ data }: { data: SalesWorkspace }) {
           )}
           {data.referrals.map((ref) => {
             const leads = data.leads.filter((l) => l.referral_id === ref.id);
-            const url = data.page
-              ? `https://reseller.eztvclub.com/r/${data.page.slug}?ref=${ref.id}`
-              : "";
             return (
               <div key={ref.id} className="border rounded p-4 space-y-2">
                 <div className="flex flex-wrap justify-between gap-2">
@@ -171,15 +163,9 @@ export function ReferralTools({ data }: { data: SalesWorkspace }) {
                   sales
                 </p>
                 <p className="text-xs text-muted-foreground break-all">
-                  Code: {ref.id}. The customer’s name is not included in the
-                  public link.
+                  Code: {ref.id}. Sharing links is not available yet.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <CopyText
-                    label="Copy referral link"
-                    text={url}
-                    disabled={!ref.enabled || !data.page?.published}
-                  />
                   <Button
                     size="sm"
                     variant="outline"
