@@ -117,3 +117,9 @@ Individual renewals and added connections return the confirmed expiry of the aff
 Known validation rejections now say the attempt did not contact Trex or deduct credits. An unknown reservation/RPC failure does not promise an unchanged balance. Unknown provider results keep the existing review hold and persistent operation key. Safe logs include the customer reference, requested connection and failure category, never credentials.
 
 Validation: 29 stabilization tests with a disposable database and mocked provider, including stale primary credentials, separate renewals of lines 2/3, per-line returned expiry, credit debits, duplicate replay suppression and preflight failures. Mobile browser verification exercises the real forms with mocked Auth/API calls. Live diagnosis uses read-only device_info; paid calls are never used for release testing.
+
+## Removing and renumbering a saved connection
+
+After the owner confirms which connection is unused, lock the reseller profile before the customer and reject any unresolved paid/provisioning operation. Keep the retained credentials and confirmed expiry dates, renumber their saved list, synchronize the top-level primary login and connection totals, and remove obsolete reconciliation metadata. Record the old-to-new number mapping in the security audit without credentials. Do not rewrite historical paid-operation lines, receipts, references or credit logs.
+
+The 24-hour duplicate guard now matches a retained username or MAC address even if its connection number changed. The original number check remains as a conservative fallback. Renumbering therefore does not make an already-renewed line purchasable again immediately. Verify the group quote and safety hold with rollback-only checks; never test by purchasing another renewal.
