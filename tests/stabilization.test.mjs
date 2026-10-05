@@ -10,7 +10,7 @@ const q=x=>`'${String(x).replaceAll("'","''")}'`;const j=x=>`${q(JSON.stringify(
 const sql=s=>execFileSync('docker',['exec','-i',container,'psql','-h','127.0.0.1','-XqAt','-U','postgres','-v','ON_ERROR_STOP=1'],{input:s,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const as=(id,s)=>`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub=${q(id)}; ${s}; COMMIT;`;
 const runAs=(id,s)=>sql(as(id,s));
-const migrationNames=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_legacy_connection_renewals.sql$/.test(x))];
+const migrationNames=['20261002160000_trex_provisioning_guard.sql',...readdirSync('supabase/migrations').filter(x=>/_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_legacy_connection_renewals.sql$|_trex_renumbering_guard.sql$/.test(x))];
 before(async()=>{
  execFileSync('docker',['run','-d','--name',container,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
  for(let i=0;i<60;i++){try{sql('SELECT 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
@@ -169,3 +169,23 @@ test('persistent client reference replays a completed operation after the safety
  const replay=JSON.parse(sql(command));assert.equal(replay.claimed,false);assert.equal(replay.state,'completed');assert.equal(replay.response.success,true);assert.equal(balance(),99);
 });
 test('valid reseller cannot use serviceCall or skipCredits fields to avoid debit',async()=>{const a=await app();const r=await a.invoke('renew',{serviceCall:true,skipCredits:true});assert.equal(r.body.success,true);assert.equal(balance(),99);});
+
+
+test('renumbering renewed lines preserves history and blocks repeat single/group charges until safety window ends',async()=>{
+ stalePrimary();const a=await app();
+ for(const connectionNumber of [2,3])assert.equal((await a.invoke('single',{connectionNumber})).body.success,true);
+ const before=sql('SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM trex_paid_operations o');
+ sql(`UPDATE customers SET connection_list=(SELECT jsonb_agg(l||jsonb_build_object('connection_number',(l->>'connection_number')::integer-1) ORDER BY (l->>'connection_number')::integer) FROM jsonb_array_elements(connection_list) l WHERE (l->>'connection_number')::integer IN (2,3)),total_connections=2,max_connections=2 WHERE id=${q(customer)}`);
+ for(const n of [1,2])assert.equal(claim('single',1,n).state,'recently_completed');
+ assert.equal(claim('renew').state,'recently_completed');assert.equal(balance(),98);
+ assert.equal(sql('SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM trex_paid_operations o'),before);
+ assert.equal(runAs(reseller,`SELECT credits_required||':'||accounts_count FROM calculate_renewal_credits_required(${q(customer)},1)`),'2:2');
+ sql("UPDATE trex_paid_operations SET created_at=now()-interval '25 hours'");
+ const next=claim('renew');assert.equal(next.claimed,true);assert.deepEqual(next.lines.map(l=>l.connection_number),[1,2]);assert.deepEqual(next.lines.map(l=>l.username),['listed-second','listed-third']);assert.equal(balance(),96);
+});
+test('renumbering a MAG connection preserves the recent-renewal guard',()=>{
+ sql(`UPDATE customers SET username=null,password=null,mac_address=null,connection_list='[{"connection_number":1,"mac_address":"AA:BB:CC:DD:EE:01"},{"connection_number":2,"mac_address":"AA:BB:CC:DD:EE:02"}]' WHERE id=${q(customer)}`);
+ const c=claim('single',1,2);sql(`UPDATE trex_paid_operations SET receipts=${j([{...c.lines[0],confirmed:true,expiration_date:'2027-02-01'}])} WHERE id=${q(c.requestId)}`);sql(`SELECT finish_trex_paid_operation(${q(c.requestId)})`);
+ sql(`UPDATE customers SET connection_list='[{"connection_number":1,"mac_address":"aa:bb:cc:dd:ee:02","expiration_date":"2027-02-01"}]' WHERE id=${q(customer)}`);
+ assert.equal(claim('single',1,1).state,'recently_completed');assert.equal(balance(),99);
+});
