@@ -21,7 +21,8 @@ mean retail subscribers are being invited to the central help desk.
 
 - VPS directory: `/opt/eztv-support-pilot`.
 - HTTP: `http://127.0.0.1:8093` (VPS loopback only).
-- Suggested future inbox: `support@eztvclub.com`; no mailbox has been created or connected.
+- Existing inbox: `support@eztvclub.com`, confirmed by the owner in Mailbux webmail
+  and its mobile app. It has not been connected to Zammad.
 - Zammad: `7.2.2-0000`, official `ghcr.io/zammad/zammad` image.
 - Upstream Compose revision: `b51cba16ab6d753efcb6676a30afaf97753b72cb`.
 - All service images pinned to verified digests in `image-lock.yml`.
@@ -73,7 +74,7 @@ docker compose cp local/pilot-users.json zammad-railsserver:/tmp/eztv-pilot-user
 docker compose cp /root/projects/eztv-reseller-panel/services/support/bootstrap-pilot.rb zammad-railsserver:/tmp/eztv-bootstrap.rb
 docker compose exec -T --user root zammad-railsserver chown zammad:zammad /tmp/eztv-pilot-users.json
 docker compose exec -T -e EZTV_SUPPORT_PILOT=true zammad-railsserver bundle exec rails runner /tmp/eztv-bootstrap.rb
-docker compose exec -T zammad-railsserver rm /tmp/eztv-pilot-users.json /tmp/eztv-bootstrap.rb
+docker compose exec -T --user root zammad-railsserver rm /tmp/eztv-pilot-users.json /tmp/eztv-bootstrap.rb
 ```
 
 The bootstrap is guarded against non-pilot use and never sends invitations. Do not
@@ -102,12 +103,22 @@ check. The classic desktop UI is cramped at phone widths; use `/mobile` for phon
 testing. These results do not validate live email, dashboard SSO, distributor
 reporting or capacity for the incoming network.
 
+Follow-up email verification passed **14 isolated checks** for inbound parsing,
+reseller attribution, untrusted ownership-header rejection, attachments, the IMAP
+duplicate-message validator, actual outbound delivery into a local SMTP sink,
+threading and exclusion of internal notes. Four unit tests verify secure mailbox
+credential handling and that the access check never fetches, modifies or sends mail.
+Unauthenticated TLS handshakes to Mailbux IMAP and SMTP succeeded; mailbox login,
+the account's IMAP entitlement and live delivery are still untested.
+
 Run from the V1 repository:
 
 ```sh
 python3 services/support/check-pilot.py
 python3 services/support/test-pilot.py
 python3 services/support/test-recovery.py
+python3 services/support/test-email.py
+python3 services/support/test-mailbux-access.py
 PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs node services/support/test-browser.mjs
 ```
 
@@ -132,9 +143,62 @@ then rehearse restoring the complete application on another host. Recovery-test
 copies in `local/recovery/` are separate from automatic backup retention and should
 be pruned deliberately after retaining the desired test evidence.
 
+## Existing Mailbux inbox and channel transition
+
+The owner currently handles support through Discord DMs, Facebook Messenger and SMS.
+Keep those as contact avenues during transition, but create a ticket for any issue
+requiring investigation. Capture the reseller, relevant customer reference, source
+channel and a short factual summary; do not import entire personal conversation
+histories. Once connected, staff should reply from the help desk to retain a shared
+history. There are no Discord/Messenger/SMS connectors in this pilot.
+An inbound email is not authorization to change balances, renew service or grant
+access. Unknown senders need staff triage and reseller identity verification.
+
+Mailbux's verified published settings are `my.mailbux.com:993` over TLS for IMAP
+and `my.mailbux.com:587` with STARTTLS for SMTP, using the full email address.
+Its current SMTP/API documentation states IMAP is available on paid plans and
+recommends a separate app password for unattended access. Check the existing
+account's entitlement; this setup does not purchase an upgrade or change DNS.
+
+Credential handoff uses the owner's existing secure VPS access:
+
+1. In the Mailbux dashboard, generate a dedicated app password for
+   `support@eztvclub.com`, labelled for the EZTV help desk. Do not share the normal
+   mailbox password or paste an app password into chat, Git or command arguments.
+2. Create an empty mailbox folder named `EZTV-Support-Pilot` in webmail for the
+   initial controlled connection. Leave historical messages outside that folder.
+3. From the owner's interactive VPS terminal, run:
+
+   ```sh
+   python3 /root/projects/eztv-reseller-panel/services/support/mailbux-access.py --store
+   ```
+
+   The hidden prompt writes only `/opt/eztv-support-pilot/local/mailbux.json`, mode
+   0600 inside a mode-0700 directory. It does not authenticate, fetch or send mail.
+4. The operator can then run `mailbux-access.py --check`. This verifies IMAP and
+   SMTP authentication with certificate verification and EXAMINEs the test folder
+   read-only. It never fetches messages, marks/deletes mail, sends mail, or activates
+   a channel. The sanitized result is saved beside the credential file.
+
+Do not run Zammad's account wizard against the live mailbox yet: its documented
+setup sends verification emails, including one to an external Zammad address.
+Live channel setup should use the approved test folder with `keep_on_server: true`,
+auto-response triggers off, and an explicit cutover plan. A channel is not ready
+until controlled live receipt/reply tests pass; local parser/SMTP tests do not prove
+Mailbux login, IMAP fetching, delivery or SPF/DKIM alignment.
+
+`test-email.py` uses a pinned, disposable Mailpit container on the internal-only
+network. It has no published ports or relay configuration. Synthetic `.invalid`
+mail passes through Zammad's real email parser and outbound email job into this
+local sink. The test disables its temporary channel and removes the sink afterward.
+All normal pilot communication channels remain disabled between tests.
+
+References: [Mailbux connection/app-password documentation](https://mailbux.com/smtp-api)
+and [Zammad mailbox setup behavior](https://admin-docs.zammad.org/en/latest/channels/email/accounts/account-setup.html).
+
 ## Launch work still required
 
-1. Create the dedicated mailbox and connect its real inbound/outbound service.
+1. Connect the existing Mailbux mailbox using its dedicated app password and test folder.
    Verify receipt, replies, threading, attachments, bounce handling, sender
    authentication and actual notification delivery using designated test recipients.
    No mail invitations or messages have been authorized/sent by this pilot.

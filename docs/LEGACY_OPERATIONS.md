@@ -6,7 +6,8 @@ Self-hosted Zammad is running privately on the VPS at loopback port 8093, with i
 own database and synthetic identities. This is infrastructure testing, not a live
 support launch. No reseller invitations, emails, provider calls or credit changes
 were made. Dashboard support integration and distributor reporting are not enabled.
-The proposed support@eztvclub.com inbox still needs to be provisioned and connected.
+The owner confirmed support@eztvclub.com already exists in Mailbux. A dedicated
+app password and controlled test-folder connection are still needed.
 
 See [support pilot operations, test results and launch requirements](../services/support/README.md)
 for reproducible deployment, secrets locations, verification and recovery procedures.
