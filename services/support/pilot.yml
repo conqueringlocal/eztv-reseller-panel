@@ -1,0 +1,40 @@
+# Private test stack. No outbound network, no production customer data.
+networks:
+  default:
+    internal: true
+  frontend:
+    driver: bridge
+services:
+  zammad-elasticsearch:
+    mem_limit: 1536m
+    cpus: 1.0
+  zammad-postgresql:
+    mem_limit: 768m
+    cpus: 1.0
+  zammad-redis:
+    mem_limit: 256m
+    cpus: 0.5
+  zammad-memcached:
+    mem_limit: 320m
+    cpus: 0.5
+  zammad-init:
+    mem_limit: 2048m
+    cpus: 1.5
+  zammad-railsserver:
+    mem_limit: 2048m
+    cpus: 1.5
+  zammad-scheduler:
+    mem_limit: 1536m
+    cpus: 1.0
+  zammad-websocket:
+    mem_limit: 512m
+    cpus: 0.5
+  zammad-nginx:
+    # Docker does not publish ports from internal-only networks. Only the
+    # reverse proxy joins this bridge; Rails, jobs and data remain internal.
+    networks: [default, frontend]
+    mem_limit: 256m
+    cpus: 0.5
+  zammad-backup:
+    mem_limit: 768m
+    cpus: 0.5
