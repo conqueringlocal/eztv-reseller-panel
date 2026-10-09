@@ -160,7 +160,64 @@ Its current SMTP/API documentation states IMAP is available on paid plans and
 recommends a separate app password for unattended access. Check the existing
 account's entitlement; this setup does not purchase an upgrade or change DNS.
 
-Credential handoff uses the owner's existing secure VPS access:
+### Cloudflare credential entry (preferred; works from mobile)
+
+A dedicated Worker named `eztv-support-mailbox` is deployed in the owner's
+personal Cloudflare account (`7dab44ab414c0018bf0ef6dfce235b56`). It is independent
+of the reseller Pages project. The owner can supply the credential without VPS access:
+
+1. Generate a dedicated app password for `support@eztvclub.com` in Mailbux.
+2. In Cloudflare, open **Workers & Pages → eztv-support-mailbox → Settings →
+   Variables and Secrets → Add**. Select **Secret**, name it exactly
+   `MAILBUX_APP_PASSWORD`, paste the app password as its value, then save/deploy.
+3. Tell the operator it is ready; never paste the password into chat. Create the
+   empty `EZTV-Support-Pilot` folder in Mailbux webmail for the access check.
+
+Do not put this credential in Pages frontend variables, a `VITE_` variable, Git,
+or ordinary plaintext Worker variables. Cloudflare stores the encrypted Secret;
+the VPS and eventually Zammad still require a protected local copy to authenticate.
+
+The Worker accepts authenticated HTTPS POST requests only. A random transport key
+is separate from the mailbox secret. The response is RSA-OAEP/SHA-256 ciphertext
+encrypted for a pinned 3072-bit VPS public key; only the VPS holds its private key.
+There are no CORS permissions, request logs, public previews or cacheable responses.
+The current handoff expires **2026-10-16 13:57 UTC**. Disable it after successful
+retrieval; it is a temporary handoff, not an ongoing runtime dependency.
+
+Operator commands (no passwords in arguments/output):
+
+```sh
+node services/support/cloudflare/fetch-mailbox.mjs --status
+node services/support/cloudflare/fetch-mailbox.mjs
+python3 services/support/mailbux-access.py --check
+```
+
+The fetch helper decrypts locally into mode-0600 `local/mailbux.json`, refuses to
+overwrite an existing credential, and does not activate a channel or send/fetch mail.
+After retrieval, set `HANDOFF_ENABLED` to `false` in the private Wrangler config
+and redeploy, then delete the `VPS_HANDOFF_TOKEN` Secret and confirm authenticated
+requests no longer return ciphertext. Keep the config synchronized with dashboard
+changes; redeploying stale enabled settings can reopen the handoff before expiry.
+After mailbox access is verified, remove `MAILBUX_APP_PASSWORD` from this temporary
+Worker too. If a credential needs replacement, deliberately archive/remove the
+existing protected local file and generate fresh transport credentials first.
+
+Reproducible setup: `node services/support/cloudflare/prepare-handoff.mjs` generates
+the private config/key/token under `/opt/eztv-support-pilot/local/cloudflare/`.
+Deploy using Wrangler's `--config` and `--secrets-file` options with `wrangler.json`
+and `handoff-token.json` in that directory. Write the deployed HTTPS URL ending in
+`/v1/mailbox` to a mode-0600 `endpoint.json` as `{"url":"https://…/v1/mailbox"}`.
+Preparation preserves existing keys and expiry; it never creates a mailbox password.
+Tests: `node --test services/support/cloudflare/*.test.mjs`. Eleven tests cover
+authorization, expiry, encryption, private client storage and overwrite protection.
+Live checks verified unauthenticated POST/GET/browser-origin rejection and the
+authenticated missing-secret response. No real mailbox credential was present.
+
+Reference: [Cloudflare Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
+
+### Alternative: interactive VPS entry
+
+Credential handoff can also use the owner's existing secure VPS access:
 
 1. In the Mailbux dashboard, generate a dedicated app password for
    `support@eztvclub.com`, labelled for the EZTV help desk. Do not share the normal
