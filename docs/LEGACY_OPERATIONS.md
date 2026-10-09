@@ -1,5 +1,18 @@
 # Legacy dashboard operations
 
+## Private reseller help desk pilot (October 9, 2026)
+
+Self-hosted Zammad is running privately on the VPS at loopback port 8093, with its
+own database and synthetic identities. This is infrastructure testing, not a live
+support launch. No reseller invitations, emails, provider calls or credit changes
+were made. Dashboard support integration and distributor reporting are not enabled.
+The proposed support@eztvclub.com inbox still needs to be provisioned and connected.
+
+See [support pilot operations, test results and launch requirements](../services/support/README.md)
+for reproducible deployment, secrets locations, verification and recovery procedures.
+
+## Credit purchasing
+
 Manual credit purchases are active until automated payments are rebuilt for V2.
 
 1. Reseller opens Credits & Usage, pays PayPal **@eztvclub** in **USD** at **$3 per credit**, and submits the payment transaction reference. Packages: 5, 10, 20 or 50 credits.
