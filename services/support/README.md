@@ -22,7 +22,8 @@ mean retail subscribers are being invited to the central help desk.
 - VPS directory: `/opt/eztv-support-pilot`.
 - HTTP: `http://127.0.0.1:8093` (VPS loopback only).
 - Existing inbox: `support@eztvclub.com`, confirmed by the owner in Mailbux webmail
-  and its mobile app. It has not been connected to Zammad.
+  and its mobile app. A verified app password is configured in an **inactive**
+  Zammad channel. The sender address remains inactive and unlinked.
 - Zammad: `7.2.2-0000`, official `ghcr.io/zammad/zammad` image.
 - Upstream Compose revision: `b51cba16ab6d753efcb6676a30afaf97753b72cb`.
 - All service images pinned to verified digests in `image-lock.yml`.
@@ -108,8 +109,9 @@ reseller attribution, untrusted ownership-header rejection, attachments, the IMA
 duplicate-message validator, actual outbound delivery into a local SMTP sink,
 threading and exclusion of internal notes. Four unit tests verify secure mailbox
 credential handling and that the access check never fetches, modifies or sends mail.
-Unauthenticated TLS handshakes to Mailbux IMAP and SMTP succeeded; mailbox login,
-the account's IMAP entitlement and live delivery are still untested.
+Mailbux IMAP and SMTP authentication with certificate-verified TLS succeeded using
+the replacement app password. The dedicated test folder is available. These checks
+ran from the VPS host; container mail connectivity and live delivery remain untested.
 
 Run from the V1 repository:
 
@@ -215,20 +217,29 @@ authenticated missing-secret response. No real mailbox credential was present.
 
 Reference: [Cloudflare Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
 
-Operational update (2026-10-09): the first supplied credential successfully
-authenticated to IMAP and SMTP. The empty `EZTV-Support-Pilot` folder was created
-and verified read-only. Zero messages were fetched or sent; no channel was enabled.
-The credential had been entered as a plaintext Worker variable and appeared in
-Wrangler's configuration-diff diagnostics. It must be revoked in Mailbux. The
-plaintext binding and local credential were removed, matching local Wrangler log
-entries were redacted, and the transport token was rotated. The handoff is closed
-(authenticated HTTP 410). `MAILBUX_APP_PASSWORD` now exists as an encrypted Secret
-containing a replacement placeholder; the owner must edit that Secret with a newly
-issued app password. Do not treat the placeholder or the prior successful check
-as a usable current credential. Once replacement is confirmed, briefly enable the
-handoff, retrieve and verify the new credential, then close it and remove transport
-secrets. Capture future Wrangler deployment output in a protected local log and
-report only sanitized status: remote plaintext variables can appear in its diff.
+Operational update (2026-10-09): the initial credential appeared in Wrangler's
+configuration-diff diagnostics because it was entered as a plaintext variable.
+The owner confirmed rotation. The replacement was verified to be an encrypted
+Secret, securely retrieved, and successfully tested for IMAP/SMTP login and
+read-only test-folder access. Zero messages were fetched or sent. The handoff is
+disabled, both Cloudflare Secrets have been deleted, and the former transport token
+is rejected (HTTP 401). The protected local credential is now the operational copy.
+Capture future Wrangler deployment output in a protected local log and report only
+sanitized status: remote plaintext variables can appear in its diff.
+
+`python3 services/support/configure-mailbux.py` prepares the inactive channel using
+credentials passed over stdin, without Zammad's mail-sending setup wizard. It checks
+the private-pilot guards, disabled channels/triggers, test-folder preservation and
+TLS verification. It does not fetch, deliver or activate email, and leaves the
+sender unlinked: Zammad otherwise automatically activates addresses linked to any
+existing channel. The script can update the same inactive channel after rotation.
+The native channel configuration contains credentials and must never be dumped into
+logs or chat; protect database backups accordingly.
+
+Before a live pilot, provide controlled container access to Mailbux (the application
+network is still internal-only), link the sender, and route only the test folder.
+Use designated test messages/recipients to verify receipt, replies, threading,
+attachments and sender authentication before enabling normal inbox handling.
 
 ### Alternative: interactive VPS entry
 
