@@ -215,6 +215,21 @@ authenticated missing-secret response. No real mailbox credential was present.
 
 Reference: [Cloudflare Worker Secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
 
+Operational update (2026-10-09): the first supplied credential successfully
+authenticated to IMAP and SMTP. The empty `EZTV-Support-Pilot` folder was created
+and verified read-only. Zero messages were fetched or sent; no channel was enabled.
+The credential had been entered as a plaintext Worker variable and appeared in
+Wrangler's configuration-diff diagnostics. It must be revoked in Mailbux. The
+plaintext binding and local credential were removed, matching local Wrangler log
+entries were redacted, and the transport token was rotated. The handoff is closed
+(authenticated HTTP 410). `MAILBUX_APP_PASSWORD` now exists as an encrypted Secret
+containing a replacement placeholder; the owner must edit that Secret with a newly
+issued app password. Do not treat the placeholder or the prior successful check
+as a usable current credential. Once replacement is confirmed, briefly enable the
+handoff, retrieve and verify the new credential, then close it and remove transport
+secrets. Capture future Wrangler deployment output in a protected local log and
+report only sanitized status: remote plaintext variables can appear in its diff.
+
 ### Alternative: interactive VPS entry
 
 Credential handoff can also use the owner's existing secure VPS access:
