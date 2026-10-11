@@ -1,0 +1,140 @@
+import {test,before,after,beforeEach} from 'node:test';
+import assert from 'node:assert/strict';
+import {execFileSync,spawn} from 'node:child_process';
+import {readFileSync,readdirSync} from 'node:fs';
+import {build} from 'esbuild';
+const container=`eztv-paypal-test-${process.pid}`;
+const a='11111111-1111-4111-8111-111111111111',r='22222222-2222-4222-8222-222222222222',b='33333333-3333-4333-8333-333333333333',id='44444444-4444-4444-8444-444444444444',mid='55555555-5555-4555-8555-555555555555';
+const q=x=>`'${String(x).replaceAll("'","''")}'`;
+const sql=s=>execFileSync('docker',['exec','-i',container,'psql','-h','127.0.0.1','-XqAt','-U','postgres','-v','ON_ERROR_STOP=1'],{input:s,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
+const as=(uid,s)=>`BEGIN; SET LOCAL ROLE authenticated; SET LOCAL request.jwt.claim.sub=${q(uid)}; ${s}; COMMIT;`;
+const concurrent=s=>new Promise((resolve,reject)=>{const p=spawn('docker',['exec','-i',container,'psql','-h','127.0.0.1','-XqAt','-U','postgres','-v','ON_ERROR_STOP=1']);let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);p.on('close',c=>c?reject(new Error(err)):resolve(out.trim()));p.stdin.end(s);});
+const prepare=()=>sql(`SELECT prepare_paypal_credit_order('${id}','${r}',10,'sandbox'); UPDATE paypal_credit_orders SET paypal_order_id='ORDER12345' WHERE id='${id}'`);
+const grant=(event='WH-CAPTURE')=>`SELECT fulfill_paypal_credit_order('${id}','sandbox','ORDER12345','CAPTURE12345',3000,149,'${event}')`;
+const balance=()=>sql(`SELECT credits FROM profiles WHERE id='${r}'`);
+let core, handler;
+before(async()=>{
+ execFileSync('docker',['run','-d','--name',container,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
+ for(let i=0;i<60;i++){try{sql('SELECT 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
+ sql(readFileSync('tests/stabilization-schema.sql','utf8'));
+ for(const suffix of ['trex_provisioning_guard.sql','legacy_credit_security.sql','business_dashboard.sql','paypal_automatic_credits.sql']) {
+  const file=readdirSync('supabase/migrations').find(f=>f.endsWith(suffix));sql(readFileSync(`supabase/migrations/${file}`,'utf8'));
+ }
+ for(const [name,set] of [['paypal',v=>core=v],['handler',v=>handler=v]]){
+  const result=await build({entryPoints:[`supabase/functions/_shared/paypal-credits/${name}.ts`],bundle:true,write:false,format:'esm',platform:'node'});
+  set(await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64')));
+ }
+});
+after(()=>execFileSync('docker',['rm','-f','-v',container],{stdio:'pipe'}));
+beforeEach(()=>{
+ sql(`TRUNCATE paypal_credit_events,paypal_credit_receipts,paypal_credit_orders,manual_credit_requests,credit_logs,business_entries,user_roles,profiles CASCADE;
+ INSERT INTO profiles(id,name,email,role,credits) VALUES('${a}','Admin','admin@example.invalid','admin',100),('${r}','Reseller','r@example.invalid','reseller',100),('${b}','Other','b@example.invalid','reseller',100);
+ INSERT INTO user_roles(user_id,role) VALUES('${a}','admin'),('${r}','reseller'),('${b}','reseller');
+ UPDATE paypal_credit_settings SET enabled=true,environment='sandbox';`);
+});
+test('service-only commands and settings; own-order reads only',()=>{
+ prepare();
+ for(const signature of ['prepare_paypal_credit_order(uuid,uuid,integer,text)','fulfill_paypal_credit_order(uuid,text,text,text,integer,integer,text)','review_paypal_credit_event(text,text,text,text)']) for(const role of ['anon','authenticated']) assert.equal(sql(`SELECT has_function_privilege('${role}','${signature}','EXECUTE')`),'f');
+ assert.equal(sql(as(r,'SELECT count(*) FROM paypal_credit_orders')),'1');assert.equal(sql(as(b,'SELECT count(*) FROM paypal_credit_orders')),'0');
+ assert.throws(()=>sql(as(r,"UPDATE paypal_credit_orders SET status='credited'")));
+ assert.throws(()=>sql(as(a,'UPDATE paypal_credit_settings SET enabled=true')));
+});
+test('server pricing, entitlement, environment and kill switch',()=>{
+ for(const query of [`SELECT prepare_paypal_credit_order('${id}','${r}',11,'sandbox')`,`SELECT prepare_paypal_credit_order('${id}','${r}',10,'live')`]) assert.throws(()=>sql(query));
+ sql(`UPDATE profiles SET credit_purchase_enabled=false WHERE id='${r}'`);assert.throws(prepare);
+ sql(`UPDATE profiles SET credit_purchase_enabled=true; UPDATE paypal_credit_settings SET enabled=false`);assert.throws(prepare);assert.equal(balance(),'100');
+});
+test('request retries retain identity and reject changed actor or quantity',()=>{
+ prepare();prepare();assert.equal(sql('SELECT count(*) FROM paypal_credit_orders'),'1');
+ for(const [actor,credits] of [[b,10],[r,20]]) assert.throws(()=>sql(`SELECT prepare_paypal_credit_order('${id}','${actor}',${credits},'sandbox')`));
+});
+test('racing captures/webhooks grant once with sale and fee',async()=>{
+ prepare();await Promise.all(Array.from({length:6},(_,i)=>concurrent(grant('WH-'+i))));
+ assert.equal(balance(),'110');assert.equal(sql('SELECT count(*) FROM credit_logs'),'1');assert.equal(sql("SELECT count(*) FROM business_entries WHERE kind='sale'"),'1');
+ assert.equal(sql("SELECT amount FROM business_entries WHERE kind='payment_fee'"),'1.49');
+});
+test('database failure rolls back order, receipt, event, balance and finance; replay recovers',()=>{
+ prepare();sql('ALTER TABLE credit_logs ADD CONSTRAINT paypal_failure CHECK(credits_used<>10)');
+ try{assert.throws(()=>sql(grant()));assert.equal(balance(),'100');assert.equal(sql('SELECT count(*) FROM paypal_credit_receipts'),'0');assert.equal(sql('SELECT count(*) FROM paypal_credit_events'),'0');assert.equal(sql('SELECT status FROM paypal_credit_orders'),'created');}
+ finally{sql('ALTER TABLE credit_logs DROP CONSTRAINT paypal_failure');}
+ assert.equal(sql(grant()),'credited');assert.equal(balance(),'110');
+});
+test('wrong environment, capture or amount cannot change credits',()=>{
+ prepare();assert.throws(()=>sql(grant().replace("'sandbox'","'live'")));assert.throws(()=>sql(grant().replace('3000','2999')));sql(grant());assert.throws(()=>sql(grant().replace('CAPTURE12345','CAPTURE67890')));assert.equal(balance(),'110');
+});
+function manual(){sql(as(r,`SELECT request_manual_credits('${mid}',10,'submitted-reference')`));}
+function approve(){return sql(as(a,`SELECT review_manual_credits('${mid}',true,'CAPTURE12345','Verified')`));}
+test('manual approval first prevents an automatic second grant',()=>{
+ manual();approve();prepare();assert.equal(sql(grant()),'review_required');assert.equal(balance(),'110');assert.equal(sql('SELECT count(*) FROM credit_logs'),'1');
+});
+test('automatic grant first rolls back manual approval completely',()=>{
+ prepare();sql(grant());manual();assert.throws(approve);assert.equal(balance(),'110');assert.equal(sql('SELECT status FROM manual_credit_requests'),'pending');
+});
+test('refund before capture blocks grant; review event replays deduplicate',()=>{
+ prepare();const review=`SELECT review_paypal_credit_event('WH-REFUND','PAYMENT.CAPTURE.REFUNDED','CAPTURE12345','ORDER12345')`;
+ assert.equal(sql(review),'review_required');assert.equal(sql(review),'duplicate');assert.equal(sql(grant()),'review_required');assert.equal(balance(),'100');
+});
+test('refund after grant preserves history and blocks later duplicate capture',()=>{
+ prepare();sql(grant());sql("SELECT review_paypal_credit_event('WH-REFUND','PAYMENT.CAPTURE.REFUNDED','CAPTURE12345',NULL)");sql(grant());assert.equal(balance(),'110');assert.equal(sql('SELECT count(*) FROM credit_logs'),'1');assert.equal(sql('SELECT status FROM paypal_credit_orders'),'review_required');
+});
+test('orphan event fails for retry instead of being acknowledged as processed',()=>{
+ assert.throws(()=>sql("SELECT review_paypal_credit_event('WH-REFUND','PAYMENT.CAPTURE.REFUNDED','CAPTURE12345',NULL)"));assert.equal(sql('SELECT count(*) FROM paypal_credit_events'),'0');
+});
+const order={id,reseller_id:r,environment:'sandbox',credits:10,amount_cents:3000,paypal_order_id:'ORDER12345',status:'created'};
+const payload=()=>({id:'ORDER12345',status:'COMPLETED',purchase_units:[{custom_id:id,payee:{merchant_id:'MERCHANT1'},amount:{currency_code:'USD',value:'30.00'},payments:{captures:[{id:'CAPTURE12345',status:'COMPLETED',final_capture:true,amount:{currency_code:'USD',value:'30.00'},seller_receivable_breakdown:{paypal_fee:{currency_code:'USD',value:'1.49'}}}]}}]});
+test('provider receipt validates merchant, local order, amount, currency and final capture',()=>{
+ assert.deepEqual(core.receipt(payload(),order,'MERCHANT1'),{captureId:'CAPTURE12345',feeCents:149});
+ const mutations=[p=>p.purchase_units[0].payee.merchant_id='OTHER',p=>p.purchase_units[0].custom_id=mid,p=>p.purchase_units[0].amount.value='0.30',p=>p.purchase_units[0].amount.currency_code='EUR',p=>p.purchase_units[0].payments.captures[0].final_capture=false];
+ for(const mutate of mutations){const p=payload();mutate(p);assert.throws(()=>core.receipt(p,order,'MERCHANT1'));}
+ const pending=payload();pending.purchase_units[0].payments.captures[0].status='PENDING';assert.equal(core.receipt(pending,order,'MERCHANT1'),null);
+});
+test('strict money parsing and safe checkout URLs',()=>{
+ for(const value of ['30','30.001','1e3','-3.00','3.00oops',null]) assert.throws(()=>core.cents(value));
+ assert.equal(core.cents('30.00'),3000);
+ for(const url of ['https://evil.invalid','http://www.paypal.com','https://www.paypal.com.evil.invalid','https://www.paypal.com@evil.invalid']) assert.throws(()=>core.approveUrl(url,'live'));
+});
+test('PayPal calls reuse stable create/capture keys and preserve raw webhook content',async()=>{
+ const requests=[];const fake=async(url,opts)=>{requests.push([url,opts]);return Response.json(url.endsWith('/token')?{access_token:'synthetic'}:url.includes('verify-webhook')?{verification_status:'SUCCESS'}:{id:'ORDER12345',links:[{rel:'approve',href:'https://www.sandbox.paypal.com/checkoutnow?token=ORDER12345'}]});};
+ const p=core.createPayPal({environment:'sandbox',clientId:'test',secret:'test',webhookId:'test',merchantId:'MERCHANT1',appUrl:'https://example.invalid'},fake);
+ await p.create(order);await p.create(order);await p.capture(order);await p.capture(order);
+ const api=requests.filter(([u])=>!u.endsWith('/token'));assert.equal(api[0][1].headers['PayPal-Request-Id'],api[1][1].headers['PayPal-Request-Id']);assert.equal(api[2][1].headers['PayPal-Request-Id'],api[3][1].headers['PayPal-Request-Id']);
+ const raw='{ "id": "WH-123", "event_type": "SYNTHETIC" }';
+ const headers=new Headers({'paypal-auth-algo':'SHA256withRSA','paypal-cert-url':'https://api-m.sandbox.paypal.com/v1/notifications/certs/test','paypal-transmission-id':'test','paypal-transmission-sig':'test','paypal-transmission-time':'test'});
+ await p.verify(raw,headers);assert.ok(requests.at(-1)[1].body.includes(raw));
+ await assert.rejects(()=>p.verify(raw,new Headers()));
+});
+test('API rejects unauthenticated callers and disabled webhook does not acknowledge events',async()=>{
+ const h=handler.createHandler({},async()=>null,()=>undefined);
+ assert.equal((await h(new Request('https://example.invalid',{method:'POST',body:'{}'}))).status,401);
+ const hook=handler.createHandler({},async()=>null,()=>undefined,true);
+ assert.equal((await hook(new Request('https://example.invalid',{method:'POST',body:'{}'}))).status,503);
+});
+test('only admin resolves review; late capture can never grant after resolution',()=>{
+ prepare();sql("SELECT review_paypal_credit_event('WH-REFUND','PAYMENT.CAPTURE.REFUNDED','CAPTURE12345','ORDER12345')");
+ const resolve=`SELECT resolve_paypal_credit_review('${id}','Refund confirmed and no credits issued')`;
+ assert.throws(()=>sql(as(r,resolve)));assert.equal(sql(as(a,resolve)),'reviewed');assert.equal(sql(grant()),'reviewed');assert.equal(balance(),'100');
+ assert.equal(sql(`SELECT reviewed_by FROM paypal_credit_orders WHERE id='${id}'`),a);
+});
+const runtimeConfig={EZTV_PAYPAL_APP_URL:'https://sandbox.example.invalid',EZTV_PAYPAL_ENV:'sandbox',EZTV_PAYPAL_CLIENT_ID:'synthetic',EZTV_PAYPAL_CLIENT_SECRET:'synthetic',EZTV_PAYPAL_WEBHOOK_ID:'synthetic',EZTV_PAYPAL_MERCHANT_ID:'MERCHANT1',EZTV_PAYPAL_ENABLED:'true'};
+function databaseAdapter(failRpc=false){return {
+ from(table){assert.equal(table,'paypal_credit_orders');const conditions=[];return {select(){return this},eq(k,v){conditions.push(`${k}=${q(v)}`);return this},async maybeSingle(){const data=sql(`SELECT row_to_json(o) FROM paypal_credit_orders o WHERE ${conditions.join(' AND ')}`);return {data:data?JSON.parse(data):null,error:null}}};},
+ async rpc(name,args){if(failRpc)return {data:null,error:{message:'synthetic DB outage'}};try{return {data:sql(`SELECT ${name}(${Object.entries(args).map(([k,v])=>`${k} => ${v===null?'NULL':typeof v==='number'?v:q(v)}`).join(',')})`),error:null};}catch{return {data:null,error:{message:'database failure'}};}}
+};}
+async function fakePaypal(fn){const original=globalThis.fetch;globalThis.fetch=async(url)=>Response.json(url.endsWith('/token')?{access_token:'synthetic'}:url.includes('verify-webhook-signature')?{verification_status:'SUCCESS'}:payload());try{await fn();}finally{globalThis.fetch=original;}}
+const signedHeaders={'paypal-auth-algo':'SHA256withRSA','paypal-cert-url':'https://api.sandbox.paypal.com/v1/notifications/certs/test','paypal-transmission-id':'test','paypal-transmission-sig':'test','paypal-transmission-time':'test'};
+test('real capture handler enforces order ownership and fulfills through actual SQL',async()=>{
+ prepare();await fakePaypal(async()=>{
+ const make=(actor)=>handler.createHandler(databaseAdapter(),async()=>actor,key=>runtimeConfig[key]);
+ const request=()=>new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'capture',paypalOrderId:'ORDER12345'})});
+ assert.equal((await make(b)(request())).status,404);assert.equal(balance(),'100');
+ const success=await make(r)(request());assert.equal(success.status,200);assert.equal((await success.json()).status,'credited');assert.equal(balance(),'110');
+ });
+});
+test('webhook database failure returns retryable status; replay really grants once',async()=>{
+ prepare();await fakePaypal(async()=>{
+ const request=()=>new Request('https://example.invalid',{method:'POST',headers:signedHeaders,body:JSON.stringify({id:'WH-REAL-HANDLER',event_type:'PAYMENT.CAPTURE.COMPLETED',resource:{id:'CAPTURE12345',supplementary_data:{related_ids:{order_id:'ORDER12345'}}}})});
+ const make=(fail)=>handler.createHandler(databaseAdapter(fail),async()=>null,key=>runtimeConfig[key],true);
+ assert.equal((await make(true)(request())).status,503);assert.equal(balance(),'100');assert.equal(sql('SELECT count(*) FROM paypal_credit_events'),'0');
+ assert.equal((await make(false)(request())).status,200);assert.equal((await make(false)(request())).status,200);assert.equal(balance(),'110');assert.equal(sql('SELECT count(*) FROM credit_logs'),'1');
+ });
+});
