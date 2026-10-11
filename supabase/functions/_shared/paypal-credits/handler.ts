@@ -63,7 +63,7 @@ export function createHandler(db: any, authenticate: (jwt: string) => Promise<st
         if (typeof event.id !== 'string' || event.id.length > 200 || typeof event.event_type !== 'string') throw new PaymentError('invalid_event', 400);
         const r = event.resource || {};
         if (event.event_type === 'CHECKOUT.ORDER.APPROVED') {
-          const result = await fulfill(await lookup(r.id), event.id, true);
+          const result = await fulfill(await lookup(r.id), undefined, true);
           // Approval can have a pending capture; the completed event will finish it.
           return json(result);
         }
