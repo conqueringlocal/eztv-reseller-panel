@@ -115,7 +115,7 @@ test('only admin resolves review; late capture can never grant after resolution'
  assert.throws(()=>sql(as(r,resolve)));assert.equal(sql(as(a,resolve)),'reviewed');assert.equal(sql(grant()),'reviewed');assert.equal(balance(),'100');
  assert.equal(sql(`SELECT reviewed_by FROM paypal_credit_orders WHERE id='${id}'`),a);
 });
-const runtimeConfig={EZTV_PAYPAL_ENV:'sandbox',EZTV_PAYPAL_CLIENT_ID:'synthetic',EZTV_PAYPAL_CLIENT_SECRET:'synthetic',EZTV_PAYPAL_WEBHOOK_ID:'synthetic',EZTV_PAYPAL_MERCHANT_ID:'MERCHANT1',EZTV_PAYPAL_ENABLED:'true'};
+const runtimeConfig={EZTV_PAYPAL_APP_URL:'https://sandbox.example.invalid',EZTV_PAYPAL_ENV:'sandbox',EZTV_PAYPAL_CLIENT_ID:'synthetic',EZTV_PAYPAL_CLIENT_SECRET:'synthetic',EZTV_PAYPAL_WEBHOOK_ID:'synthetic',EZTV_PAYPAL_MERCHANT_ID:'MERCHANT1',EZTV_PAYPAL_ENABLED:'true'};
 function databaseAdapter(failRpc=false){return {
  from(table){assert.equal(table,'paypal_credit_orders');const conditions=[];return {select(){return this},eq(k,v){conditions.push(`${k}=${q(v)}`);return this},async maybeSingle(){const data=sql(`SELECT row_to_json(o) FROM paypal_credit_orders o WHERE ${conditions.join(' AND ')}`);return {data:data?JSON.parse(data):null,error:null}}};},
  async rpc(name,args){if(failRpc)return {data:null,error:{message:'synthetic DB outage'}};try{return {data:sql(`SELECT ${name}(${Object.entries(args).map(([k,v])=>`${k} => ${v===null?'NULL':typeof v==='number'?v:q(v)}`).join(',')})`),error:null};}catch{return {data:null,error:{message:'database failure'}};}}

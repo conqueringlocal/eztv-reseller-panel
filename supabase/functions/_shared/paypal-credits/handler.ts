@@ -10,7 +10,15 @@ export function createHandler(db: any, authenticate: (jwt: string) => Promise<st
     const environment = env('EZTV_PAYPAL_ENV');
     const clientId = env('EZTV_PAYPAL_CLIENT_ID'), secret = env('EZTV_PAYPAL_CLIENT_SECRET'), webhookId = env('EZTV_PAYPAL_WEBHOOK_ID'), merchantId = env('EZTV_PAYPAL_MERCHANT_ID');
     if (!['live', 'sandbox'].includes(environment || '') || !clientId || !secret || !webhookId || !merchantId) return null;
-    return { environment: environment as 'live' | 'sandbox', clientId, secret, webhookId, merchantId, appUrl: 'https://reseller.eztvclub.com' };
+    let appUrl = 'https://reseller.eztvclub.com';
+    if (environment === 'sandbox') {
+      try {
+        const url = new URL(env('EZTV_PAYPAL_APP_URL') || '');
+        if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost','127.0.0.1'].includes(url.hostname))) || url.username || url.password || url.pathname !== '/' || url.search || url.hash || url.hostname === 'reseller.eztvclub.com') return null;
+        appUrl = url.origin;
+      } catch { return null; }
+    }
+    return { environment: environment as 'live' | 'sandbox', clientId, secret, webhookId, merchantId, appUrl };
   }
   return async (req: Request) => {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors });

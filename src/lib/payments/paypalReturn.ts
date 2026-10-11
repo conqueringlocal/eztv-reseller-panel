@@ -1,6 +1,7 @@
+// Reused from V2 at 6fd3d97; route examples updated for V1.
 // Parses the query string PayPal appends to our return/cancel URLs
-// (payments-create-order sets return_url=".../app/billing?paypal=return",
-// cancel_url=".../app/billing?paypal=cancel"; PayPal appends its own
+// (paypal-credits sets return_url=".../reseller/credits?paypal=return",
+// cancel_url=".../reseller/credits?paypal=cancel"; PayPal appends its own
 // `token`/`PayerID` params on top of whichever one it redirects back to).
 // Pure so it's unit-testable without React/router.
 

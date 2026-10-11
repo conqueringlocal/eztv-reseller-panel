@@ -60,6 +60,9 @@ Configure these as **Supabase Edge Function Secrets**, never frontend variables:
 - `EZTV_PAYPAL_MERCHANT_ID`: receiving PayPal Business merchant ID.
 - `EZTV_PAYPAL_ENV`: `live` for production, `sandbox` only in an isolated test target.
 - `EZTV_PAYPAL_ENABLED`: keep `false` until acceptance passes.
+- `EZTV_PAYPAL_APP_URL`: required only for isolated sandbox testing; use that test
+  frontend origin (HTTPS, or localhost HTTP). Sandbox configuration refuses the
+  production dashboard origin. Live returns always use reseller.eztvclub.com.
 
 Use a dedicated Live REST app, or carefully retain existing app webhooks rather than
 replacing them. Sandbox secrets on old V2 hosted staging cannot be read back through
