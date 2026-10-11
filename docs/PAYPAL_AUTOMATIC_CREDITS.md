@@ -2,10 +2,11 @@
 
 ## Release state
 
-Backend deployed October 11, 2026; frontend prepared for gated rollout. Live checkout is gated **off** by both
-`paypal_credit_settings.enabled` and `EZTV_PAYPAL_ENABLED`. Existing manual PayPal
-requests remain available. No real payments or provider credit operations have
-been performed during implementation.
+Backend and frontend deployed October 11, 2026. Live checkout is **enabled** by both
+`paypal_credit_settings.enabled` and `EZTV_PAYPAL_ENABLED`, following the owner's
+instruction to proceed and verification of the live app and webhook. Existing manual
+PayPal requests remain available. The first buyer-approved purchase and delivery
+confirmation are still pending; no payment was captured during launch verification.
 
 Reuse assessment: [V1/V2 comparison](V1_V2_ASSESSMENT_2026-10-11.md).
 V2 source: `_shared/payments/paypal.ts` and `src/features/reseller/paypalReturn.ts`
@@ -77,10 +78,11 @@ Subscribe to `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`,
 `PAYMENT.CAPTURE.REVERSED`, and `CUSTOMER.DISPUTE.CREATED`.
 `PAYMENT.CAPTURE.DECLINED` is handled defensively if received.
 
-After sandbox acceptance, verify the live app's credentials/merchant/webhook and
-run a designated real buyer purchase and delivery/retry check. Do not mint sandbox
-credits into real reseller balances or use a real purchase as an unapproved test.
-Then set both live activation gates intentionally. Existing authorized orders and
+For subsequent releases, validate changes in isolation, verify the live app's
+credentials/merchant/webhook, and arrange a designated real buyer purchase and
+delivery/retry check. Do not mint sandbox credits into real reseller balances or use
+a real purchase as an unapproved test. Set both live activation gates intentionally.
+Existing authorized orders and
 webhooks can still settle while creation is paused: disabling purchases is not a
 reason to abandon payments already captured.
 
@@ -117,9 +119,10 @@ References: [PayPal webhook verification/retries](https://developer.paypal.com/a
 [PayPal request idempotency](https://developer.paypal.com/api/rest/reference/idempotency/),
 [Supabase function authorization](https://supabase.com/docs/guides/functions/auth).
 
-Production verification: the database gate is false, the environment is live, and
-orders/events remain empty. Anonymous purchase calls return 401; unconfigured
-webhook calls return 503. Browser roles cannot fulfill orders or enable checkout.
+Production verification at initial deployment: the database gate was false, the
+environment was live, and orders/events were empty. Anonymous purchase calls
+returned 401; unconfigured webhook calls returned 503. Browser roles cannot fulfill
+orders or enable checkout.
 Security-advisor changes are the two intentionally policy-free, service-only
 settings/receipt tables and the intentionally authenticated, admin-checked review
 RPC. No new mutable-search-path or anonymous-definer warning was introduced.
@@ -128,3 +131,35 @@ Validation passed: 18 payment tests, 31 stabilization tests, 22 business tests;
 desktop/mobile component browser scenarios; application TypeScript, both Edge
 entrypoints, changed component ESLint and production build. Build retains the
 existing large-bundle and outdated Browserslist warnings.
+
+## Live activation evidence — October 11, 2026
+
+- A short-lived, bearer-protected diagnostic performed PayPal Live OAuth and
+  webhook lookup without returning credentials. Live authentication succeeded.
+- The initially saved webhook ID referred to the old self-hosted V2 URL. An API
+  attempt to replace its URL was rejected (HTTP 400), leaving it unchanged. A
+  read-only webhook listing found the already-created V1 webhook. The owner then
+  saved that webhook's ID and set `EZTV_PAYPAL_ENABLED=true` in V1 secrets.
+- Readback confirmed the configured webhook belongs to the Live app, its URL is
+  exactly the V1 `paypal-credit-webhook` endpoint above, and all six required event
+  subscriptions are present. The older webhook was left intact.
+- The deployed adapter created an unapproved $15 / 5-credit PayPal order and fetched
+  it back. Approval URL, merchant, custom reference, currency and amount validated.
+  PayPal order `7AG81986VD5481917` remained `CREATED`, without a capture. This was an
+  isolated API probe, not a reseller purchase: no local order, credit, sale or fee
+  was recorded, and no approval link was shared with a buyer.
+- The production database gate was enabled only after configuration readback
+  passed. Both gates are now enabled in Live mode. At activation, local payment
+  order and event counts were zero. Actual buyer approval, capture and webhook
+  credit delivery remain to be observed; this is not a completed end-to-end test.
+- The diagnostic function `paypal-launch-preflight` was replaced with an inert
+  HTTP 410 handler, and its temporary access token was removed. The previously
+  authorized request now receives 410; anonymous checkout receives 401 and unsigned
+  webhooks receive 400. No new Supabase project or paid add-on was created.
+
+First-purchase check: an existing direct-purchase reseller opens Credits, selects
+5 credits ($15), and approves payment themselves using an eligible buyer account.
+Confirm one `credited` order, one receipt, one credit addition, one sale and the
+reported fee. Check PayPal's completed webhook delivery and repeat the existing
+order status check to establish no additional credit grant. If the UI reports an
+uncertain result, inspect that order instead of submitting another payment.
