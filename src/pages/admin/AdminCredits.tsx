@@ -1,3 +1,4 @@
+import { PayPalCredits } from '@/components/credits/PayPalCredits';
 
 import React from 'react';
 import { OperationReviewQueue } from '@/components/admin/OperationReviewQueue';
@@ -18,6 +19,7 @@ export default function AdminCredits() {
         <p className="text-gray-500">View and manage credits across all resellers</p>
       </div>
       
+      <PayPalCredits admin />
       <ManualCreditRequests admin />
       <OperationReviewQueue />
       <Tabs defaultValue="all">

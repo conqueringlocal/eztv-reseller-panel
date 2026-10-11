@@ -112,3 +112,9 @@ verify_jwt = false
 
 [functions.sports-reader]
 verify_jwt = false
+
+[functions.paypal-credits]
+verify_jwt = false
+
+[functions.paypal-credit-webhook]
+verify_jwt = false
