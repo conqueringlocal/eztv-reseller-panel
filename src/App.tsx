@@ -37,6 +37,7 @@ import ResellerFunnels from "./pages/reseller/ResellerFunnels";
 import SupportReseller from './pages/SupportReseller';
 import { SupportBoundary } from './components/support/SupportBoundary';
 
+const Helpdesk = lazy(() => import('./pages/Helpdesk'));
 const ResellerSales = lazy(() => import('./pages/reseller/ResellerSales'));
 const AdminSalesProgram = lazy(() => import('./pages/admin/AdminSalesProgram'));
 const PublicSalesInquiry = lazy(() => import('./pages/PublicSalesInquiry'));
@@ -55,6 +56,8 @@ function App() {
               <div className="min-h-screen bg-gray-50">
                 <SupportBoundary>
                 <Routes>
+                  <Route path="/reseller/support" element={<ProtectedRoute allowedRoles={["reseller"]}><Suspense fallback={salesLoading}><Helpdesk /></Suspense></ProtectedRoute>} />
+                  <Route path="/admin/support" element={<ProtectedRoute allowedRoles={["admin"]}><Suspense fallback={salesLoading}><Helpdesk /></Suspense></ProtectedRoute>} />
                   <Route path="/support/reseller" element={<SupportReseller />} />
                   {/* Redirect root to login */}
                   <Route path="/" element={<Navigate to="/login" replace />} />

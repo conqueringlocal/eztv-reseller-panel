@@ -1,12 +1,25 @@
 # Legacy dashboard operations
 
-Manual credit purchases remain active while the new automatic PayPal checkout is configuration-gated off. See [PayPal setup, validation and rollback](PAYPAL_AUTOMATIC_CREDITS.md).
+## Private reseller help desk pilot (October 12, 2026)
+
+Self-hosted Zammad runs privately on the VPS at loopback port 8093, with its own
+database and synthetic identities. The support@eztvclub.com Mailbux app password
+is saved and verified; live email and dashboard access are still being tested.
+See [support pilot operations and launch requirements](../services/support/README.md).
+
+## Credit purchasing
+
+Automatic PayPal checkout is live with a 10-credit minimum. Manual purchases are
+hidden behind a backup feature flag; existing requests remain accessible to admins.
+See [PayPal setup, validation and rollback](PAYPAL_AUTOMATIC_CREDITS.md).
+
+The following workflow applies when the manual backup is enabled:
 
 1. Reseller opens Credits & Usage, pays PayPal **@eztvclub** in **USD** at **$3 per credit**, and submits the payment transaction reference. Packages: 10, 20 or 50 credits (10-credit minimum).
 2. Administrator opens Credit Management, verifies receipt, amount, currency and payer directly in PayPal, then enters the verified transaction reference and approves. Denials require a note in the interface.
 3. Approval, balance change, revenue entry and credit log commit together. Repeated approvals and reusing the same verified PayPal reference cannot grant twice. Pending requests prevent another submission. The page refreshes status and balance every 30 seconds and on focus.
 
-Automated checkout and capture endpoints are paused with HTTP 503. Stripe webhook events are deliberately not acknowledged or fulfilled while paused; check the merchant dashboard for any historical charge requiring manual reconciliation. Do not instruct a reseller who already paid to pay again. Re-enable automation only after an order/event ledger and verified fulfillment are implemented.
+Stripe endpoints remain paused. PayPal uses an order/event ledger and verified fulfillment. Do not instruct a reseller who already paid to pay again; reconcile the existing purchase first.
 
 ## Paid Trex operations
 
