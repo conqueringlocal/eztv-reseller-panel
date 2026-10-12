@@ -196,3 +196,37 @@ audit history, stale quotes, concurrent changes, idempotent fulfillment and fina
 amounts. Browser checks at 1280px and 390px cover admin save/reset, custom totals,
 manual requests, saved checkout quotes and stale-price refresh. No real payment or
 provider operation is part of these tests.
+
+## Checkout order-link correction — October 12, 2026
+
+The first reseller checkout exposed a live PostgREST query failure after PayPal
+successfully created an order. The guarded update used an OR filter on
+`paypal_order_id` but selected only `id`. This project's PostgREST also applied the
+OR filter to the update's returned rows, where that column was absent; PostgreSQL
+rejected the query with `42703`. Thus the local purchase remained unlinked and the
+browser received HTTP 503 before redirecting to PayPal.
+
+The update now returns both `id` and `paypal_order_id` and verifies they match the
+expected pair before returning an approval URL. The guard against replacing an
+existing different PayPal order remains intact. No schema, pricing, capture or
+credit-fulfillment changes are involved.
+
+All 28 payment tests and both payment Edge entrypoint type checks pass. New tests
+reproduce the actual PostgREST-generated update/representation query, exercise the
+real create handler through it, and verify that a competing different link cannot
+be overwritten or yield an approval redirect. Existing tests cover duplicate
+captures/webhooks and credit/finance atomicity.
+
+A short-lived, bearer-protected diagnostic replayed only the original failed
+purchase's stable PayPal request ID, with capture prohibited. The same PayPal order
+was returned each time. After the fix, the application saved its link and returned
+a valid approval URL. Readback verified 10 credits / $30 USD, the expected merchant
+and local reference, PayPal status CREATED, and zero captures. No credits or
+financial entries were issued. The original saved purchase can resume; do not
+replace it with another purchase or a manual payment. Actual buyer approval and
+credit fulfillment still require the buyer to finish checkout.
+
+The diagnostic endpoint was replaced with an inert HTTP 410 handler and its
+access token deleted. Anonymous purchase calls remain HTTP 401. Production
+`paypal-credits` version 14 contains the fix; the shared change affects only the
+create action, so the webhook and frontend needed no redeployment.

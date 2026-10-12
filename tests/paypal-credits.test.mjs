@@ -189,7 +189,7 @@ test('real create handler sends only authenticated reseller and server snapshot 
  const original=globalThis.fetch, calls=[];let args;
  globalThis.fetch=async(url,options)=>{calls.push([url,options]);return Response.json(url.endsWith('/token')?{access_token:'synthetic'}:{id:'ORDER12345',links:[{rel:'approve',href:'https://www.sandbox.paypal.com/checkoutnow?token=ORDER12345'}]});};
  try{
-  const db={rpc:async(name,input)=>{assert.equal(name,'prepare_paypal_credit_order_priced');args=input;return {data:{...order,paypal_order_id:null,amount_cents:2250,unit_price_cents:225},error:null}},from:()=>({update(){return this},eq(){return this},or(){return this},select:async()=>({data:[{id}],error:null})})};
+  const db={rpc:async(name,input)=>{assert.equal(name,'prepare_paypal_credit_order_priced');args=input;return {data:{...order,paypal_order_id:null,amount_cents:2250,unit_price_cents:225},error:null}},from:()=>({update(){return this},eq(){return this},or(){return this},select:async()=>({data:[{id,paypal_order_id:'ORDER12345'}],error:null})})};
   const h=handler.createHandler(db,async()=>r,key=>runtimeConfig[key]);
   const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:10,expectedUnitPriceCents:225,amountCents:1,resellerId:b})}));
   assert.equal(response.status,200);assert.equal(args.p_actor,r);assert.equal(args.p_expected_unit_price_cents,225);
@@ -202,5 +202,60 @@ test('stale price handler returns a reviewable conflict without calling PayPal',
   const h=handler.createHandler({rpc:async()=>({data:null,error:{message:'price_changed'}})},async()=>r,key=>runtimeConfig[key]);
   const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:10,expectedUnitPriceCents:225})}));
   assert.equal(response.status,409);assert.equal((await response.json()).error,'price_changed');assert.equal(calls,0);
+ }finally{globalThis.fetch=original;}
+});
+
+// Reproduce the live PostgREST update/representation query: logical filters are
+// applied again to pgrst_source, so filter columns must be in RETURNING.
+function linkQuery(fields,localId,providerId){
+ assert.match(fields,/^[a-z_,]+$/);
+ return `WITH pgrst_source AS (
+  UPDATE paypal_credit_orders SET paypal_order_id=${q(providerId)}
+  WHERE id=${q(localId)} AND (paypal_order_id IS NULL OR paypal_order_id=${q(providerId)})
+  RETURNING ${fields}
+ ) SELECT coalesce(jsonb_agg(t),'[]') FROM (
+  SELECT ${fields} FROM pgrst_source AS paypal_credit_orders
+  WHERE paypal_order_id IS NULL OR paypal_order_id=${q(providerId)}
+ ) t`;
+}
+function checkoutAdapter(){return {
+ async rpc(name,args){try{return {data:JSON.parse(sql(`SELECT to_jsonb(${name}(${Object.entries(args).map(([k,v])=>`${k}=>${q(v)}`).join(',')}))`)),error:null};}catch{return {data:null,error:{message:'DB rejected'}};}},
+ from(table){assert.equal(table,'paypal_credit_orders');let update,localId;return {
+  update(v){update=v;return this},eq(key,value){assert.equal(key,'id');localId=value;return this},
+  or(filter){assert.equal(filter,`paypal_order_id.is.null,paypal_order_id.eq.${update.paypal_order_id}`);return this},
+  async select(fields){try{return {data:JSON.parse(sql(linkQuery(fields,localId,update.paypal_order_id))),error:null};}catch{return {data:null,error:{message:'database query failed'}};}}
+ };
+ }
+};}
+test('PostgREST checkout query reproduces the old missing-column failure without storing a link',()=>{
+ sql(`SELECT prepare_paypal_credit_order('${id}','${r}',10,'sandbox')`);
+ assert.throws(()=>sql(linkQuery('id',id,'ORDER12345')),/paypal_order_id/);
+ assert.equal(sql('SELECT coalesce(paypal_order_id,\'unlinked\') FROM paypal_credit_orders'),'unlinked');
+});
+test('real checkout handler persists its PayPal link through the PostgREST-shaped query before redirecting',async()=>{
+ const original=globalThis.fetch;let creates=0;
+ globalThis.fetch=async(url)=>{
+  if(url.endsWith('/token'))return Response.json({access_token:'synthetic'});
+  assert.ok(url.endsWith('/v2/checkout/orders'));creates++;
+  return Response.json({id:'ORDER12345',status:'CREATED',links:[{rel:'approve',href:'https://www.sandbox.paypal.com/checkoutnow?token=ORDER12345'}]});
+ };
+ try{
+  const h=handler.createHandler(checkoutAdapter(),async()=>r,key=>runtimeConfig[key]);
+  const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:10,expectedUnitPriceCents:300})}));
+  assert.equal(response.status,200);assert.match((await response.json()).approve_url,/ORDER12345/);assert.equal(sql('SELECT paypal_order_id FROM paypal_credit_orders'),'ORDER12345');assert.equal(creates,1);assert.equal(balance(),'100');assert.equal(sql('SELECT count(*) FROM credit_logs'),'0');
+ }finally{globalThis.fetch=original;}
+});
+test('a competing different PayPal link is preserved and cannot return an approval URL',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async(url)=>{
+  if(url.endsWith('/token'))return Response.json({access_token:'synthetic'});
+  assert.ok(url.endsWith('/v2/checkout/orders'));
+  sql(`UPDATE paypal_credit_orders SET paypal_order_id='OTHER12345' WHERE id='${id}'`);
+  return Response.json({id:'ORDER12345',links:[{rel:'approve',href:'https://www.sandbox.paypal.com/checkoutnow?token=ORDER12345'}]});
+ };
+ try{
+  const h=handler.createHandler(checkoutAdapter(),async()=>r,key=>runtimeConfig[key]);
+  const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:10,expectedUnitPriceCents:300})}));
+  assert.equal(response.status,503);assert.equal((await response.json()).error,'order_storage_unconfirmed');assert.equal(sql('SELECT paypal_order_id FROM paypal_credit_orders'),'OTHER12345');assert.equal(balance(),'100');
  }finally{globalThis.fetch=original;}
 });

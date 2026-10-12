@@ -105,8 +105,10 @@ export function createHandler(db: any, authenticate: (jwt: string) => Promise<st
           return json({ approve_url: approveUrl(remote.links?.find((l: {rel: string}) => l.rel === 'approve' || l.rel === 'payer-action')?.href, config.environment) });
         }
         const created = await paypal.create(order);
-        const saved = checked(await db.from('paypal_credit_orders').update({ paypal_order_id: created.id }).eq('id', order.id).or(`paypal_order_id.is.null,paypal_order_id.eq.${created.id}`).select('id'));
-        if (saved.length !== 1) throw new PaymentError('order_storage_unconfirmed');
+        // PostgREST reapplies the OR filter to the returned update rows. Include
+        // its column in the projection or the generated query fails with 42703.
+        const saved = checked(await db.from('paypal_credit_orders').update({ paypal_order_id: created.id }).eq('id', order.id).or(`paypal_order_id.is.null,paypal_order_id.eq.${created.id}`).select('id,paypal_order_id'));
+        if (saved.length !== 1 || saved[0].id !== order.id || saved[0].paypal_order_id !== created.id) throw new PaymentError('order_storage_unconfirmed');
         return json({ approve_url: created.url });
       }
       if (body.action === 'capture' || body.action === 'status') return json(await fulfill(await lookup(body.paypalOrderId, true), undefined, body.action === 'capture'));
