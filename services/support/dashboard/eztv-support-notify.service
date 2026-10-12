@@ -1,0 +1,13 @@
+[Unit]
+Description=Deliver hierarchy-scoped EZTV support notifications
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/eztv-support-pilot/local/dashboard/notify.py --send
+UMask=0077
+TimeoutStartSec=240
+NoNewPrivileges=true
+PrivateTmp=true
+

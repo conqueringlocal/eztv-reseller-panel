@@ -7,6 +7,7 @@ module EztvSupport
  class Identity < ActiveRecord::Base; self.table_name = 'eztv_support_identities'; end
  class Record < ActiveRecord::Base; self.table_name = 'eztv_support_tickets'; end
  class Request < ActiveRecord::Base; self.table_name = 'eztv_support_requests'; end
+ class Notification < ActiveRecord::Base; self.table_name = 'eztv_support_notifications'; end
  class Denied < StandardError; end
  class Invalid < StandardError; end
  CATEGORIES = %w[technical channel_issue channel_request vod_request].freeze
@@ -44,6 +45,7 @@ module EztvSupport
    result={id:record.id,number:ticket.number,title:ticket.title,category:record.category,
     status:ticket.state.name=='closed' ? 'closed' : 'open',updated_at:ticket.updated_at.iso8601,
     mine:record.creator_id==@id,can_handle:handles?(record),escalated:escalation.present?,
+    needs_reply:ticket.state.name!='closed' && (record.creator_id==@id ? record.waiting_on=='requester' : handles?(record) && record.waiting_on=='handler'),
     requester:[ticket.customer.firstname,ticket.customer.lastname].compact.join(' '),can_escalate:handles?(record) && !@admin && record.creator_id!=@id && !escalation}
    result[:escalation_id]=escalation.id if escalation && access?(escalation)
    source=Record.find_by(id:record.source_id) if record.source_id
@@ -83,6 +85,11 @@ module EztvSupport
     created_by_id:user.id,updated_by_id:user.id)
    attachments.each { |file| Store.create!(object:'Ticket::Article',o_id:item.id,data:file[:data],filename:file[:name],
      preferences:{'Content-Type'=>file[:type]},created_by_id:user.id) }
+   unless internal
+    audience=record.creator_id==@id ? 'handler' : 'requester'
+    record.update!(waiting_on:audience)
+    Notification.create!(id:SecureRandom.uuid,record_id:record.id,event_key:"article:#{item.id}",audience:audience)
+   end
    item
   end
   def create(input,user,source:nil)
@@ -97,6 +104,11 @@ module EztvSupport
    detail(record)
   end
   def call(action,input)
+   if action=='attention'
+    open_records=Record.joins('JOIN tickets ON tickets.id=eztv_support_tickets.ticket_id JOIN ticket_states ON ticket_states.id=tickets.state_id').where.not(ticket_states:{name:'closed'})
+    queue=@admin ? open_records.where(handler_id:nil) : open_records.where(handler_id:@id,creator_id:@children)
+    return {queue:queue.where(waiting_on:'handler').count,mine:open_records.where(creator_id:@id,waiting_on:'requester').count}
+   end
    if action=='list'
     scope=input.fetch('scope',@admin ? 'queue' : 'mine')
     records=case scope
@@ -104,6 +116,10 @@ module EztvSupport
      when 'queue' then @admin ? Record.where(handler_id:nil) : Record.where(handler_id:@id,creator_id:@children)
      when 'oversight' then (raise Denied unless @admin; Record.all)
      else raise Invalid, 'Choose a ticket list'
+    end
+    if input['needs_reply']==true
+     records=records.where("tickets.state_id NOT IN (SELECT id FROM ticket_states WHERE name='closed')")
+     records=records.where(waiting_on:scope=='mine' ? 'requester' : 'handler')
     end
     offset=input.fetch('offset',0)
     raise Invalid, 'Invalid page' unless offset.is_a?(Integer) && offset.between?(0,10000)
@@ -147,6 +163,9 @@ module EztvSupport
       detail(record)
      when 'close','reopen'
       Ticket.find(record.ticket_id).update!(state:Ticket::State.find_by!(name:action=='close' ? 'closed' : 'open'),updated_by_id:user.id)
+      audience=record.creator_id==@id ? 'handler' : 'requester'
+      record.update!(waiting_on:audience) if action=='reopen'
+      Notification.create!(id:SecureRandom.uuid,record_id:record.id,event_key:"state:#{request_id}",audience:audience)
       detail(record)
      when 'escalate'
       raise Denied unless handles?(record) && !@admin && record.creator_id!=@id

@@ -57,10 +57,47 @@ Attachments: up to three per message, 1 MB each; JPG, PNG, WebP, PDF or plain te
 Downloads check ticket and article visibility again, and use an attachment download
 rather than embedding arbitrary content. Messages render as plain text.
 
-Conversation data stays on the existing VPS. Supabase stores only one configuration
-row and uses its existing identity tables. No new project, paid add-on, scheduled
-polling or Realtime subscription is added. Queries run on page load/focus, explicit
-refresh and ticket actions.
+Conversation data and the notification outbox stay on the existing VPS. Supabase
+stores only one configuration row and uses its existing identity tables. No new
+project, paid add-on or Realtime subscription is added. The dashboard banner checks
+on page load/focus and every two minutes while visible (one shared query per user).
+The VPS mail timer checks its local outbox every minute; empty runs do not call
+Supabase. Recipient resolution calls Supabase only for queued notifications.
+
+## Notifications and reply-needed banner
+
+Every public message atomically updates `waiting_on` and inserts one unique email
+event with the message. Requester messages alert the handler; staff responses alert
+the requester. New escalations alert only their upstream handler. Private notes
+create no email and never clear the handler's pending-reply count. Closing clears
+the banner; reopening restores the opposite party's attention. Reading alone does
+not dismiss it. Banner links open the matching filtered queue.
+
+`notify.py` resolves current recipients through a purpose-bound HMAC request to the
+Edge function and service-only SQL. Former parents, deleted/banned accounts and
+changed hierarchy are checked again at delivery time. Direct tickets notify active
+admins; other tickets notify only the immediate parent. Public replies go to the
+requester's current profile email. Addresses never come from browser input.
+
+Mail is sent through the existing Mailbux `support@eztvclub.com` mailbox with verified
+STARTTLS. Emails contain only a ticket number and authenticated dashboard link;
+private notes, titles, message bodies and attachments are never copied into email.
+Replies must be posted in the dashboard. General IMAP intake remains off.
+
+The outbox and per-recipient delivery records prevent replayed ticket requests or
+worker reruns from duplicating mail. Pre-DATA failures retry up to five attempts,
+five minutes apart. SMTP uncertainty or a crash during DATA is held as `uncertain`
+for review, never automatically resent. An SMTP acceptance is not proof of inbox
+delivery. `sent_at`, `attempts`, `status` and safe error classes are stored in
+`eztv_support_deliveries`; no SMTP credentials or message payloads are logged.
+
+Deploy `notifications-schema.rb` before updating the bridge, apply the notification
+routing migration and deploy all three Edge files. Copy `notify.py` into the protected
+`local/dashboard/` directory and install the included systemd service/timer. Enable
+with `systemctl enable --now eztv-support-notify.timer`. To pause outbound mail,
+stop that timer and service; tickets and the dashboard banner continue working.
+`python3 .../notify.py` without `--send` only reports the pending event count.
+Inspect failed/uncertain deliveries before deciding whether a resend is appropriate.
 
 ## Deployment and rollback
 
@@ -91,13 +128,15 @@ an instance with real dashboard tickets. They can disable accounts/channels.
 
 ## Verification
 
-- 34 HTTP hierarchy checks: direct/child/grandchild routing, cross-branch denial,
+- 43 HTTP hierarchy checks: direct/child/grandchild routing, cross-branch denial,
   private-note and attachment restrictions, immutable request replay, racing
   escalations, selected-summary isolation, close/reopen, reparenting/revocation,
   and rejection of executable attachments.
-- 9 database/Edge tests: service-only permissions, role/context derivation,
+- 11 database/Edge tests: service-only permissions, role/context derivation,
   session expiry/deletion/bans, ended impersonation, reparenting/cycles, spoofed
   caller context, disabled config and upstream failure behavior.
+- Five mail worker tests cover safe email contents, header injection, TLS, SMTP
+  confirmation/uncertainty and pre-DATA authentication failure.
 - Actual React UI + actual Zammad bridge at 1280 and 390 pixels: child opens a
   channel ticket, parent adds private note/escalates, admin responds upstream,
   and child sees neither the private note nor upstream response.
@@ -112,6 +151,7 @@ Commands (from the repository):
 node --test tests/helpdesk.test.mjs
 python3 services/support/dashboard/test-hierarchy.py
 node tests/helpdesk-browser.mjs
+python3 tests/support-notification-worker.py
 ```
 
 Tests create synthetic support tickets only, never paid operations or external
@@ -121,12 +161,12 @@ and refuses non-pilot titles. The approved mailbox test ticket is preserved.
 
 ## Current limits
 
-This first version is dashboard-based. Email notifications and ordinary support
-mailbox intake are **not enabled**. The previously tested email round trip remains
-separate: arbitrary email cannot select a reseller/parent or bypass dashboard
-permissions. A later mail adapter must preserve these same identity, ownership and
-private-thread rules before ordinary inbox intake is enabled.
+This version sends outbound notification emails; replies still belong in the
+dashboard. Ordinary support mailbox intake is **not enabled**. The previously tested
+email round trip remains separate: arbitrary email cannot select a reseller/parent
+or bypass dashboard permissions. A later mail adapter must preserve these same
+identity, ownership and private-thread rules before inbox intake is enabled.
 
 Same-VPS backups exist and have been restored successfully. Off-site disaster
-recovery, support coverage/response targets, notification delivery and a larger
+recovery, support coverage/response targets and a larger
 capacity rehearsal remain before inviting the proposed 85-reseller network.

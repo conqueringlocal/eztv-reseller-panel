@@ -11,6 +11,12 @@ tickets=Ticket.where(id:records.pluck(:ticket_id))
 raise 'Unexpected non-pilot title; manual review required' if tickets.any? { |t| !t.title.start_with?('PILOT ', 'Escalation: PILOT ') }
 count=tickets.count
 ActiveRecord::Base.transaction do
+ if ActiveRecord::Base.connection.table_exists?(:eztv_support_notifications)
+  notifications=EztvSupport::Notification.where(record_id:records.pluck(:id))
+  notification_ids=notifications.pluck(:id).map { |id| ActiveRecord::Base.connection.quote(id) }
+  ActiveRecord::Base.connection.execute("DELETE FROM eztv_support_deliveries WHERE notification_id IN (#{notification_ids.join(',')})") unless notification_ids.empty?
+  notifications.delete_all
+ end
  EztvSupport::Request.where(actor_id:ids).delete_all
  records.delete_all
  tickets.each(&:destroy!)

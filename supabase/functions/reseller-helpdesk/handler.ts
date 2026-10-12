@@ -18,7 +18,7 @@ export function helpdeskHandler(db:any, fetcher:typeof fetch=fetch) {
    if(typeof sid!=='string'||!/^[0-9a-f-]{36}$/i.test(sid))return reply({error:'Sign in again'},401);
    const raw=await req.text();if(raw.length>5*1024*1024)return reply({error:'Request too large'},413);
    let body;try{body=JSON.parse(raw);}catch{return reply({error:'Invalid request'},400);}
-   if(!body||!['config','list','detail','create','reply','close','reopen','escalate','attachment'].includes(body.action))return reply({error:'Invalid request'},400);
+   if(!body||!['config','attention','list','detail','create','reply','close','reopen','escalate','attachment'].includes(body.action))return reply({error:'Invalid request'},400);
    const result=await db.rpc('reseller_helpdesk_context',{p_actor:verified.data.user.id,p_session:sid});
    if(result.error||!result.data)return reply({error:'Support access is unavailable. Sign in again or contact your support provider.'},403);
    const context=result.data;

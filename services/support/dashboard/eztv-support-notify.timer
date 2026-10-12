@@ -1,0 +1,10 @@
+[Unit]
+Description=Check EZTV support notification outbox every minute
+
+[Timer]
+OnBootSec=60
+OnUnitInactiveSec=60
+Unit=eztv-support-notify.service
+
+[Install]
+WantedBy=timers.target
