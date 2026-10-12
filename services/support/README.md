@@ -44,7 +44,9 @@ mean retail subscribers are being invited to the central help desk.
 - Six random-password synthetic accounts: administrator, support agent, two
   resellers, distributor and unrelated reseller. No production identities imported.
 - Private organizations, no domain-based auto-assignment, self-registration off.
-- All external communication channels and notification triggers disabled.
+- Native Zammad communication channels and notification triggers remain disabled.
+  Dashboard notifications use the separate hierarchy-aware outbox worker described
+  in [dashboard operations](dashboard/README.md#notifications-and-reply-needed-banner).
 - No Trex credentials, Supabase service key, provider API calls or credit changes.
 
 Never put all reseller accounts into one shared Zammad organization: that grants

@@ -7,7 +7,7 @@ const name=`eztv-helpdesk-test-${process.pid}`;
 const ids={admin:'10000000-0000-4000-8000-000000000001',parent:'10000000-0000-4000-8000-000000000002',child:'10000000-0000-4000-8000-000000000003',other:'10000000-0000-4000-8000-000000000004',sid:'10000000-0000-4000-8000-000000000005'};
 const sql=s=>execFileSync('docker',['exec','-i',name,'psql','-h','127.0.0.1','-U','postgres','-XqAt','-v','ON_ERROR_STOP=1'],{input:s,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const context=()=>JSON.parse(sql(`select reseller_helpdesk_context('${ids.parent}','${ids.sid}')`));
-let handler;
+let handler,notificationRoute;
 before(async()=>{
  execFileSync('docker',['run','-d','--name',name,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
  for(let i=0;i<50;i++){try{sql('select 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
@@ -24,8 +24,13 @@ before(async()=>{
  insert into auth.users(id) select id from profiles;insert into user_roles select id,role from profiles;
  insert into auth.sessions values('${ids.sid}','${ids.parent}',null);`);
  sql(readFileSync('supabase/migrations/20261012041130_reseller_helpdesk_context.sql','utf8'));
+ sql('alter table profiles add column email text;alter table auth.users add column email text;');
+ sql(`update profiles set email=id::text||'@example.test';update auth.users set email=id::text||'@example.test';`);
+ sql(readFileSync('supabase/migrations/20261012044758_support_notification_routing.sql','utf8'));
  const result=await build({entryPoints:['supabase/functions/reseller-helpdesk/handler.ts'],bundle:true,format:'esm',platform:'node',write:false});
  handler=(await import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64'))).helpdeskHandler;
+ const notification=await build({entryPoints:['supabase/functions/reseller-helpdesk/notifications.ts'],bundle:true,format:'esm',platform:'node',write:false});
+ notificationRoute=(await import('data:text/javascript;base64,'+Buffer.from(notification.outputFiles[0].text).toString('base64'))).notificationRoute;
 });
 after(()=>execFileSync('docker',['rm','-fv',name],{stdio:'pipe'}));
 test('config and routing RPC are service-only',()=>{
@@ -36,6 +41,18 @@ test('config and routing RPC are service-only',()=>{
  assert.equal(sql("select has_function_privilege('service_role','reseller_helpdesk_context(uuid,uuid)','execute')"),'t');
 });
 test('current profile hierarchy includes direct children only',()=>{const c=context();assert.equal(c.actor.admin,false);assert.equal(c.actor.parent_id,null);assert.deepEqual(c.children,[ids.child]);assert.equal(c.enabled,false);});
+test('notification recipients follow immediate ownership and use current addresses',()=>{
+ const route=(creator,parent,audience='handler')=>JSON.parse(sql(`select reseller_helpdesk_recipients('${creator}',${parent?"'"+parent+"'":'null'},'${audience}')`));
+ assert.deepEqual(route(ids.parent,null).map(x=>x.id),[ids.admin]);
+ assert.deepEqual(route(ids.child,ids.parent).map(x=>x.id),[ids.parent]);
+ assert.deepEqual(route(ids.child,ids.parent,'requester').map(x=>x.id),[ids.child]);
+ assert.deepEqual(route(ids.child,null),[]);
+ sql(`update profiles set email='updated@example.test' where id='${ids.parent}'`);assert.equal(route(ids.child,ids.parent)[0].email,'updated@example.test');
+ sql(`update profiles set parent_reseller_id='${ids.other}' where id='${ids.child}'`);assert.deepEqual(route(ids.child,ids.parent),[]);
+ sql(`update profiles set parent_reseller_id='${ids.parent}' where id='${ids.child}';update auth.users set banned_until=now()+interval '1 day' where id='${ids.parent}'`);assert.deepEqual(route(ids.child,ids.parent),[]);
+ sql('update auth.users set banned_until=null');
+ for(const role of ['anon','authenticated']) for(const fn of ['reseller_helpdesk_recipients(uuid,uuid,text)','reseller_helpdesk_notification_key()']) assert.equal(sql(`select has_function_privilege('${role}','${fn}','execute')`),'f');
+});
 test('deleted, banned and expired sessions are denied',()=>{
  for(const change of [`update auth.users set banned_until=now()+interval '1 hour' where id='${ids.parent}'`,`update auth.users set deleted_at=now() where id='${ids.parent}'`,`update auth.sessions set not_after=now()-interval '1 second'`]){
   sql('begin;'+change+';commit;');assert.throws(context);sql('update auth.users set banned_until=null,deleted_at=null;update auth.sessions set not_after=null;');
@@ -72,4 +89,15 @@ test('revoked hierarchy, disabled settings and bridge failures fail closed',asyn
  assert.equal((await handler(db({rpc:async()=>({error:{message:'revoked'}})}),f)(req({action:'list'}))).status,403);assert.equal(touched,false);
  const paused=db();const get=paused.rpc;paused.rpc=async()=>{const r=await get();r.data.enabled=false;return r;};assert.equal((await handler(paused,f)(req({action:'list'}))).status,503);assert.equal(touched,false);
  assert.equal((await handler(db(),f)(req({action:'create',input:{request_id:ids.sid}}))).status,503);
+});
+test('mail worker requires a fresh purpose-bound signature and does not expose key',async()=>{
+ const {createHmac}=await import('node:crypto');let routed=0;
+ const database={rpc:async(name,args)=>{if(name==='reseller_helpdesk_notification_key')return {data:'test-key'};routed++;assert.equal(args.p_creator,ids.child);return {data:[{id:ids.parent,email:'parent@example.test',admin:false}]};}};
+ const body={purpose:'support-notification-route',issued_at:Math.floor(Date.now()/1000),creator_id:ids.child,handler_id:ids.parent,audience:'handler'};
+ const request=(value,signature)=>{const raw=JSON.stringify(value);return new Request('https://test.invalid',{method:'POST',body:raw,headers:{'x-eztv-notification-signature':signature??createHmac('sha256','test-key').update(raw).digest('hex')}});};
+ assert.equal((await notificationRoute(request(body,'0'.repeat(64)),database)).status,401);
+ assert.equal((await notificationRoute(request({...body,issued_at:body.issued_at-60}),database)).status,401);
+ assert.equal((await notificationRoute(request({...body,purpose:'wrong'}),database)).status,401);assert.equal(routed,0);
+ const result=await notificationRoute(request(body),database);assert.equal(result.status,200);assert.equal(routed,1);
+ const data=await result.json();assert.equal(data.recipients[0].email,'parent@example.test');assert.equal(data.key,undefined);
 });

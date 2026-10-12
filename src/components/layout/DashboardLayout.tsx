@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { ResellerApiSetupDialog } from '@/components/reseller/ResellerApiSetupDialog';
+import { SupportBanner } from './SupportBanner';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -117,6 +118,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 
           <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-gray-50">
             <ResellerApiSetupDialog />
+            <SupportBanner />
             {children}
           </main>
         </div>

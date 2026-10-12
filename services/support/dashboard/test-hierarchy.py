@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """HTTP integration tests with synthetic reseller identities, no provider/mail calls."""
-import base64,concurrent.futures,hashlib,hmac,json,time,uuid,urllib.request,urllib.error
+import base64,concurrent.futures,hashlib,hmac,json,time,uuid,urllib.request,urllib.error,subprocess
 from pathlib import Path
 key=(Path('/opt/eztv-support-pilot/local/dashboard/signing-key')).read_bytes().strip()
 root='http://127.0.0.1:8093/api/eztv_support'
@@ -39,6 +39,9 @@ for who,ticket in [('sibling',c),('other',c),('parent',g),('child',o)]:
  check(who+' denied unrelated ticket',call(who,'detail',{'id':ticket['id']})[0]==403)
 check('Forged handler fields cannot reroute creation',call('child','create',mutation(title='PILOT forged routing',category='technical',body='test',handler_id=ids['other'],creator_id=ids['other']))[0]==200)
 check('Other branch queue remains empty',ok('other','list',{'scope':'queue'})['tickets']==[])
+check('Parent banner counts only immediate child tickets',ok('parent','attention')['queue']==2)
+check('Requester has no reply alert before staff answers',ok('child','attention')['mine']==0)
+check('Awaiting reply filter selects assigned tickets',len(ok('parent','list',{'scope':'queue','needs_reply':True})['tickets'])==2)
 attachment={'name':'evidence.txt','type':'text/plain','data':base64.b64encode(b'PRIVATE NOTE').decode()}
 note=ok('parent','reply',mutation(id=c['id'],body='PILOT private parent note',internal=True,attachments=[attachment]))
 private=next(m for m in note['messages'] if m['body']=='PILOT private parent note')
@@ -46,10 +49,17 @@ check('Private note absent for ticket requester',not any(m['id']==private['id'] 
 file_input={'id':c['id'],'article_id':private['id'],'attachment_id':private['attachments'][0]['id']}
 check('Private attachment denied to requester',call('child','attachment',file_input)[0]==403)
 check('Private attachment available to assigned handler',ok('parent','attachment',file_input)['data']==attachment['data'])
+check('Private note does not clear reply-needed banner',ok('parent','attention')['queue']==2)
+def db(query):
+ return subprocess.check_output(['docker','compose','exec','-T','zammad-postgresql','psql','-U','postgres','-d','zammad_production','-Atc',query],cwd='/opt/eztv-support-pilot',text=True).strip()
+check('Private note creates no email notification',db(f"SELECT count(*) FROM eztv_support_notifications WHERE event_key='article:{private['id']}'")=='0')
 check('Requester cannot write staff-only notes',call('child','reply',mutation(id=c['id'],body='bad',internal=True))[0]==403)
 public_req=mutation(id=c['id'],body='PILOT public answer')
 first=ok('parent','reply',public_req);second=ok('parent','reply',public_req)
 check('Retrying reply returns same article once',sum(m['body']=='PILOT public answer' for m in second['messages'])==1 and len(first['messages'])==len(second['messages']))
+check('Public reply moves attention to requester',ok('parent','attention')['queue']==1 and ok('child','attention')['mine']==1)
+answer=next(m for m in second['messages'] if m['body']=='PILOT public answer')
+check('Retried public reply queues one requester email',db(f"SELECT count(*) FROM eztv_support_notifications WHERE event_key='article:{answer['id']}' AND audience='requester'")=='1')
 check('Changed payload with reused request rejected',call('parent','reply',{**public_req,'body':'different'})[0]==400)
 esc_req=mutation(id=c['id'],body='Selected escalation summary only')
 with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -63,7 +73,9 @@ check('Requester sees escalation status without private link','escalation_id' no
 check('Requester cannot escalate past its parent',call('child','escalate',mutation(id=c['id'],body='bypass'))[0]==403)
 check('Other reseller cannot close ticket',call('other','close',mutation(id=c['id']))[0]==403)
 check('Handler closes ticket',ok('parent','close',mutation(id=c['id']))['status']=='closed')
+check('Closed ticket clears requester attention',ok('child','attention')['mine']==0)
 check('Requester reply reopens ticket',ok('child','reply',mutation(id=c['id'],body='Follow-up'))['status']=='open')
+check('Follow-up returns attention to handler',ok('parent','attention')['queue']==2)
 parents['child']='other'
 check('Reparenting immediately revokes old handler access',call('parent','detail',{'id':c['id']})[0]==403)
 check('Saved request replay cannot restore revoked access',call('parent','reply',public_req)[0]==403)
