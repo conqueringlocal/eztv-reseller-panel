@@ -1,0 +1,355 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-12T13:20:41.238269+00:00",
+  "title": "Design System: EZTV reseller website and inquiry extensions",
+  "extensions": {
+    "colorMeta": {
+      "public-ink": {
+        "displayName": "Public Ink",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.0388 264.35)",
+          "oklch(26.43% 0.0388 264.35)",
+          "oklch(37.86% 0.0388 264.35)",
+          "oklch(49.29% 0.0388 264.35)",
+          "oklch(60.71% 0.0388 264.35)",
+          "oklch(72.14% 0.0388 264.35)",
+          "oklch(83.57% 0.0388 264.35)",
+          "oklch(95.0% 0.0388 264.35)"
+        ]
+      },
+      "public-paper": {
+        "displayName": "Public Paper",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.0054 274.97)",
+          "oklch(26.43% 0.0054 274.97)",
+          "oklch(37.86% 0.0054 274.97)",
+          "oklch(49.29% 0.0054 274.97)",
+          "oklch(60.71% 0.0054 274.97)",
+          "oklch(72.14% 0.0054 274.97)",
+          "oklch(83.57% 0.0054 274.97)",
+          "oklch(95.0% 0.0054 274.97)"
+        ]
+      },
+      "public-surface": {
+        "displayName": "Public Surface",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.0000 89.88)",
+          "oklch(26.43% 0.0000 89.88)",
+          "oklch(37.86% 0.0000 89.88)",
+          "oklch(49.29% 0.0000 89.88)",
+          "oklch(60.71% 0.0000 89.88)",
+          "oklch(72.14% 0.0000 89.88)",
+          "oklch(83.57% 0.0000 89.88)",
+          "oklch(95.0% 0.0000 89.88)"
+        ]
+      },
+      "public-muted": {
+        "displayName": "Public Muted",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.0410 260.28)",
+          "oklch(26.43% 0.0410 260.28)",
+          "oklch(37.86% 0.0410 260.28)",
+          "oklch(49.29% 0.0410 260.28)",
+          "oklch(60.71% 0.0410 260.28)",
+          "oklch(72.14% 0.0410 260.28)",
+          "oklch(83.57% 0.0410 260.28)",
+          "oklch(95.0% 0.0410 260.28)"
+        ]
+      },
+      "public-border": {
+        "displayName": "Public Border",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.0151 260.73)",
+          "oklch(26.43% 0.0151 260.73)",
+          "oklch(37.86% 0.0151 260.73)",
+          "oklch(49.29% 0.0151 260.73)",
+          "oklch(60.71% 0.0151 260.73)",
+          "oklch(72.14% 0.0151 260.73)",
+          "oklch(83.57% 0.0151 260.73)",
+          "oklch(95.0% 0.0151 260.73)"
+        ]
+      },
+      "public-input-border": {
+        "displayName": "Public Input Border",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.0268 261.13)",
+          "oklch(26.43% 0.0268 261.13)",
+          "oklch(37.86% 0.0268 261.13)",
+          "oklch(49.29% 0.0268 261.13)",
+          "oklch(60.71% 0.0268 261.13)",
+          "oklch(72.14% 0.0268 261.13)",
+          "oklch(83.57% 0.0268 261.13)",
+          "oklch(95.0% 0.0268 261.13)"
+        ]
+      },
+      "public-action-hover": {
+        "displayName": "Public Action Hover",
+        "role": "primary",
+        "tonalRamp": [
+          "oklch(15.0% 0.0526 260.51)",
+          "oklch(26.43% 0.0526 260.51)",
+          "oklch(37.86% 0.0526 260.51)",
+          "oklch(49.29% 0.0526 260.51)",
+          "oklch(60.71% 0.0526 260.51)",
+          "oklch(72.14% 0.0526 260.51)",
+          "oklch(83.57% 0.0526 260.51)",
+          "oklch(95.0% 0.0526 260.51)"
+        ]
+      },
+      "reseller-accent-default": {
+        "displayName": "Reseller Accent Default",
+        "role": "primary",
+        "tonalRamp": [
+          "oklch(15.0% 0.2301 276.97)",
+          "oklch(26.43% 0.2301 276.97)",
+          "oklch(37.86% 0.2301 276.97)",
+          "oklch(49.29% 0.2301 276.97)",
+          "oklch(60.71% 0.2301 276.97)",
+          "oklch(72.14% 0.2301 276.97)",
+          "oklch(83.57% 0.2301 276.97)",
+          "oklch(95.0% 0.2301 276.97)"
+        ]
+      },
+      "crm-action": {
+        "displayName": "Crm Action",
+        "role": "primary",
+        "tonalRamp": [
+          "oklch(15.0% 0.2392 271.69)",
+          "oklch(26.43% 0.2392 271.69)",
+          "oklch(37.86% 0.2392 271.69)",
+          "oklch(49.29% 0.2392 271.69)",
+          "oklch(60.71% 0.2392 271.69)",
+          "oklch(72.14% 0.2392 271.69)",
+          "oklch(83.57% 0.2392 271.69)",
+          "oklch(95.0% 0.2392 271.69)"
+        ]
+      },
+      "crm-action-hover": {
+        "displayName": "Crm Action Hover",
+        "role": "primary",
+        "tonalRamp": [
+          "oklch(15.0% 0.2334 271.47)",
+          "oklch(26.43% 0.2334 271.47)",
+          "oklch(37.86% 0.2334 271.47)",
+          "oklch(49.29% 0.2334 271.47)",
+          "oklch(60.71% 0.2334 271.47)",
+          "oklch(72.14% 0.2334 271.47)",
+          "oklch(83.57% 0.2334 271.47)",
+          "oklch(95.0% 0.2334 271.47)"
+        ]
+      },
+      "crm-action-tint": {
+        "displayName": "Crm Action Tint",
+        "role": "primary",
+        "tonalRamp": [
+          "oklch(15.0% 0.0153 269.99)",
+          "oklch(26.43% 0.0153 269.99)",
+          "oklch(37.86% 0.0153 269.99)",
+          "oklch(49.29% 0.0153 269.99)",
+          "oklch(60.71% 0.0153 269.99)",
+          "oklch(72.14% 0.0153 269.99)",
+          "oklch(83.57% 0.0153 269.99)",
+          "oklch(95.0% 0.0153 269.99)"
+        ]
+      },
+      "crm-action-border": {
+        "displayName": "Crm Action Border",
+        "role": "primary",
+        "tonalRamp": [
+          "oklch(15.0% 0.0581 268.02)",
+          "oklch(26.43% 0.0581 268.02)",
+          "oklch(37.86% 0.0581 268.02)",
+          "oklch(49.29% 0.0581 268.02)",
+          "oklch(60.71% 0.0581 268.02)",
+          "oklch(72.14% 0.0581 268.02)",
+          "oklch(83.57% 0.0581 268.02)",
+          "oklch(95.0% 0.0581 268.02)"
+        ]
+      },
+      "crm-muted": {
+        "displayName": "Crm Muted",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.0407 257.42)",
+          "oklch(26.43% 0.0407 257.42)",
+          "oklch(37.86% 0.0407 257.42)",
+          "oklch(49.29% 0.0407 257.42)",
+          "oklch(60.71% 0.0407 257.42)",
+          "oklch(72.14% 0.0407 257.42)",
+          "oklch(83.57% 0.0407 257.42)",
+          "oklch(95.0% 0.0407 257.42)"
+        ]
+      },
+      "crm-attention": {
+        "displayName": "Crm Attention",
+        "role": "neutral",
+        "tonalRamp": [
+          "oklch(15.0% 0.1054 45.90)",
+          "oklch(26.43% 0.1054 45.90)",
+          "oklch(37.86% 0.1054 45.90)",
+          "oklch(49.29% 0.1054 45.90)",
+          "oklch(60.71% 0.1054 45.90)",
+          "oklch(72.14% 0.1054 45.90)",
+          "oklch(83.57% 0.1054 45.90)",
+          "oklch(95.0% 0.1054 45.90)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "public-headline": {
+        "displayName": "Public headline",
+        "purpose": "Existing reseller template hero; inherited system typography."
+      }
+    },
+    "shadows": [
+      {
+        "name": "crm-card",
+        "value": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        "purpose": "Inherited shared CRM cards."
+      },
+      {
+        "name": "crm-button",
+        "value": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        "purpose": "Existing primary CRM button."
+      }
+    ],
+    "motion": [
+      {
+        "name": "crm-button-transition",
+        "value": "all 200ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Inherited primary button state transition."
+      },
+      {
+        "name": "public-scroll",
+        "value": "scroll-behavior: smooth",
+        "purpose": "Anchor navigation; auto when reduced motion is requested."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "public-stack",
+        "value": "700px"
+      },
+      {
+        "name": "editor-columns",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Public submit",
+      "kind": "button",
+      "refersTo": "public-submit",
+      "description": "Full-width inquiry action.",
+      "html": "<button class=\"ds-submit\">Send inquiry</button>",
+      "css": ".ds-submit{width:100%;padding:14px;border:0;border-radius:8px;background:#172033;color:white;font:600 16px system-ui;cursor:pointer}.ds-submit:hover{background:#263651}.ds-submit:focus-visible{outline:3px solid #172033;outline-offset:4px}.ds-submit:disabled{opacity:.6;cursor:wait}"
+    },
+    {
+      "name": "Public CTA",
+      "kind": "button",
+      "refersTo": "public-cta",
+      "description": "Anchor to the inquiry form.",
+      "html": "<a class=\"ds-cta\" href=\"#inquiry\">Ask about your options</a>",
+      "css": ".ds-cta{display:inline-block;background:#172033;color:white;padding:13px 22px;border-radius:8px;font:600 17px/1.6 system-ui;text-decoration:none}.ds-cta:hover{background:#263651;text-decoration:underline}.ds-cta:focus-visible{outline:3px solid #172033;outline-offset:4px}"
+    },
+    {
+      "name": "Public text field",
+      "kind": "input",
+      "refersTo": "public-input",
+      "description": "Persistent label and clear focus.",
+      "html": "<label class=\"ds-label\" for=\"ds-name\">Your name</label><input class=\"ds-input\" id=\"ds-name\" autocomplete=\"name\">",
+      "css": ".ds-label{display:block;margin:16px 0 5px;font:600 15px/1.6 system-ui;color:#172033}.ds-input{width:100%;padding:12px;border:1px solid #aab4c5;border-radius:7px;font:17px/1.6 system-ui}.ds-input:focus-visible{outline:3px solid #172033;outline-offset:4px}"
+    },
+    {
+      "name": "Public navigation",
+      "kind": "nav",
+      "description": "Wrapping page anchors.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Page navigation\"><a href=\"#how-it-works\">How it works</a><a href=\"#inquiry\">Contact us</a></nav>",
+      "css": ".ds-nav{display:flex;flex-wrap:wrap;gap:20px;font:14px/1.6 system-ui;color:#172033}.ds-nav a{color:inherit;overflow-wrap:anywhere}.ds-nav a:hover{text-decoration:underline}.ds-nav a:focus-visible{outline:3px solid #172033;outline-offset:4px}"
+    },
+    {
+      "name": "Public form container",
+      "kind": "card",
+      "refersTo": "public-form",
+      "description": "White inquiry container on the open page.",
+      "html": "<section class=\"ds-form\"><h2>Ask about service &amp; setup</h2><p>Tell us about your device and what you need.</p></section>",
+      "css": ".ds-form{background:white;color:#172033;padding:28px;border:1px solid #dce2ec;border-radius:16px;font:17px/1.6 system-ui}.ds-form h2{margin-top:0;font-size:23px;line-height:1.3}@media(max-width:700px){.ds-form{padding:20px}}"
+    },
+    {
+      "name": "Public FAQ",
+      "kind": "custom",
+      "description": "Native disclosure with a fine dividing rule.",
+      "html": "<details class=\"ds-faq\"><summary>Does sending this form create an account?</summary><p>No. This is a request for information.</p></details>",
+      "css": ".ds-faq{border-bottom:1px solid #dce2ec;padding:19px 0;font:17px/1.6 system-ui;color:#172033}.ds-faq summary{cursor:pointer;font-weight:600}.ds-faq p{margin-top:14px;white-space:pre-wrap;max-width:72ch;color:#526077}.ds-faq summary:focus-visible{outline:3px solid #172033;outline-offset:4px}"
+    },
+    {
+      "name": "CRM primary button",
+      "kind": "button",
+      "refersTo": "crm-button",
+      "description": "Inherited Sales tools control.",
+      "html": "<button class=\"ds-crm\">Publish on my domain</button>",
+      "css": ".ds-crm{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:calc(var(--radius, .5rem) - 2px);font:500 14px/20px ui-sans-serif,system-ui,sans-serif;white-space:nowrap;cursor:pointer;transition:color .15s,background-color .15s}.ds-crm:focus-visible{outline:none;box-shadow:0 0 0 2px hsl(var(--background,0 0% 100%)),0 0 0 4px hsl(var(--ring,221 91% 65%))}.ds-crm:disabled{pointer-events:none;opacity:.5}.ds-crm{height:40px;padding:8px 16px;border:0;background:#4654f7;color:white;box-shadow:0 4px 6px -1px rgb(0 0 0 / .1),0 2px 4px -2px rgb(0 0 0 / .1);transition:all .2s}.ds-crm:hover{background:#3b45e3;box-shadow:0 10px 15px -3px rgb(0 0 0 / .1),0 4px 6px -4px rgb(0 0 0 / .1)}"
+    },
+    {
+      "name": "CRM outline button",
+      "kind": "button",
+      "refersTo": "crm-button-outline",
+      "description": "Inherited Sales tools control.",
+      "html": "<button class=\"ds-crm\">Add question</button>",
+      "css": ".ds-crm{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:calc(var(--radius, .5rem) - 2px);font:500 14px/20px ui-sans-serif,system-ui,sans-serif;white-space:nowrap;cursor:pointer;transition:color .15s,background-color .15s}.ds-crm:focus-visible{outline:none;box-shadow:0 0 0 2px hsl(var(--background,0 0% 100%)),0 0 0 4px hsl(var(--ring,221 91% 65%))}.ds-crm:disabled{pointer-events:none;opacity:.5}.ds-crm{height:40px;padding:8px 16px;border:1px solid #c7d7ff;background:hsl(var(--background,0 0% 100%));color:hsl(var(--foreground,222.2 84% 4.9%))}.ds-crm:hover{background:#f0f4ff;color:#3b45e3}"
+    },
+    {
+      "name": "CRM ghost button",
+      "kind": "button",
+      "refersTo": "crm-button-ghost",
+      "description": "Inherited Sales tools control.",
+      "html": "<button class=\"ds-crm\">Remove</button>",
+      "css": ".ds-crm{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:calc(var(--radius, .5rem) - 2px);font:500 14px/20px ui-sans-serif,system-ui,sans-serif;white-space:nowrap;cursor:pointer;transition:color .15s,background-color .15s}.ds-crm:focus-visible{outline:none;box-shadow:0 0 0 2px hsl(var(--background,0 0% 100%)),0 0 0 4px hsl(var(--ring,221 91% 65%))}.ds-crm:disabled{pointer-events:none;opacity:.5}.ds-crm{height:36px;padding:0 12px;border:0;background:transparent;color:hsl(var(--foreground,222.2 84% 4.9%))}.ds-crm:hover{background:#f0f4ff;color:#3b45e3}"
+    },
+    {
+      "name": "CRM inquiry delivery",
+      "kind": "custom",
+      "description": "Saved inquiry and email status stay distinct.",
+      "html": "<details class=\"ds-delivery\" open><summary>Website inquiries · 1 · Email needs attention</summary><div><p><strong>Saved to CRM</strong></p><p class=\"ds-attention\">Email needs attention</p><p>Your inquiry is safely stored here. Follow up from the details below; contact support to review the email alert.</p></div></details>",
+      "css": ".ds-delivery{border-top:1px solid hsl(var(--border,214.3 31.8% 91.4%));padding-top:12px;font:14px/20px ui-sans-serif,system-ui,sans-serif;color:hsl(var(--foreground,222.2 84% 4.9%));overflow-wrap:anywhere}.ds-delivery summary{cursor:pointer;font-weight:500}.ds-delivery div{margin-top:12px}.ds-attention{color:#78350f}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The existing reseller service page",
+    "overview": "This is a scoped record of the shipped public reseller template, its Sales tools content editor, and inquiry delivery details. It preserves the incumbent light surfaces, dark text, system typography and reseller accent. It does not establish a new identity or describe a dashboard redesign.",
+    "keyCharacteristics": [
+      "Open reading sections separated by fine rules.",
+      "A white, bounded inquiry form with persistent labels.",
+      "Familiar Sales tools controls and explicit textual states."
+    ],
+    "rules": [
+      {
+        "name": "The Surface Boundary Rule",
+        "body": "Preserve each surface’s existing palette: reseller branding on the public page and EZTV controls in Sales tools.",
+        "section": "colors"
+      },
+      {
+        "name": "The Content Fits Rule",
+        "body": "Long addresses, devices and messages must remain within the mobile container without horizontal scrolling.",
+        "section": "layout"
+      }
+    ],
+    "dos": [
+      "**Do** preserve the existing system typography, light surfaces and reseller logo treatment within this extension.",
+      "**Do** retain visible labels, keyboard focus and explicit private, published and delivery states.",
+      "**Do** test long content in the stacked mobile layout."
+    ],
+    "donts": [
+      "**Don't** turn open public reading sections into a new dashboard-style card grid.",
+      "**Don't** use a reseller accent as a replacement for the CRM action palette.",
+      "**Don't** imply a successful inquiry or provider-accepted email confirms inbox delivery."
+    ]
+  }
+}
