@@ -115,7 +115,8 @@ Mailbux IMAP and SMTP authentication with certificate-verified TLS succeeded usi
 the replacement app password. The dedicated test folder is available. These checks
   ran from the VPS host. The October 12 checks below also verify container access
   and actual fetching through the live IMAP server. The approved external test was
-  accepted by SMTP; recipient delivery and reply confirmation are pending.
+  accepted by SMTP; the owner confirmed delivery and the reply was verified on
+  the original ticket.
 
 Run from the V1 repository:
 
@@ -246,15 +247,23 @@ Controlled container access is now installed as described below. Use designated
 test messages/recipients to verify external delivery and sender authentication
 before enabling normal inbox handling.
 
-### October 12 continuation: live IMAP verified, external SMTP accepted
+### October 12 continuation: real email round trip verified
 
-**Latest status (2026-10-12 03:48 UTC):** the owner explicitly approved the test.
-One message from `support@eztvclub.com` to `michael@eztvclub.com` was accepted by
-Mailbux SMTP through Zammad ticket **36022**, with the harmless text attachment.
-Recipient inbox delivery and the requested reply have not yet been confirmed.
-The attempt ledger prevents resending. The post-send operational check passed:
-all channels and triggers are inactive again, and the pilot remains private.
+**Latest status (2026-10-12 03:52 UTC):** the owner-approved round trip passed.
+The test from `support@eztvclub.com` was accepted by Mailbux, the owner confirmed
+receipt at `michael@eztvclub.com`, and the real reply imported onto the original
+Zammad ticket **36022**, attributed to the correct customer, with two attachments.
+No duplicate ticket, duplicate reply, or automatic response was created. The
+original INBOX message was read with PEEK and left unchanged; only this exact
+approved-test reply was copied into the test folder for native IMAP import.
+All channels/triggers remain inactive. The help desk is still a private pilot.
 The “no external email” statements below describe the earlier synthetic checks.
+
+`python3 services/support/collect-approved-reply.py` checks the original outgoing
+article, expected sender/recipient, unique test subject and threading headers before
+copying anything. It refuses unrelated unread mail in the test folder. Re-running
+reconciles the existing article instead of copying/importing it again. The result
+is stored privately alongside the durable outbound attempt record.
 
 The fixed Mailbux gateway is deployed. Both Rails and scheduler verified IMAP and
 SMTP login with certificate validation, read-only access to `EZTV-Support-Pilot`,
@@ -316,8 +325,8 @@ these helpers; the channel's folder must remain `EZTV-Support-Pilot`.
 The 29 HTTP ownership/workflow checks and four desktop/mobile browser scenarios
 were rerun successfully after adding the gateway. This is still a **private pilot**:
 no public help-desk URL, real reseller invitations, dashboard SSO, or support SLA
-has been launched. Next: the approved delivery/reply test, then staff HTTPS/MFA
-access and the dashboard adapter. Keep announcements and broad inbox cutover off
+has been launched. The approved delivery/reply test is now complete. Next: staff
+HTTPS/MFA access and the dashboard adapter. Keep announcements and broad inbox cutover off
 until those are verified.
 
 Backup/restore was also rerun with the new tickets and attachments. The recovery
@@ -372,11 +381,9 @@ and [Zammad mailbox setup behavior](https://admin-docs.zammad.org/en/latest/chan
 
 ## Launch work still required
 
-1. Complete the owner-approved external email test. Mailbox authentication and live
-   test-folder fetching are verified; recipient inbox delivery, real replies,
-   bounce handling, SPF/DKIM alignment and actual notifications still need checks.
-   The owner-approved email was accepted by SMTP on October 12; inbox delivery
-   and a real reply are still awaiting recipient confirmation.
+1. The owner-approved email round trip is verified. Bounce handling, SPF/DKIM
+   alignment and actual notifications still need checks before ordinary inbox
+   intake is enabled; only the selected test reply has been imported.
 2. Configure a public hostname and HTTPS, staff accounts/MFA, secret rotation,
    recovery access and a production host/resource plan. The private pilot password
    authentication and isolation settings are not a production rollout recipe.
