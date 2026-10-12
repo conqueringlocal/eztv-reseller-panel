@@ -95,7 +95,8 @@ export function createHandler(db: any, authenticate: (jwt: string) => Promise<st
       }
       if (body.action === 'create') {
         if (env('EZTV_PAYPAL_ENABLED') !== 'true') throw new PaymentError('checkout_unavailable');
-        if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(body.requestId || '') || ![5,10,20,50].includes(body.credits)) throw new PaymentError('invalid_purchase', 400);
+        if (Number.isInteger(body.credits) && body.credits < 10) throw new PaymentError('minimum_credit_purchase', 400);
+        if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(body.requestId || '') || ![10,20,50].includes(body.credits)) throw new PaymentError('invalid_purchase', 400);
         if (body.expectedUnitPriceCents !== undefined && (!Number.isInteger(body.expectedUnitPriceCents) || body.expectedUnitPriceCents < 1 || body.expectedUnitPriceCents > 42949672)) throw new PaymentError('invalid_purchase', 400);
         const order: Order = checked(await db.rpc('prepare_paypal_credit_order_priced', { p_id: body.requestId, p_actor: user, p_credits: body.credits, p_environment: config.environment, p_expected_unit_price_cents: body.expectedUnitPriceCents ?? 300 }));
         if (order.status !== 'created') return json({ status: order.status });

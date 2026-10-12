@@ -58,10 +58,10 @@ export function ManualCreditRequests({ admin = false }: { admin?: boolean }) {
   {loadError&&<p role="alert" className="text-destructive">{loadError}</p>}
   {!admin&&<>
    <p>Pay with PayPal to <strong>@eztvclub</strong>. Credits cost <strong>{unitPrice && !pricing.isError ? `${priceLabel(unitPrice)} USD each` : 'currently unavailable'}</strong>. Include your reseller name in the payment note, then submit the PayPal transaction reference below.</p>
-   <p className="text-sm text-muted-foreground">Credits are added after the administrator verifies payment. If you already paid, submit that reference—do not send another payment.</p>
+   <p className="text-sm text-muted-foreground">Minimum purchase: 10 credits. Credits are added after the administrator verifies payment. If you already paid, submit that reference—do not send another payment.</p>
    {pending?<p role="status">Your request is awaiting review. You can check its status below.</p>:<form onSubmit={e=>{e.preventDefault();void submit();}} className="space-y-4">
     {pricing.isError && <p role="alert">Unable to load your price. <Button type="button" variant="outline" onClick={()=>void pricing.refetch()}>Retry</Button></p>}
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{[5,10,20,50].map(n=><Button key={n} type="button" variant={credits===n?'default':'outline'} disabled={!!busy||!unitPrice||pricing.isError} onClick={()=>setCredits(n)}>{n} credits · {unitPrice && !pricing.isError ? priceLabel(n*unitPrice) : '—'}</Button>)}</div>
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">{[10,20,50].map(n=><Button key={n} type="button" variant={credits===n?'default':'outline'} disabled={!!busy||!unitPrice||pricing.isError} onClick={()=>setCredits(n)}>{n} credits · {unitPrice && !pricing.isError ? priceLabel(n*unitPrice) : '—'}</Button>)}</div>
     <div><Label htmlFor="paypal-reference">PayPal transaction reference</Label><Input id="paypal-reference" value={reference} onChange={e=>setReference(e.target.value)} minLength={3} maxLength={200} required disabled={!!busy} autoComplete="off" /></div>
     <Button type="submit" disabled={!!busy||!loaded||!!loadError||!unitPrice||pricing.isError||reference.trim().length<3}>{busy?'Submitting…':`Submit request for ${credits} credits (${unitPrice ? priceLabel(credits*unitPrice) : "—"} USD)`}</Button>
    </form>}

@@ -52,10 +52,10 @@ export const CreditRequestDialog: React.FC<CreditRequestDialogProps> = ({
       return;
     }
 
-    if (formData.credits < 1) {
+    if (!Number.isInteger(formData.credits) || formData.credits < 10) {
       toast({
         title: "Error",
-        description: "You must request at least 1 credit",
+        description: "You must request at least 10 credits",
         variant: "destructive",
       });
       return;
@@ -114,7 +114,7 @@ export const CreditRequestDialog: React.FC<CreditRequestDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Request Credits</DialogTitle>
           <DialogDescription>
-            Request credits from your parent reseller. They will need to approve this request.
+            Request at least 10 credits from your parent reseller. They will need to approve this request.
           </DialogDescription>
         </DialogHeader>
         
@@ -124,9 +124,9 @@ export const CreditRequestDialog: React.FC<CreditRequestDialogProps> = ({
             <Input
               id="credits"
               type="number"
-              min="1"
+              min="10"
               value={formData.credits}
-              onChange={(e) => handleInputChange('credits', parseInt(e.target.value) || 1)}
+              onChange={(e) => handleInputChange('credits', Number(e.target.value))}
               placeholder="Enter number of credits"
               required
             />
@@ -168,7 +168,7 @@ export const CreditRequestDialog: React.FC<CreditRequestDialogProps> = ({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !Number.isInteger(formData.credits) || formData.credits < 10}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Submit Request
             </Button>
