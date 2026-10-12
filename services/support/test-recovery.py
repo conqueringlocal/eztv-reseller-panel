@@ -39,7 +39,8 @@ def main():
     target = ROOT / 'local' / 'recovery' / datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     target.mkdir(parents=True, mode=0o700)
     expected = json.loads(dc('exec', '-T', 'zammad-postgresql', 'psql', '-U', 'postgres', '-d', 'zammad_production', '-Atc', QUERY))
-    dc('run', '--rm', '-T', '-e', 'BACKUP_ONCE=true', 'zammad-backup')
+    # A one-off backup must never reconcile/recreate running dependencies.
+    dc('run', '--rm', '--no-deps', '-T', '-e', 'BACKUP_ONCE=true', 'zammad-backup')
     listing = dc('exec', '-T', 'zammad-backup', 'sh', '-c', 'ls -1 /var/tmp/zammad/*_zammad_db.psql.gz').decode().splitlines()
     database = sorted(listing)[-1]
     storage = database.replace('_db.psql.gz', '_files.tar.gz')

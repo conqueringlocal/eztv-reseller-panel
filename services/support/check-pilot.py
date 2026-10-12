@@ -18,7 +18,12 @@ def main():
     assert config['name'] == 'eztv-support-pilot'
     assert config['networks']['default']['internal'] is True
     for name, service in config['services'].items():
-        if name != 'zammad-nginx':
+        if name == 'mail-gateway':
+            assert not service.get('ports'), 'Mail gateway must not publish ports'
+            assert set(service['networks']) == {'default', 'mail_egress'}
+            assert service['networks']['default']['aliases'] == ['my.mailbux.com']
+            assert service['read_only'] is True
+        elif name != 'zammad-nginx':
             assert not service.get('ports'), f'{name}: unexpected published port'
             assert list(service['networks']) == ['default'], f'{name}: unexpected external network'
     ports = config['services']['zammad-nginx']['ports']

@@ -28,8 +28,10 @@ mean retail subscribers are being invited to the central help desk.
 - Upstream Compose revision: `b51cba16ab6d753efcb6676a30afaf97753b72cb`.
 - All service images pinned to verified digests in `image-lock.yml`.
 - PostgreSQL, Redis, Memcached, Elasticsearch and application jobs are on a Docker
-  internal network. Only the nginx reverse proxy also joins the frontend bridge,
-  because Docker does not publish ports for internal-only containers.
+  internal network. The nginx reverse proxy also joins the frontend bridge.
+  An optional fixed-destination mail gateway now allows verified end-to-end TLS
+  connections to Mailbux IMAP/SMTP only. It publishes no host ports. Rails and
+  the scheduler still cannot make general outbound internet connections.
 - Persistent named volumes use the `eztv-support-pilot` project prefix.
 - Resource limits bound the pilot on this shared VPS. These are pilot limits, not
   proof of capacity for 85 resellers and an unknown customer population.
@@ -111,7 +113,8 @@ threading and exclusion of internal notes. Four unit tests verify secure mailbox
 credential handling and that the access check never fetches, modifies or sends mail.
 Mailbux IMAP and SMTP authentication with certificate-verified TLS succeeded using
 the replacement app password. The dedicated test folder is available. These checks
-ran from the VPS host; container mail connectivity and live delivery remain untested.
+  ran from the VPS host. The October 12 checks below also verify container access
+  and actual fetching through the live IMAP server. External delivery is pending.
 
 Run from the V1 repository:
 
@@ -238,8 +241,87 @@ logs or chat; protect database backups accordingly.
 
 Before a live pilot, provide controlled container access to Mailbux (the application
 network is still internal-only), link the sender, and route only the test folder.
-Use designated test messages/recipients to verify receipt, replies, threading,
-attachments and sender authentication before enabling normal inbox handling.
+Controlled container access is now installed as described below. Use designated
+test messages/recipients to verify external delivery and sender authentication
+before enabling normal inbox handling.
+
+### October 12 continuation: live IMAP verified, external send pending
+
+The fixed Mailbux gateway is deployed. Both Rails and scheduler verified IMAP and
+SMTP login with certificate validation, read-only access to `EZTV-Support-Pilot`,
+and denial of general internet access. The gateway passes through encrypted TCP;
+it holds no mailbox password and cannot choose another destination or port.
+Its pinned HAProxy image only forwards ports 993 and 587 to `my.mailbux.com`.
+Public DNS resolvers are used for the upstream so the Docker alias cannot loop
+back into the gateway. No public listener or paid service was added.
+
+To reproduce the optional connectivity:
+
+```sh
+python3 services/support/prepare-mail-gateway.py
+cd /opt/eztv-support-pilot
+docker compose up -d --no-deps mail-gateway
+# Wait for its first health check, then run from the repository:
+python3 services/support/check-container-mail.py
+python3 services/support/check-pilot.py
+```
+
+Ten live IMAP checks passed using synthetic mail APPENDed only into the dedicated
+test folder, then imported by Zammad's native driver. They cover ticket creation,
+correct reseller attribution, rejection of spoofed ownership headers, attachment
+content, message preservation, deduplication after marking a message unread, and
+reply threading. All mail remains on the server. **The normal INBOX was not opened
+or imported, and no external email was sent.** Channels and triggers remain off.
+Mailbux returned no matches for `HEADER Message-ID` searches; the test locates its
+own preserved messages by a unique subject marker instead. Native Zammad import
+deduplication still passed.
+
+```sh
+python3 services/support/test-live-imap.py
+python3 services/support/test-approved-delivery.py
+```
+
+The approved-test sender is verified against an isolated Mailpit sink using the
+actual Zammad delivery job, including attachment, sender/recipient, ticket reference,
+staff-note exclusion, repeat rejection and restoration of the inactive channel.
+Its preview command performs no network operation:
+
+```sh
+python3 services/support/send-approved-test.py --recipient michael@eztvclub.com
+```
+
+**Only after the owner explicitly approves that recipient**, append
+`--send-approved-test`. The sender records an attempt before the external call;
+re-running refuses to send again, including after an uncertain result. It sends
+one setup-test email with a harmless text attachment and asks for a reply.
+An SMTP acceptance report is not proof of inbox delivery. Inspect the recorded
+ticket before deliberately clearing any attempt marker. Credentials and test
+ledgers remain private under `local/`; never paste them in chat or Git.
+
+The sender enables the Mailbux channel only for the controlled operation, then
+restores the unlinked/inactive sender and channel. Automatic triggers remain off.
+If the process is killed, check and disable the channel before restarting the
+scheduler or rerunning any synthetic test. The main INBOX is never selected by
+these helpers; the channel's folder must remain `EZTV-Support-Pilot`.
+
+The 29 HTTP ownership/workflow checks and four desktop/mobile browser scenarios
+were rerun successfully after adding the gateway. This is still a **private pilot**:
+no public help-desk URL, real reseller invitations, dashboard SSO, or support SLA
+has been launched. Next: the approved delivery/reply test, then staff HTTPS/MFA
+access and the dashboard adapter. Keep announcements and broad inbox cutover off
+until those are verified.
+
+Backup/restore was also rerun with the new tickets and attachments. The recovery
+helper now uses `docker compose run --no-deps` so a backup cannot reconcile or
+restart running dependencies. A second restore passed while container IDs and
+start times remained unchanged. Backups still reside on this VPS; off-site disaster
+recovery is not complete.
+
+Staff-access discovery: neither `support.eztvclub.com` nor `help.eztvclub.com` has a
+DNS record. The available Wrangler OAuth connection returned no matching domain
+zone and HTTP 403 for Cloudflare Access applications. Public access needs DNS/Access
+permissions in the domain's account (or an owner-applied DNS record once the chosen
+HTTPS access configuration is prepared). No DNS changes or public exposure were made.
 
 ### Alternative: interactive VPS entry
 
@@ -281,10 +363,10 @@ and [Zammad mailbox setup behavior](https://admin-docs.zammad.org/en/latest/chan
 
 ## Launch work still required
 
-1. Connect the existing Mailbux mailbox using its dedicated app password and test folder.
-   Verify receipt, replies, threading, attachments, bounce handling, sender
-   authentication and actual notification delivery using designated test recipients.
-   No mail invitations or messages have been authorized/sent by this pilot.
+1. Complete the owner-approved external email test. Mailbox authentication and live
+   test-folder fetching are verified; recipient inbox delivery, real replies,
+   bounce handling, SPF/DKIM alignment and actual notifications still need checks.
+   No external email has been sent; the outgoing test remains approval-gated.
 2. Configure a public hostname and HTTPS, staff accounts/MFA, secret rotation,
    recovery access and a production host/resource plan. The private pilot password
    authentication and isolation settings are not a production rollout recipe.
