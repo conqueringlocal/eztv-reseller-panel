@@ -33,7 +33,6 @@ import ResellerSubResellers from "./pages/reseller/ResellerSubResellers";
 import ResellerCreditManagement from "./pages/reseller/ResellerCreditManagement";
 import ResellerSettings from "./pages/reseller/ResellerSettings";
 import ResellerFunnels from "./pages/reseller/ResellerFunnels";
-import Webhook from "./pages/Webhook";
 
 import SupportReseller from './pages/SupportReseller';
 import { SupportBoundary } from './components/support/SupportBoundary';
@@ -67,7 +66,6 @@ function App() {
                   <Route path="/login" element={<Login />} />
                   <Route path="/auth/token" element={<TokenAuth />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
-                  <Route path="/api/webhook" element={<Webhook />} />
                   <Route path="/sports-update/:updateId" element={<PublicSportsUpdate />} />
                   
                   {/* Protected admin routes */}

@@ -27,7 +27,6 @@ export interface Customer {
   m3u_url?: string | null;
   connection_sequence?: number | null;
   cancelledAt?: string | null;
-  highlevelContactId?: string | null;
   // Add missing properties for compatibility
   customerGroup?: string;
   connectionSequence?: number | null;

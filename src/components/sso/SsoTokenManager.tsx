@@ -212,7 +212,7 @@ export const SsoTokenManager: React.FC = () => {
           <div>
             <CardTitle>SSO Tokens</CardTitle>
             <CardDescription>
-              Manage secure single sign-on tokens for HighLevel integration
+              Manage secure single sign-on tokens for your self-hosted portal
             </CardDescription>
           </div>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
@@ -226,7 +226,7 @@ export const SsoTokenManager: React.FC = () => {
               <DialogHeader>
                 <DialogTitle>Create SSO Token</DialogTitle>
                 <DialogDescription>
-                  Generate a new SSO token for a reseller to use in HighLevel
+                  Generate a new SSO token for a reseller to use in your self-hosted portal
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
@@ -252,7 +252,7 @@ export const SsoTokenManager: React.FC = () => {
                     id="tokenName"
                     value={tokenName}
                     onChange={(e) => setTokenName(e.target.value)}
-                    placeholder="e.g., HighLevel Production"
+                    placeholder="e.g., Self-hosted portal"
                   />
                 </div>
                 <div className="flex justify-end space-x-2">
@@ -351,14 +351,14 @@ export const SsoTokenManager: React.FC = () => {
             <DialogHeader>
               <DialogTitle>SSO Token Created Successfully</DialogTitle>
               <DialogDescription>
-                Your SSO token has been generated. Copy the login URL below and add it to HighLevel.
+                Your SSO token has been generated. Copy the login URL below and add it to your self-hosted portal.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               {generatedToken && (
                 <>
                   <div>
-                    <Label>Login URL for HighLevel</Label>
+                    <Label>Login URL for your self-hosted portal</Label>
                     <div className="flex items-center space-x-2 mt-1">
                       <Input 
                         value={getLoginUrl(generatedToken)} 

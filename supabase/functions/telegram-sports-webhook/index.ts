@@ -428,7 +428,6 @@ async function processUpdate(update: TelegramUpdate) {
       game_date: new Date().toISOString().split('T')[0], // Today's date
       channel_info: parsed.channel_info,
       telegram_message_id: messageId,
-      posted_to_highlevel: false
     })
     .select()
     .single();
@@ -440,20 +439,6 @@ async function processUpdate(update: TelegramUpdate) {
 
   console.log('Sports update inserted:', data);
 
-  // Trigger HighLevel auto-posting
-  try {
-    const autoPostResponse = await supabase.functions.invoke('auto-post-sports-update', {
-      body: { update_id: data.id }
-    });
-    
-    if (autoPostResponse.error) {
-      console.error('Error in auto-post function:', autoPostResponse.error);
-    } else {
-      console.log('Auto-post triggered successfully');
-    }
-  } catch (autoPostError) {
-    console.error('Failed to trigger auto-post:', autoPostError);
-  }
 }
 
 Deno.serve(async (req) => {
@@ -490,7 +475,7 @@ Deno.serve(async (req) => {
     console.error('Error processing webhook:', error);
     return new Response(JSON.stringify({ 
       error: 'Internal server error',
-      details: error.message 
+      details: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -12,7 +12,6 @@ export interface ConsolidatedCustomer {
   status: 'active' | 'expired' | 'cancelled' | 'pending';
   isDeactivated: boolean;
   cancelledAt: string | null;
-  highlevelContactId?: string;
   customerGroup?: string;
   macAddress?: string;
   isTrial?: boolean;

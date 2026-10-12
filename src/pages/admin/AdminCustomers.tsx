@@ -20,7 +20,6 @@ export default function AdminCustomers() {
   const { customers, resellers, cancelCustomer, deactivateCustomer, refreshData } = useApp();
   
   const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
-  const [isCrmManagerOpen, setIsCrmManagerOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [selectedResellerId, setSelectedResellerId] = useState<string>('all');
   
@@ -35,21 +34,14 @@ export default function AdminCustomers() {
 
   const {
     customerToRenew,
-    selectedCustomerForCrm,
     setCustomerToRenew,
-    setSelectedCustomerForCrm,
     handleCancelCustomer,
     handleDeactivateCustomer,
     handleRenewCustomer,
-    handleManageCrmContact,
-    handleSyncToCrm
   } = useCustomerOperations(
-    user, 
     cancelCustomer, 
     deactivateCustomer, 
-    refreshData, 
     setIsRenewCustomerOpen, 
-    setIsCrmManagerOpen
   );
 
   const handleStatusFilterChange = (filter: string) => {
@@ -155,7 +147,6 @@ export default function AdminCustomers() {
       <CustomerDialogsManager
         isAddCustomerOpen={false}
         isRenewCustomerOpen={isRenewCustomerOpen}
-        isCrmManagerOpen={isCrmManagerOpen}
         isCreateTrialOpen={false}
         isBulkImportOpen={false}
         onAddCustomerClose={() => {}}
@@ -163,14 +154,9 @@ export default function AdminCustomers() {
           setIsRenewCustomerOpen(false);
           setCustomerToRenew(null);
         }}
-        onCrmManagerClose={() => {
-          setIsCrmManagerOpen(false);
-          setSelectedCustomerForCrm(null);
-        }}
         onCreateTrialClose={() => {}}
         onBulkImportClose={() => {}}
         customerToRenew={customerToRenew}
-        selectedCustomerForCrm={selectedCustomerForCrm}
         canCreateTrials={false}
         userId={user?.id || ''}
         onRefreshData={refreshData}

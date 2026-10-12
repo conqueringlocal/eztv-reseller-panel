@@ -18,7 +18,7 @@ New customer creation retains its existing guarded receipt workflow. Renewals an
 - Store each paid receipt before fetching the provider expiry or starting the next paid line. Expiry comes from Trex `device_info.expire`.
 - Finalize customer records atomically. A timeout, partial response or storage failure leaves a hold; it does not buy again or refund automatically.
 - Browser operation references survive refreshes and ambiguous failures. Recent overlapping changes are also blocked for 24 hours. A successful response clears the browser reference so a later intentional renewal can be requested.
-- Legacy direct renewal workers are retired (410). CRM renewals use the same coordinator and real service authentication.
+- Legacy direct renewal workers are retired (410). The CRM webhook is also retired (410); dashboard renewals use the coordinator and authenticated requests.
 
 Credit Management includes a review queue for incomplete operations, historical pending renewals, provider records that could not be verified, and historical duplicate accounts. Receipts containing credentials are service-only. The browser sees references and outcomes, never those receipts.
 

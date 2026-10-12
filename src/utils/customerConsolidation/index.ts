@@ -119,7 +119,6 @@ export const convertToConsolidatedCustomer = (customerGroup: CustomerGroup): Con
     status: primaryCustomer.status as 'active' | 'expired' | 'cancelled' | 'pending',
     isDeactivated: primaryCustomer.isDeactivated,
     cancelledAt: primaryCustomer.cancelledAt,
-    highlevelContactId: primaryCustomer.highlevelContactId,
     customerGroup: primaryCustomer.customerGroup,
     macAddress: primaryCustomer.macAddress,
     isTrial: primaryCustomer.isTrial,

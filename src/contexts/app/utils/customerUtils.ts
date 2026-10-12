@@ -29,7 +29,6 @@ export const convertDbCustomerToCustomer = (dbCustomer: any): Customer => {
     m3u_url: dbCustomer.m3u_url,
     connection_sequence: dbCustomer.connection_sequence,
     cancelledAt: dbCustomer.cancelled_at,
-    highlevelContactId: dbCustomer.highlevel_contact_id,
     // Add compatibility properties
     customerGroup: dbCustomer.customer_group,
     connectionSequence: dbCustomer.connection_sequence,

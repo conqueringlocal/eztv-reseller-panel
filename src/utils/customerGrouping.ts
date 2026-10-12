@@ -11,7 +11,6 @@ export interface ConsolidatedCustomer {
   status: 'active' | 'expired' | 'cancelled' | 'pending'; // Fixed: use specific type instead of string
   isDeactivated: boolean;
   cancelledAt: string | null;
-  highlevelContactId?: string;
   customerGroup?: string;
   macAddress?: string;
   isTrial?: boolean;
@@ -61,7 +60,6 @@ export function consolidateCustomers(customers: Customer[]): ConsolidatedCustome
       status: (primaryCustomer.status as 'active' | 'expired' | 'cancelled' | 'pending') || 'active', // Fixed: cast to proper type
       isDeactivated: primaryCustomer.isDeactivated,
       cancelledAt: primaryCustomer.cancelledAt,
-      highlevelContactId: primaryCustomer.highlevelContactId,
       customerGroup: primaryCustomer.customerGroup,
       macAddress: sortedCustomers.length === 1 ? primaryCustomer.macAddress : undefined,
       isTrial: primaryCustomer.isTrial,

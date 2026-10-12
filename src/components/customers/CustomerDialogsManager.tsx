@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/dialog';
 import { AddCustomerForm } from '@/components/customers/AddCustomerForm';
 import { RenewCustomerForm } from '@/components/customers/RenewCustomerForm';
-import { CrmContactManager } from '@/components/crm/CrmContactManager';
 import { CreateTrialForm } from '@/components/customers/CreateTrialForm';
 import { BulkImportForm } from '@/components/customers/BulkImportForm';
 import { Customer } from '@/contexts/AppContext';
@@ -18,20 +17,17 @@ interface CustomerDialogsManagerProps {
   // Dialog states
   isAddCustomerOpen: boolean;
   isRenewCustomerOpen: boolean;
-  isCrmManagerOpen: boolean;
   isCreateTrialOpen: boolean;
   isBulkImportOpen: boolean;
   
   // Dialog handlers
   onAddCustomerClose: () => void;
   onRenewCustomerClose: () => void;
-  onCrmManagerClose: () => void;
   onCreateTrialClose: () => void;
   onBulkImportClose: () => void;
   
   // Data
   customerToRenew: Customer | null;
-  selectedCustomerForCrm: Customer | null;
   canCreateTrials: boolean;
   userId: string;
   
@@ -42,16 +38,13 @@ interface CustomerDialogsManagerProps {
 export function CustomerDialogsManager({
   isAddCustomerOpen,
   isRenewCustomerOpen,
-  isCrmManagerOpen,
   isCreateTrialOpen,
   isBulkImportOpen,
   onAddCustomerClose,
   onRenewCustomerClose,
-  onCrmManagerClose,
   onCreateTrialClose,
   onBulkImportClose,
   customerToRenew,
-  selectedCustomerForCrm,
   canCreateTrials,
   userId,
   onRefreshData
@@ -120,27 +113,6 @@ export function CustomerDialogsManager({
         </Dialog>
       )}
 
-      {selectedCustomerForCrm && (
-        <Dialog open={isCrmManagerOpen} onOpenChange={onCrmManagerClose}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Manage CRM Contact</DialogTitle>
-              <DialogDescription>
-                Update custom fields, add notes, and manage tags for {selectedCustomerForCrm.name} in your CRM system
-              </DialogDescription>
-            </DialogHeader>
-            <CrmContactManager
-              contactId={selectedCustomerForCrm.highlevelContactId || ''}
-              resellerId={userId}
-              customerName={selectedCustomerForCrm.name}
-              onUpdate={() => {
-                onCrmManagerClose();
-                onRefreshData();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
-      )}
     </>
   );
 }

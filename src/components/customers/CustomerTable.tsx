@@ -40,8 +40,6 @@ interface CustomerTableProps {
   onCancel?: (customerId: string) => Promise<void>;
   onRenew?: (customer: any) => void;
   onDeactivate?: (customerId: string) => Promise<void>;
-  onManageCrm?: (customer: any) => void;
-  onSyncToCrm?: (customer: any) => Promise<void>;
   statusFilter?: string;
   onStatusFilterChange?: (filter: string) => void;
 }
@@ -53,8 +51,6 @@ export function CustomerTable({
   onCancel,
   onRenew,
   onDeactivate,
-  onManageCrm,
-  onSyncToCrm,
   statusFilter,
   onStatusFilterChange
 }: CustomerTableProps) {
