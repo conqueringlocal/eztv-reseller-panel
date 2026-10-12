@@ -114,7 +114,8 @@ credential handling and that the access check never fetches, modifies or sends m
 Mailbux IMAP and SMTP authentication with certificate-verified TLS succeeded using
 the replacement app password. The dedicated test folder is available. These checks
   ran from the VPS host. The October 12 checks below also verify container access
-  and actual fetching through the live IMAP server. External delivery is pending.
+  and actual fetching through the live IMAP server. The approved external test was
+  accepted by SMTP; recipient delivery and reply confirmation are pending.
 
 Run from the V1 repository:
 
@@ -245,7 +246,15 @@ Controlled container access is now installed as described below. Use designated
 test messages/recipients to verify external delivery and sender authentication
 before enabling normal inbox handling.
 
-### October 12 continuation: live IMAP verified, external send pending
+### October 12 continuation: live IMAP verified, external SMTP accepted
+
+**Latest status (2026-10-12 03:48 UTC):** the owner explicitly approved the test.
+One message from `support@eztvclub.com` to `michael@eztvclub.com` was accepted by
+Mailbux SMTP through Zammad ticket **36022**, with the harmless text attachment.
+Recipient inbox delivery and the requested reply have not yet been confirmed.
+The attempt ledger prevents resending. The post-send operational check passed:
+all channels and triggers are inactive again, and the pilot remains private.
+The “no external email” statements below describe the earlier synthetic checks.
 
 The fixed Mailbux gateway is deployed. Both Rails and scheduler verified IMAP and
 SMTP login with certificate validation, read-only access to `EZTV-Support-Pilot`,
@@ -366,7 +375,8 @@ and [Zammad mailbox setup behavior](https://admin-docs.zammad.org/en/latest/chan
 1. Complete the owner-approved external email test. Mailbox authentication and live
    test-folder fetching are verified; recipient inbox delivery, real replies,
    bounce handling, SPF/DKIM alignment and actual notifications still need checks.
-   No external email has been sent; the outgoing test remains approval-gated.
+   The owner-approved email was accepted by SMTP on October 12; inbox delivery
+   and a real reply are still awaiting recipient confirmation.
 2. Configure a public hostname and HTTPS, staff accounts/MFA, secret rotation,
    recovery access and a production host/resource plan. The private pilot password
    authentication and isolation settings are not a production rollout recipe.
