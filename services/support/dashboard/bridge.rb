@@ -104,6 +104,7 @@ module EztvSupport
    detail(record)
   end
   def call(action,input)
+   return Knowledge.new(self,@actor).call(action,input) if %w[kb_list kb_detail kb_save].include?(action)
    if action=='attention'
     open_records=Record.joins('JOIN tickets ON tickets.id=eztv_support_tickets.ticket_id JOIN ticket_states ON ticket_states.id=tickets.state_id').where.not(ticket_states:{name:'closed'})
     queue=@admin ? open_records.where(handler_id:nil) : open_records.where(handler_id:@id,creator_id:@children)
@@ -206,8 +207,10 @@ module EztvSupport
     end
    end
    response(200,result)
+  rescue Conflict => e
+   response(409,{error:e.message})
   rescue Denied
-   response(403,{error:'This ticket is not available to your account'})
+   response(403,{error:request&.dig('action').to_s.start_with?('kb_') ? 'This article or category is not available to your account' : 'This ticket is not available to your account'})
   rescue Invalid => e
    response(400,{error:e.message})
   rescue JSON::ParserError,KeyError,TypeError

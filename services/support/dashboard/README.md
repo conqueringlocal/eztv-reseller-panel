@@ -4,6 +4,9 @@ The dashboard is the reseller-facing help desk. Zammad stores conversations and
 attachments; the dashboard adapter enforces the reseller hierarchy. Resellers do
 not receive native Zammad agent accounts or access to its user directory.
 
+The signed-in [Help Center](KNOWLEDGE_BASE.md) adds native Zammad knowledge-base
+articles with dashboard authoring, publication and private admin categories.
+
 ## Routing and visibility
 
 - Direct reseller → EZTV's admin support queue.
