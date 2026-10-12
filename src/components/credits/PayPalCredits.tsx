@@ -103,7 +103,7 @@ function PayPalCreditsForUser({ admin }: { admin: boolean }) {
       const host = environment === 'live' ? 'www.paypal.com' : 'www.sandbox.paypal.com';
       if (url.protocol !== 'https:' || url.hostname !== host || url.username || url.password || url.port) throw new Error('Invalid checkout destination');
       window.location.assign(url.href);
-    } catch { setMessage('Checkout could not be confirmed. Retry the same purchase or check its status before paying manually.'); }
+    } catch { setMessage('Checkout could not be confirmed. Retry the same purchase or check its status before starting another payment.'); }
     finally { setBusy(false); }
   }
   async function resolveReview(orderId: string) {
@@ -128,7 +128,7 @@ function PayPalCreditsForUser({ admin }: { admin: boolean }) {
         {[10,20,50].map(n => <option key={n} value={n}>{n} credits · {unitPrice && !pricing.isError ? `${priceLabel(n * (pending?.credits === n ? pending.expectedUnitPriceCents : unitPrice))} USD${pending?.credits === n ? ' (saved checkout)' : ''}` : 'Price unavailable'}</option>)}
       </select>
       <Button disabled={busy || !unitPrice || pricing.isError} onClick={() => void buy()}>{busy ? 'Checking payment…' : checkoutPrice ? `Pay ${priceLabel(credits * checkoutPrice)} with PayPal` : 'Loading price…'}</Button>
-      <p className="text-sm text-muted-foreground">Use one payment method per purchase. A payment awaiting confirmation does not need another payment.</p>
+      <p className="text-sm text-muted-foreground">A payment awaiting confirmation does not need another payment. Check its status before starting another purchase.</p>
     </>}
     {admin && <p className="text-sm">Refunds, reversals and disputes require review. Check PayPal, then record any refund and credit adjustment using the existing finance and credit tools. No automatic credit clawback is applied.</p>}
     {orders.map(order => <div key={order.id} className="space-y-1 rounded border p-3 text-sm">
