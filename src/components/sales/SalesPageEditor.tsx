@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 import { useRefreshSales } from "@/hooks/useSalesWorkspace";
 import type { SalesPage } from "@/lib/sales";
 import { toast } from "sonner";
-export function SalesPageEditor({ page }: { page: SalesPage | null }) {
+export function SalesPageEditor({
+  page,
+  domainReady,
+}: {
+  page: SalesPage | null;
+  domainReady: boolean;
+}) {
   const [form, setForm] = useState(() => ({
     slug: page?.slug || `reseller-${crypto.randomUUID().slice(0, 8)}`,
     brand_name: page?.brand_name || "",
@@ -27,15 +33,33 @@ export function SalesPageEditor({ page }: { page: SalesPage | null }) {
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    const publish =
+      (e.nativeEvent as SubmitEvent).submitter?.getAttribute("value") ===
+      "publish";
+    if (
+      publish &&
+      (!domainReady ||
+        !form.public_details_confirmed ||
+        !form.contact_email.trim())
+    ) {
+      toast.error(
+        "Connect your domain, add a contact email, and confirm your public details before publishing.",
+      );
+      return;
+    }
     setBusy(true);
     try {
       const { error } = await supabase.rpc("save_sales_page", {
         p_revision: page?.revision || 0,
-        p_data: form,
+        p_data: { ...form, published: publish },
       });
       if (error) throw error;
       await refresh();
-      toast.success("Private draft and setup instructions saved.");
+      toast.success(
+        publish
+          ? "Your website is published on your domain."
+          : "Private draft and setup instructions saved. Your page is unpublished.",
+      );
     } catch (error) {
       toast.error(
         (error as Error).message ||
@@ -52,14 +76,15 @@ export function SalesPageEditor({ page }: { page: SalesPage | null }) {
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="rounded-lg border bg-muted/40 p-4 space-y-2">
-          <p className="font-semibold">Websites with your own domain — Coming soon</p>
-          <p className="text-sm text-muted-foreground">
-            Edit your branding and save a private draft now. Publishing and
-            connecting your own domain are not available yet.
+          <p className="font-semibold">
+            {page?.published && domainReady
+              ? "Your website is published"
+              : "Your website is private"}
           </p>
           <p className="text-sm text-muted-foreground">
-            Saving here does not create a public page or a shareable link.
-            Your setup instructions remain available in your private setup kit.
+            Save your branding below, connect your domain above, then publish
+            when you’re ready. Setup instructions and tutorial links stay in
+            your private setup kit.
           </p>
         </div>
         <form onSubmit={save} className="space-y-4">
@@ -90,7 +115,7 @@ export function SalesPageEditor({ page }: { page: SalesPage | null }) {
             </div>
             <div>
               <Label htmlFor="page-contact">
-                Customer contact email for your draft
+                Public customer contact email
               </Label>
               <Input
                 id="page-contact"
@@ -113,7 +138,7 @@ export function SalesPageEditor({ page }: { page: SalesPage | null }) {
             </div>
           </div>
           <div>
-            <Label htmlFor="page-description">Website description (private draft)</Label>
+            <Label htmlFor="page-description">Website description</Label>
             <textarea
               id="page-description"
               className="w-full rounded border p-3 text-sm"
@@ -150,9 +175,53 @@ export function SalesPageEditor({ page }: { page: SalesPage | null }) {
               onChange={(e) => set("tutorial_url", e.target.value)}
             />
           </div>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save private draft & setup kit"}
-          </Button>
+          <label className="flex gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={form.public_details_confirmed}
+              onChange={(e) =>
+                set("public_details_confirmed", e.target.checked)
+              }
+            />
+            <span>
+              I reviewed my brand, description and customer contact email for
+              public display.
+            </span>
+          </label>
+          {!domainReady && (
+            <p className="text-sm text-muted-foreground">
+              Publishing unlocks after your domain and HTTPS connection are
+              verified.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="submit"
+              value="draft"
+              variant="outline"
+              disabled={busy}
+            >
+              {busy
+                ? "Saving…"
+                : page?.published
+                  ? "Unpublish & save draft"
+                  : "Save private draft & setup kit"}
+            </Button>
+            <Button
+              type="submit"
+              value="publish"
+              disabled={
+                busy ||
+                !domainReady ||
+                !form.public_details_confirmed ||
+                !form.contact_email.trim()
+              }
+            >
+              {page?.published
+                ? "Save & keep published"
+                : "Publish on my domain"}
+            </Button>
+          </div>
         </form>
       </CardContent>
     </Card>

@@ -95,14 +95,17 @@ export function ReferralTools({ data }: { data: SalesWorkspace }) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Keep referral codes and track recorded outcomes here. Shareable referral
-            links will become available with website publishing. Define any reward
-            with the customer first and include its cost in your quote calculation.
+            Keep referral codes and track recorded outcomes here. Shareable
+            referral links will become available with website publishing. Define
+            any reward with the customer first and include its cost in your
+            quote calculation.
           </p>
           <p className="rounded bg-muted/40 border p-3 text-sm">
-            Website publishing and referral links are coming soon. You can save your{' '}
-            <Link className="underline" to="/reseller/sales?tab=page">website draft</Link>{' '}
-            while continuing to track referrals here.
+            Referral links use your own domain.{" "}
+            <Link className="underline" to="/reseller/sales?tab=page">
+              Connect your domain and publish your website
+            </Link>{" "}
+            to enable sharing.
           </p>
           <form onSubmit={create} className="space-y-3">
             <div className="grid sm:grid-cols-2 gap-3">
@@ -163,9 +166,31 @@ export function ReferralTools({ data }: { data: SalesWorkspace }) {
                   sales
                 </p>
                 <p className="text-xs text-muted-foreground break-all">
-                  Code: {ref.id}. Sharing links is not available yet.
+                  Code: {ref.id}.
                 </p>
                 <div className="flex flex-wrap gap-2">
+                  {ref.enabled &&
+                    data.page?.published &&
+                    data.website_hosting?.enabled &&
+                    data.domain?.status === "ready" &&
+                    Date.parse(data.domain.valid_until || "") > Date.now() && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(
+                              `https://${data.domain!.hostname}/?ref=${encodeURIComponent(ref.id)}`,
+                            );
+                            toast.success("Referral link copied.");
+                          } catch {
+                            toast.error("Could not copy the referral link.");
+                          }
+                        }}
+                      >
+                        Copy referral link
+                      </Button>
+                    )}
                   <Button
                     size="sm"
                     variant="outline"

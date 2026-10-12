@@ -1,0 +1,31 @@
+# Merge into the existing global options block (do not add a second global block):
+# on_demand_tls {
+#     ask http://127.0.0.1:8096/tls-allowed
+# }
+# Add within the existing srv1781264.hstgr.cloud site, before its fallback handler:
+# handle /reseller-websites/manage {
+#     request_body { max_size 10KB }
+#     reverse_proxy 127.0.0.1:8095 {
+#         header_up -X-Forwarded-Host
+#         header_up X-Website-Client-IP {http.request.remote.host}
+#     }
+# }
+# Append this fallback HTTPS site. Existing named sites retain precedence.
+https:// {
+    tls {
+        on_demand
+    }
+    @matching_sni expression `{http.request.host} == {http.request.tls.server_name}`
+    handle @matching_sni {
+        request_body {
+            max_size 10KB
+        }
+        reverse_proxy 127.0.0.1:8095 {
+            header_up -X-Forwarded-Host
+            header_up X-Website-Client-IP {http.request.remote.host}
+        }
+    }
+    handle {
+        respond "Misdirected request" 421
+    }
+}

@@ -1,0 +1,28 @@
+[Unit]
+Description=Reseller custom-domain websites
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+WorkingDirectory=/opt/eztv-websites
+EnvironmentFile=/etc/eztv-websites.env
+ExecStart=/usr/bin/node /opt/eztv-websites/server.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=256M
+CPUQuota=50%
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
