@@ -34,6 +34,7 @@ export interface Customer {
   isTrial?: boolean;
   connection_list?: any[];
   total_connections?: number;
+  sendSetupEmail?: boolean;
 }
 
 export interface CreditLog {

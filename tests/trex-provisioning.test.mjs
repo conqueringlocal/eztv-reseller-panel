@@ -371,3 +371,19 @@ test('legacy service default package resolves from configuration before any prov
   assert.equal((await unconfigured.invoke({ serviceCall: true, customerData: customer({ packageId: 'default' }) }, 'fixture-service-key')).body.code, 'provider_configuration');
   assert.equal(unconfigured.calls.length, 0);
 });
+
+test('setup email choice is durable before provider work and cannot change on replay', async () => {
+ const app = await setup();
+ assert.equal((await app.invoke({customerData:customer({sendSetupEmail:true})})).body.success,true);
+ assert.equal(sql("SELECT request_data->>'sendSetupEmail' FROM trex_provisioning_requests"),'true');
+ assert.equal((await app.invoke({customerData:customer({sendSetupEmail:false})})).body.alreadyProcessed,true);
+ assert.equal(sql("SELECT request_data->>'sendSetupEmail' FROM trex_provisioning_requests"),'true');
+ assert.equal(app.calls.length,1);
+});
+test('older callers do not opt in and invalid email switch fails before provider spend',async()=>{
+ const app=await setup();
+ assert.equal((await app.invoke({customerData:customer({sendSetupEmail:'true'})})).status,400);
+ assert.equal(app.calls.length,0);
+ assert.equal((await app.invoke()).body.success,true);
+ assert.equal(sql("SELECT request_data->>'sendSetupEmail' FROM trex_provisioning_requests"),'false');
+});
