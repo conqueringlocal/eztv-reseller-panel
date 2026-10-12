@@ -230,3 +230,36 @@ The diagnostic endpoint was replaced with an inert HTTP 410 handler and its
 access token deleted. Anonymous purchase calls remain HTTP 401. Production
 `paypal-credits` version 14 contains the fix; the shared change affects only the
 create action, so the webhook and frontend needed no redeployment.
+
+## Credit minimums — October 12, 2026
+
+New direct PayPal and manual purchases offer **10, 20 or 50 credits**. The minimum
+is 10 credits, including requests from sub-resellers to their parent. Individual
+reseller prices remain unchanged. The browser and database reject smaller new
+requests; the PayPal endpoint rejects them before making a provider call. A stale
+five-credit browser draft receives the minimum-purchase message and resets to the
+10-credit package after the server rejection.
+
+Sub-reseller onboarding now defaults to and requires **20 initial credits**,
+replacing the old 100-credit threshold. Both the create-reseller endpoint (before
+Auth account creation) and initialize_reseller enforce the rule. Admin-created
+children also require 20; creating an unfunded top-level reseller remains allowed.
+Parent-created accounts retain the existing atomic balance transfer and ledger.
+The parent's available balance must cover the allocation. The form allows editing
+the number but disables submission below 20, for fractional amounts, or when the
+balance is insufficient. Removed the existing form-payload console log so new
+sub-reseller passwords are not logged.
+
+Deployment: apply only `20261012025214_reseller_credit_minimums.sql`, then deploy
+`paypal-credits`, `create-reseller`, and the frontend. Existing grants and table
+constraints are preserved. Historical five-credit records can still fulfill or be
+reviewed; no payment, balance or ledger is rewritten. No pending five-credit
+PayPal/manual order existed at the pre-deployment check.
+
+Validation: 34 payment/database tests, three create-reseller endpoint tests,
+TypeScript/Deno checks, production build, and desktop/mobile payment and allocation
+browser tests. Tests cover rejecting five-credit purchases, legacy wrapper RPCs,
+existing five-credit fulfillment, 19-versus-20 initial allocations, insufficient
+balances, parent transfers, stale browser drafts, and rejection before Auth/PayPal
+calls. The old PayPal linking regression remains covered. Browser commands:
+`node tests/paypal-browser.mjs` and `node tests/reseller-minimums-browser.mjs`.

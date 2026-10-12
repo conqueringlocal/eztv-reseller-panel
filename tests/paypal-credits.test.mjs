@@ -17,7 +17,7 @@ before(async()=>{
  execFileSync('docker',['run','-d','--name',container,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
  for(let i=0;i<60;i++){try{sql('SELECT 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
  sql(readFileSync('tests/stabilization-schema.sql','utf8'));
- for(const suffix of ['trex_provisioning_guard.sql','legacy_credit_security.sql','business_dashboard.sql','paypal_automatic_credits.sql','individual_reseller_pricing.sql']) {
+ for(const suffix of ['trex_provisioning_guard.sql','legacy_credit_security.sql','business_dashboard.sql','paypal_automatic_credits.sql','individual_reseller_pricing.sql','reseller_credit_minimums.sql']) {
   const file=readdirSync('supabase/migrations').find(f=>f.endsWith(suffix));sql(readFileSync(`supabase/migrations/${file}`,'utf8'));
  }
  for(const [name,set] of [['paypal',v=>core=v],['handler',v=>handler=v]]){
@@ -258,4 +258,45 @@ test('a competing different PayPal link is preserved and cannot return an approv
   const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:10,expectedUnitPriceCents:300})}));
   assert.equal(response.status,503);assert.equal((await response.json()).error,'order_storage_unconfirmed');assert.equal(sql('SELECT paypal_order_id FROM paypal_credit_orders'),'OTHER12345');assert.equal(balance(),'100');
  }finally{globalThis.fetch=original;}
+});
+
+test('new automatic and manual purchases reject 5 credits and accept 10 at the saved reseller price',()=>{
+ setPrice(r,225);
+ assert.throws(()=>sql(`SELECT prepare_paypal_credit_order_priced('${id}','${r}',5,'sandbox',225)`));
+ assert.throws(()=>sql(as(r,`SELECT request_manual_credits_priced('${mid}',5,'minimum-fixture',225)`)));
+ assert.throws(()=>sql(`SELECT prepare_paypal_credit_order('${id}','${r}',5,'sandbox')`));
+ assert.throws(()=>sql(as(r,`SELECT request_manual_credits('${mid}',5,'minimum-fixture')`)));
+ assert.equal(sql('SELECT count(*) FROM paypal_credit_orders'),'0');assert.equal(sql('SELECT count(*) FROM manual_credit_requests'),'0');
+ assert.equal(priced(225),'2250');
+ sql(as(r,`SELECT request_manual_credits_priced('${mid}',10,'minimum-fixture',225)`));
+ assert.equal(sql('SELECT credits FROM manual_credit_requests'),'10');assert.equal(balance(),'100');
+});
+test('an existing five-credit payment can still settle once without rewriting its price',()=>{
+ sql(`INSERT INTO paypal_credit_orders(id,reseller_id,credits,amount_cents,environment,paypal_order_id) VALUES('${id}','${r}',5,1500,'sandbox','ORDER12345')`);
+ const settle=grant().replace('3000','1500');sql(settle);sql(settle);assert.equal(balance(),'105');assert.equal(sql('SELECT count(*) FROM credit_logs'),'1');
+});
+test('sub-reseller starts at 20; below minimum or insufficient parent balance leaves no transfer',()=>{
+ sql(`UPDATE profiles SET credits=0 WHERE id='${b}'`);
+ const init=amount=>`SELECT initialize_reseller('${r}','${b}','{"credits":${amount}}')`;
+ for(const amount of [0,19])assert.throws(()=>sql(init(amount)));
+ assert.equal(balance(),'100');assert.equal(sql('SELECT count(*) FROM credit_logs'),'0');
+ sql(`UPDATE profiles SET credits=19 WHERE id='${r}'`);assert.throws(()=>sql(init(20)));assert.equal(balance(),'19');
+ sql(`UPDATE profiles SET credits=20 WHERE id='${r}'`);sql(init(20));assert.equal(balance(),'0');assert.equal(sql(`SELECT credits FROM profiles WHERE id='${b}'`),'20');assert.equal(sql(`SELECT parent_reseller_id FROM profiles WHERE id='${b}'`),r);assert.equal(sql('SELECT count(*) FROM credit_logs'),'2');
+ assert.throws(()=>sql(init(20)));assert.equal(sql('SELECT count(*) FROM credit_logs'),'2');
+});
+test('admin-created child also needs 20 while a top-level reseller may start unfunded',()=>{
+ sql(`UPDATE profiles SET credits=0 WHERE id='${b}'`);
+ assert.throws(()=>sql(`SELECT initialize_reseller('${a}','${b}','{"credits":19,"parent_reseller_id":"${r}"}')`));
+ sql(`SELECT initialize_reseller('${a}','${b}','{"credits":0}')`);assert.equal(sql(`SELECT credits FROM profiles WHERE id='${b}'`),'0');assert.equal(balance(),'100');
+});
+test('parent credit requests require 10; approval still transfers exactly once',()=>{
+ sql('TRUNCATE credit_requests');sql(`UPDATE profiles SET parent_reseller_id='${r}' WHERE id='${b}'`);
+ for(const amount of [1,9])assert.throws(()=>sql(as(b,`SELECT request_parent_credits(${amount},'minimum-fixture')`)));
+ const requestId=sql(as(b,"SELECT request_parent_credits(10,'minimum-fixture')"));
+ sql(as(r,`SELECT review_parent_credits('${requestId}',true)`));sql(as(r,`SELECT review_parent_credits('${requestId}',true)`));assert.equal(balance(),'90');assert.equal(sql(`SELECT credits FROM profiles WHERE id='${b}'`),'110');
+});
+test('checkout below 10 is rejected before database or PayPal access',async()=>{
+ let calls=0;const h=handler.createHandler({rpc(){calls++;throw Error('unexpected')}},async()=>r,key=>runtimeConfig[key]);
+ const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:5,expectedUnitPriceCents:300})}));
+ assert.equal(response.status,400);assert.equal((await response.json()).error,'minimum_credit_purchase');assert.equal(calls,0);
 });

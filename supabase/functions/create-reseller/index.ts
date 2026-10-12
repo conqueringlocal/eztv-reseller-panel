@@ -13,7 +13,8 @@ Deno.serve(async req=>{
   if(typeof input.name!=='string'||!input.name.trim()||typeof input.email!=='string'||typeof input.password!=='string'||input.password.length<8||!Number.isInteger(input.credits??0)||(input.credits??0)<0) return reply({error:'Provide a name, email, password of at least 8 characters and a whole credit amount'},400);
   const {data:isAdmin,error:roleError}=await client.rpc('has_role',{_user_id:user.id,_role:'admin'});
   if(roleError) return reply({error:'Unable to verify permissions'},503);
-  if(!isAdmin && (input.parent_reseller_id && input.parent_reseller_id!==user.id || (input.credits??0)<100)) return reply({error:'You may create only your own child reseller, with at least 100 credits'},403);
+  if(!isAdmin && input.parent_reseller_id && input.parent_reseller_id!==user.id) return reply({error:'You may create only your own child reseller'},403);
+  if((!isAdmin || input.parent_reseller_id) && (input.credits??0)<20) return reply({error:'Sub-reseller accounts require at least 20 initial credits'},400);
   const {data:created,error:createError}=await client.auth.admin.createUser({email:input.email.trim(),password:input.password,email_confirm:true,user_metadata:{name:input.name.trim()}});
   if(createError||!created.user) return reply({error:'Account could not be created. Check the email and password; an account may already exist.'},400);
   const {error:initError}=await client.rpc('initialize_reseller',{p_actor:user.id,p_new:created.user.id,p_data:{credits:input.credits??0,parent_reseller_id:isAdmin?input.parent_reseller_id||null:user.id,credit_price_per_unit:input.credit_price_per_unit??3}});

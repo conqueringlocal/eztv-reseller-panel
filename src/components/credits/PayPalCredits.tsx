@@ -83,11 +83,15 @@ function PayPalCreditsForUser({ admin }: { admin: boolean }) {
     try {
       const saved = localStorage.getItem(storageKey);
       const request = saved ? { expectedUnitPriceCents: 300, ...JSON.parse(saved) } : { requestId: crypto.randomUUID(), credits, expectedUnitPriceCents: unitPrice };
-      if (request.credits !== credits) { setMessage(`An earlier ${request.credits}-credit checkout is unfinished. Select that package to resume it, or contact support.`); return; }
+      if (request.credits >= 10 && request.credits !== credits) { setMessage(`An earlier ${request.credits}-credit checkout is unfinished. Select that package to resume it, or contact support.`); return; }
       localStorage.setItem(storageKey, JSON.stringify(request)); setPending(request);
       const { data, error } = await supabase.functions.invoke('paypal-credits', { body: { action: 'create', ...request } });
       let code = data?.error;
       if (!code && error?.context instanceof Response) code = (await error.context.json()).error;
+      if (code === 'minimum_credit_purchase') {
+        localStorage.removeItem(storageKey); setPending(null); setCredits(10);
+        setMessage('The minimum purchase is now 10 credits. Review the package and continue.'); return;
+      }
       if (code === 'price_changed') {
         localStorage.removeItem(storageKey); setPending(null);
         await pricing.refetch(); setMessage('Your price changed. Review the updated price before continuing.'); return;
@@ -117,11 +121,11 @@ function PayPalCreditsForUser({ admin }: { admin: boolean }) {
     {message && <p role="status" className="text-sm">{message}</p>}
     {!admin && enabled && <>
       {environment === 'sandbox' && <p className="font-semibold">Test checkout—no real payment.</p>}
-      {pricing.isError ? <p role="alert">Unable to load your price. <Button variant="outline" onClick={() => void pricing.refetch()}>Retry</Button></p> : !unitPrice ? <p>Loading your price…</p> : <p>Credits cost {priceLabel(unitPrice)} USD each and are added automatically after PayPal confirms payment.</p>}
+      {pricing.isError ? <p role="alert">Unable to load your price. <Button variant="outline" onClick={() => void pricing.refetch()}>Retry</Button></p> : !unitPrice ? <p>Loading your price…</p> : <p>Minimum purchase: 10 credits. Credits cost {priceLabel(unitPrice)} USD each and are added automatically after PayPal confirms payment.</p>}
       {pending && <p className="text-sm">Your unfinished {pending.credits}-credit checkout keeps its original total of {priceLabel(pending.credits * pending.expectedUnitPriceCents)} USD. Select that package to resume it.</p>}
       <Label htmlFor="paypal-package">Credit package</Label>
       <select id="paypal-package" className="w-full rounded border bg-background p-2" value={credits} disabled={busy || !unitPrice || pricing.isError} onChange={e => setCredits(Number(e.target.value))}>
-        {[5,10,20,50].map(n => <option key={n} value={n}>{n} credits · {unitPrice && !pricing.isError ? `${priceLabel(n * (pending?.credits === n ? pending.expectedUnitPriceCents : unitPrice))} USD${pending?.credits === n ? ' (saved checkout)' : ''}` : 'Price unavailable'}</option>)}
+        {[10,20,50].map(n => <option key={n} value={n}>{n} credits · {unitPrice && !pricing.isError ? `${priceLabel(n * (pending?.credits === n ? pending.expectedUnitPriceCents : unitPrice))} USD${pending?.credits === n ? ' (saved checkout)' : ''}` : 'Price unavailable'}</option>)}
       </select>
       <Button disabled={busy || !unitPrice || pricing.isError} onClick={() => void buy()}>{busy ? 'Checking payment…' : checkoutPrice ? `Pay ${priceLabel(credits * checkoutPrice)} with PayPal` : 'Loading price…'}</Button>
       <p className="text-sm text-muted-foreground">Use one payment method per purchase. A payment awaiting confirmation does not need another payment.</p>
