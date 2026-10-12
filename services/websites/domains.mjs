@@ -12,8 +12,9 @@ export function hostname(value, blocked = []) {
     return null;
   if (
     [
-      "eztvclub.com",
-      "eztvclub.online",
+      "reseller.eztvclub.com",
+      "supabase.eztvclub.com",
+      "vpn.eztvclub.online",
       "pages.dev",
       "workers.dev",
       "hstgr.cloud",

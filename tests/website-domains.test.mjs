@@ -45,6 +45,8 @@ const form = {
 };
 test("host normalization rejects IPs, ports, internal and platform domains", () => {
   assert.equal(hostname("WWW.RESELLER-DEMO.COM"), host);
+  for (const name of ["eztvclub.com", "www.eztvclub.com", "eztvclub.online"])
+    assert.equal(hostname(name), name);
   for (const input of [
     "127.0.0.1",
     "www.example.com:443",
@@ -52,6 +54,8 @@ test("host normalization rejects IPs, ports, internal and platform domains", () 
     "site.local",
     "demo.pages.dev",
     "reseller.eztvclub.com",
+    "supabase.eztvclub.com",
+    "vpn.eztvclub.online",
     "-bad.com",
     "site.com.",
     "[::1]",
@@ -260,6 +264,8 @@ test("public page resolves from actual Host, refuses fallback paths and has stri
   assert.equal(f.calls[0].name, host);
   for (const requestHost of [
     "reseller.eztvclub.com",
+    "supabase.eztvclub.com",
+    "vpn.eztvclub.online",
     "control.owner.com",
     "demo.pages.dev",
   ])
@@ -404,4 +410,25 @@ test("HTML escapes reseller content and never embeds private values", () => {
   assert.ok(!result.html.includes("<script>alert(1)</script>"));
   assert.ok(!result.html.includes("PRIVATE GUIDE"));
   assert.match(result.html, /&lt;script&gt;/);
+});
+
+test("logo renders in the public page and private preview with data-only image permissions", () => {
+  const logo =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRZkAAAAASUVORK5CYII=";
+  for (const preview of [false, true]) {
+    const result = renderPage({ ...page, logo_data_url: logo }, preview);
+    assert.ok(result.html.includes(`src="${logo}"`));
+    assert.match(result.html, /alt="Fixture Brand logo"/);
+    assert.match(result.csp, /img-src data:/);
+  }
+  for (const invalid of [
+    "https://external.example/logo.png",
+    "data:image/svg+xml;base64,PHN2Zz4=",
+    "data:image/png;base64,ZmFrZQ==",
+    null,
+  ]) {
+    assert.ok(
+      !renderPage({ ...page, logo_data_url: invalid }).html.includes("<img"),
+    );
+  }
 });

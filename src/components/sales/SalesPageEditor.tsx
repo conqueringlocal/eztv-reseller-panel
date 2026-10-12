@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useRefreshSales } from "@/hooks/useSalesWorkspace";
 import type { SalesPage } from "@/lib/sales";
+import { WebsiteLogoPicker } from "./WebsiteLogoPicker";
 import { toast } from "sonner";
 export function SalesPageEditor({
   page,
@@ -15,6 +16,7 @@ export function SalesPageEditor({
   domainReady: boolean;
 }) {
   const [form, setForm] = useState(() => ({
+    logo_data_url: page?.logo_data_url || "",
     slug: page?.slug || `reseller-${crypto.randomUUID().slice(0, 8)}`,
     brand_name: page?.brand_name || "",
     headline: page?.headline || "Streaming subscriptions and setup support",
@@ -26,7 +28,9 @@ export function SalesPageEditor({
     published: false,
     public_details_confirmed: false,
   }));
-  const [busy, setBusy] = useState(false);
+  const [saving, setBusy] = useState(false);
+  const [logoLoading, setLogoLoading] = useState(false);
+  const busy = saving || logoLoading;
   const refresh = useRefreshSales();
   const set = (key: keyof typeof form, value: string | boolean) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -88,6 +92,13 @@ export function SalesPageEditor({
           </p>
         </div>
         <form onSubmit={save} className="space-y-4">
+          <WebsiteLogoPicker
+            value={form.logo_data_url}
+            brand={form.brand_name}
+            disabled={saving}
+            onBusyChange={setLogoLoading}
+            onChange={(value) => set("logo_data_url", value)}
+          />
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
               <Label htmlFor="page-brand">Business / brand name</Label>
@@ -184,8 +195,8 @@ export function SalesPageEditor({
               }
             />
             <span>
-              I reviewed my brand, description and customer contact email for
-              public display.
+              I reviewed my logo, brand, description and customer contact email
+              for public display.
             </span>
           </label>
           {!domainReady && (

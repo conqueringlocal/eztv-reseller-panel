@@ -54,3 +54,12 @@ Implementation references: [Caddy on-demand HTTPS](https://caddyserver.com/docs/
 
 
 Final dashboard deployment: [d6e777fa](https://d6e777fa.eztv-reseller-panel.pages.dev), built from `b0a1cf0` on top of Help Center release `14e042b`. The production custom-domain bundle matches the local build byte-for-byte. The same mobile/desktop domain flow passed against the deployed frontend with fixture Auth/API interception; no production reseller draft, claim or inquiry was created by that browser test.
+
+
+## Domain validation correction and logos (October 12, 2026)
+
+`20261012123444_reseller_website_domain_fix_logos.sql` corrects an overly broad platform-domain restriction. `eztvclub.com`, `www.eztvclub.com`, and other ordinary owned website addresses can connect through the same DNS/HTTPS verification as reseller domains. Actual service addresses (`reseller.eztvclub.com`, `supabase.eztvclub.com`, `vpn.eztvclub.online`, and shared hosting/internal names) remain reserved. Reserved-host errors now explain the restriction instead of reporting a formatting error. No domain is automatically claimed, pointed, verified or published by this update.
+
+The editor accepts PNG, JPG and WebP logo files up to 5 MB, preserves transparency, and resizes/re-encodes them as PNG up to 512 pixels and a 256 KiB data-URL limit. The database checks the PNG envelope, dimensions and size, and stores it with the private page. There is no separate publicly accessible draft-logo object. Preview and published pages display the logo above the brand name; Remove logo takes effect when the page is saved. Existing clients that omit the logo field preserve the saved logo. SVGs, external URLs and malformed/oversized payloads are rejected. The public page's CSP permits embedded data images only.
+
+Verification: all 23 website tests, TypeScript and the production build pass. `tests/website-logo-browser.mjs` covers mobile/desktop upload, invalid file rejection without losing the selected logo, saved/private/public rendering, removal, apex-domain setup and the existing publish/disconnect flow. Run it with Playwright available (or `PLAYWRIGHT_MODULE` set to its module path); `WEBSITE_TEST_URL` selects a local/deployed dashboard URL. Auth/API requests are intercepted with fixtures, so this browser test writes no production records. A production rollback-only database check verifies `eztvclub.com` is accepted as pending and the page remains unpublished.

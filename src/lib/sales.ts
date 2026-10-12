@@ -38,6 +38,7 @@ export interface SalesLead {
   updated_at: string;
 }
 export interface SalesPage {
+  logo_data_url?: string | null;
   reseller_id: string;
   slug: string;
   brand_name: string;

@@ -103,7 +103,7 @@ before(async () => {
   const files = [
     "20261002160000_trex_provisioning_guard.sql",
     ...readdirSync("supabase/migrations").filter((x) =>
-      /_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_trex_balance_api.sql$|_reseller_sales_tools.sql$|_reseller_websites_coming_soon.sql$|_reseller_custom_domains.sql$/.test(
+      /_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_trex_balance_api.sql$|_reseller_sales_tools.sql$|_reseller_websites_coming_soon.sql$|_reseller_custom_domains.sql$|_reseller_website_domain_fix_logos.sql$/.test(
         x,
       ),
     ),
@@ -269,12 +269,22 @@ test("domain ownership is isolated and cannot be forged by a browser", () => {
     "f",
   );
 });
-test("hostname validation rejects dashboard domains, IPs, ports, paths and malformed labels", () => {
+test("hostname errors distinguish malformed input from reserved service addresses", () => {
   page();
   for (const name of [
     "reseller.eztvclub.com",
-    "eztvclub.online",
+    "supabase.eztvclub.com",
+    "vpn.eztvclub.online",
+    "sub.reseller.eztvclub.com",
     "demo.pages.dev",
+    "demo.invalid",
+  ]) {
+    assert.throws(
+      () => connect(name),
+      /reserved for the dashboard or platform services/,
+    );
+  }
+  for (const name of [
     "localhost",
     "127.0.0.1",
     "www.demo.com:443",
@@ -283,11 +293,29 @@ test("hostname validation rejects dashboard domains, IPs, ports, paths and malfo
     "www.-bad.com",
     "a..com",
     "*.demo.com",
-    "demo.invalid",
-  ])
-    assert.throws(() => connect(name), /Enter your own domain/);
-  connect("WWW.RESELLER-DEMO.COM");
-  assert.equal(workspace().domain.hostname, host);
+  ]) {
+    assert.throws(() => connect(name), /Enter a domain name without/);
+  }
+});
+test("owner apex and www domains are accepted but remain unpublished pending ownership proof", () => {
+  page();
+  for (const name of [
+    "eztvclub.com",
+    "www.eztvclub.com",
+    "eztvclub.online",
+    "www.eztvclub.online",
+    "WWW.RESELLER-DEMO.COM",
+  ]) {
+    connect(name);
+    assert.equal(workspace().domain.hostname, name.toLowerCase());
+    assert.equal(workspace().domain.status, "pending");
+    assert.equal(workspace().page.published, false);
+    assert.throws(
+      () => page({ published: true, public_details_confirmed: true }, 1),
+      /verify your domain/,
+    );
+    run("SELECT disconnect_sales_domain()", reseller);
+  }
 });
 test("disconnect unpublishes atomically, preserves leads/drafts, and invalidates old verification", () => {
   published();
@@ -394,4 +422,49 @@ test("concurrent publishing and disconnect always end private", async () => {
   ]);
   assert.equal(workspace().domain, null);
   assert.equal(workspace().page.published, false);
+});
+
+const logo =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRZkAAAAASUVORK5CYII=";
+test("logos stay private until publishing and survive older-client saves", () => {
+  page({ logo_data_url: logo });
+  assert.equal(workspace().page.logo_data_url, logo);
+  assert.equal(gateway("preview", reseller).logo_data_url, logo);
+  assert.equal(gateway("preview", other), null);
+  assert.equal(gateway("page", null, host), null);
+  page({ headline: "Updated without a logo field" }, 1);
+  assert.equal(workspace().page.logo_data_url, logo);
+  connect();
+  status();
+  page({ published: true, public_details_confirmed: true }, 2);
+  assert.equal(gateway("page", null, host).logo_data_url, logo);
+  page(
+    { logo_data_url: "", published: true, public_details_confirmed: true },
+    3,
+  );
+  assert.equal(gateway("page", null, host).logo_data_url, null);
+});
+test("invalid logo URLs, active content, malformed PNGs and oversized images are rejected without losing saved content", () => {
+  page({ logo_data_url: logo });
+  const huge = Buffer.from(logo.split(",")[1], "base64");
+  huge.writeUInt32BE(10000, 16);
+  for (const invalid of [
+    "https://example.com/logo.png",
+    "data:image/svg+xml;base64,PHN2Zz4=",
+    "data:image/png;base64,ZmFrZQ==",
+    "data:image/png;base64," + "a".repeat(262145),
+    "data:image/png;base64," + huge.toString("base64"),
+  ]) {
+    assert.throws(
+      () => page({ logo_data_url: invalid }, 1),
+      /upload a PNG, JPG or WebP logo/,
+    );
+  }
+  assert.equal(workspace().page.logo_data_url, logo);
+  assert.throws(
+    () => run("UPDATE reseller_sales_pages SET logo_data_url=null", other),
+    /permission denied/,
+  );
+  page({ logo_data_url: null }, 1);
+  assert.equal(workspace().page.logo_data_url, null);
 });
