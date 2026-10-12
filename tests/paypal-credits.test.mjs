@@ -17,7 +17,7 @@ before(async()=>{
  execFileSync('docker',['run','-d','--name',container,'--network','none','--label','eztv.disposable-test=true','-e','POSTGRES_HOST_AUTH_METHOD=trust','postgres:17-alpine'],{stdio:'pipe'});
  for(let i=0;i<60;i++){try{sql('SELECT 1');break;}catch{await new Promise(r=>setTimeout(r,200));}}
  sql(readFileSync('tests/stabilization-schema.sql','utf8'));
- for(const suffix of ['trex_provisioning_guard.sql','legacy_credit_security.sql','business_dashboard.sql','paypal_automatic_credits.sql']) {
+ for(const suffix of ['trex_provisioning_guard.sql','legacy_credit_security.sql','business_dashboard.sql','paypal_automatic_credits.sql','individual_reseller_pricing.sql']) {
   const file=readdirSync('supabase/migrations').find(f=>f.endsWith(suffix));sql(readFileSync(`supabase/migrations/${file}`,'utf8'));
  }
  for(const [name,set] of [['paypal',v=>core=v],['handler',v=>handler=v]]){
@@ -137,4 +137,70 @@ test('webhook database failure returns retryable status; replay really grants on
  assert.equal((await make(true)(request())).status,503);assert.equal(balance(),'100');assert.equal(sql('SELECT count(*) FROM paypal_credit_events'),'0');
  assert.equal((await make(false)(request())).status,200);assert.equal((await make(false)(request())).status,200);assert.equal(balance(),'110');assert.equal(sql('SELECT count(*) FROM credit_logs'),'1');
  });
+});
+
+const setPrice=(who,price)=>sql(as(a,`SELECT set_reseller_credit_price('${who}',${price===null?'NULL':price})`));
+const priced=(rate,actor=r,key=id)=>sql(`SELECT (prepare_paypal_credit_order_priced('${key}','${actor}',10,'sandbox',${rate})).amount_cents`);
+test('individual prices are private, admin-controlled, audited, and resettable',()=>{
+ setPrice(r,225);setPrice(b,175);
+ assert.equal(JSON.parse(sql(as(r,'SELECT get_my_credit_pricing()'))).unit_price_cents,225);
+ assert.equal(JSON.parse(sql(as(b,'SELECT get_my_credit_pricing()'))).unit_price_cents,175);
+ assert.equal(sql(as(r,'SELECT count(*) FROM reseller_credit_pricing')),'1');
+ assert.equal(sql(as(r,'SELECT count(*) FROM reseller_credit_price_history')),'0');
+ assert.throws(()=>sql(as(r,`SELECT set_reseller_credit_price('${r}',1)`)));
+ assert.throws(()=>sql(as(r,`UPDATE reseller_credit_pricing SET unit_price_cents=1`)));
+ assert.throws(()=>sql("SET ROLE anon; SELECT get_my_credit_pricing()"));
+ for(const price of [0,-1,42949673]) assert.throws(()=>setPrice(r,price));
+ setPrice(r,null);assert.equal(JSON.parse(sql(as(r,'SELECT get_my_credit_pricing()'))).unit_price_cents,300);
+ assert.equal(sql('SELECT count(*) FROM reseller_credit_price_history'),'3');
+});
+test('new purchases snapshot custom rates; stale and legacy quotes cannot underpay',()=>{
+ setPrice(r,225);setPrice(b,175);assert.equal(priced(225),'2250');
+ assert.equal(priced(175,b,mid),'1750');
+});
+test('rate edits preserve existing order price, credits and financial records on capture',()=>{
+ setPrice(r,225);priced(225);setPrice(r,175);
+ assert.equal(priced(225),'2250');
+ assert.throws(()=>priced(175));
+ assert.throws(()=>priced(225,r,mid));assert.throws(prepare);
+ sql(`UPDATE paypal_credit_orders SET paypal_order_id='ORDER12345' WHERE id='${id}'`);
+ assert.equal(sql(grant().replace('3000','2250')),'credited');assert.equal(balance(),'110');
+ assert.equal(sql("SELECT amount FROM business_entries WHERE kind='sale'"),'22.50');
+ assert.equal(sql('SELECT revenue_amount FROM credit_logs'),'22.50');
+ assert.equal(sql(grant().replace('3000','2250')),'credited');assert.equal(balance(),'110');
+});
+test('manual requests use the same custom rate and preserve approved revenue after a rate edit',()=>{
+ setPrice(r,225);
+ assert.throws(manual);
+ sql(as(r,`SELECT request_manual_credits_priced('${mid}',10,'submitted-reference',225)`));
+ assert.equal(sql('SELECT unit_price FROM manual_credit_requests'),'2.25');
+ setPrice(r,175);approve();assert.equal(balance(),'110');
+ assert.equal(sql('SELECT revenue_amount FROM credit_logs'),'22.50');
+});
+test('stale quotes create no orders; concurrent price edit and purchase stay consistent',async()=>{
+ setPrice(r,225);assert.throws(()=>priced(300));assert.equal(sql('SELECT count(*) FROM paypal_credit_orders'),'0');
+ const change=concurrent(as(a,`SELECT set_reseller_credit_price('${r}',175)`));
+ const purchase=concurrent(`SELECT (prepare_paypal_credit_order_priced('${id}','${r}',10,'sandbox',225)).amount_cents`);
+ const results=await Promise.allSettled([change,purchase]);assert.equal(results[0].status,'fulfilled');
+ if(results[1].status==='fulfilled') assert.equal(results[1].value,'2250');
+ else assert.equal(sql('SELECT count(*) FROM paypal_credit_orders'),'0');
+});
+test('real create handler sends only authenticated reseller and server snapshot to PayPal',async()=>{
+ const original=globalThis.fetch, calls=[];let args;
+ globalThis.fetch=async(url,options)=>{calls.push([url,options]);return Response.json(url.endsWith('/token')?{access_token:'synthetic'}:{id:'ORDER12345',links:[{rel:'approve',href:'https://www.sandbox.paypal.com/checkoutnow?token=ORDER12345'}]});};
+ try{
+  const db={rpc:async(name,input)=>{assert.equal(name,'prepare_paypal_credit_order_priced');args=input;return {data:{...order,paypal_order_id:null,amount_cents:2250,unit_price_cents:225},error:null}},from:()=>({update(){return this},eq(){return this},or(){return this},select:async()=>({data:[{id}],error:null})})};
+  const h=handler.createHandler(db,async()=>r,key=>runtimeConfig[key]);
+  const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:10,expectedUnitPriceCents:225,amountCents:1,resellerId:b})}));
+  assert.equal(response.status,200);assert.equal(args.p_actor,r);assert.equal(args.p_expected_unit_price_cents,225);
+  assert.equal(JSON.parse(calls.find(([url])=>url.endsWith('/v2/checkout/orders'))[1].body).purchase_units[0].amount.value,'22.50');
+ }finally{globalThis.fetch=original;}
+});
+test('stale price handler returns a reviewable conflict without calling PayPal',async()=>{
+ const original=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;throw Error('Unexpected PayPal call');};
+ try{
+  const h=handler.createHandler({rpc:async()=>({data:null,error:{message:'price_changed'}})},async()=>r,key=>runtimeConfig[key]);
+  const response=await h(new Request('https://example.invalid',{method:'POST',headers:{Authorization:'Bearer synthetic'},body:JSON.stringify({action:'create',requestId:id,credits:10,expectedUnitPriceCents:225})}));
+  assert.equal(response.status,409);assert.equal((await response.json()).error,'price_changed');assert.equal(calls,0);
+ }finally{globalThis.fetch=original;}
 });

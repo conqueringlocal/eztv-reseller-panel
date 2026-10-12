@@ -1,3 +1,4 @@
+import { useCreditPricing, priceLabel } from '@/hooks/useCreditPricing';
 
 import { SalesTodaySummary } from '@/components/sales/SalesTodaySummary';
 import { RenewalWorklist } from '@/components/business/RenewalWorklist';
@@ -22,6 +23,7 @@ import {
 import { AddCustomerForm } from '@/components/customers/AddCustomerForm';
 
 export default function ResellerDashboard() {
+  const pricing = useCreditPricing();
   const { user } = useAuth();
   const { customers, refreshData } = useApp();
   const navigate = useNavigate();
@@ -56,6 +58,7 @@ export default function ResellerDashboard() {
               <h2 className="text-lg font-medium opacity-90">Your Credit Balance</h2>
               <p className="text-3xl font-bold mt-2">{user?.credits} Credits</p>
               <p className="text-sm opacity-75 mt-1">1 credit = 1 month for one connection</p>
+              {pricing.isLoading ? <p className="text-sm mt-1">Loading your price…</p> : pricing.isError ? <p className="text-sm mt-1">Credit pricing unavailable</p> : pricing.data?.purchase_enabled && <p className="text-sm mt-1">Your price: {priceLabel(pricing.data.unit_price_cents)} USD per credit</p>}
             </div>
             <div className="mt-4 md:mt-0">
               <Button 

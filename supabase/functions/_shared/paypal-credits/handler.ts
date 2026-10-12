@@ -5,7 +5,10 @@ export function createHandler(db: any, authenticate: (jwt: string) => Promise<st
   const cors = { 'Access-Control-Allow-Origin': 'https://reseller.eztvclub.com', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS', 'Cache-Control': 'no-store' };
   const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
   // deno-lint-ignore no-explicit-any
-  const checked = (result: any) => { if (result.error) throw new PaymentError('payment_state_unconfirmed'); return result.data; };
+  const checked = (result: any) => { if (result.error) {
+    if (['price_changed', 'existing_order_price_changed'].includes(result.error.message)) throw new PaymentError(result.error.message, 409);
+    throw new PaymentError('payment_state_unconfirmed');
+  } return result.data; };
   function configuration(): Config | null {
     const environment = env('EZTV_PAYPAL_ENV');
     const clientId = env('EZTV_PAYPAL_CLIENT_ID'), secret = env('EZTV_PAYPAL_CLIENT_SECRET'), webhookId = env('EZTV_PAYPAL_WEBHOOK_ID'), merchantId = env('EZTV_PAYPAL_MERCHANT_ID');
@@ -93,7 +96,8 @@ export function createHandler(db: any, authenticate: (jwt: string) => Promise<st
       if (body.action === 'create') {
         if (env('EZTV_PAYPAL_ENABLED') !== 'true') throw new PaymentError('checkout_unavailable');
         if (!/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(body.requestId || '') || ![5,10,20,50].includes(body.credits)) throw new PaymentError('invalid_purchase', 400);
-        const order: Order = checked(await db.rpc('prepare_paypal_credit_order', { p_id: body.requestId, p_actor: user, p_credits: body.credits, p_environment: config.environment }));
+        if (body.expectedUnitPriceCents !== undefined && (!Number.isInteger(body.expectedUnitPriceCents) || body.expectedUnitPriceCents < 1 || body.expectedUnitPriceCents > 42949672)) throw new PaymentError('invalid_purchase', 400);
+        const order: Order = checked(await db.rpc('prepare_paypal_credit_order_priced', { p_id: body.requestId, p_actor: user, p_credits: body.credits, p_environment: config.environment, p_expected_unit_price_cents: body.expectedUnitPriceCents ?? 300 }));
         if (order.status !== 'created') return json({ status: order.status });
         if (order.paypal_order_id) {
           const remote = await paypal.getOrder(order.paypal_order_id);

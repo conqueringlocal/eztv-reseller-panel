@@ -16,7 +16,7 @@ non-atomic fulfillment or webhook acknowledgment behavior.
 ## Behavior
 
 Resellers with direct credit-purchase permission can buy 5/10/20/50 credits at
-$3 USD each. Parent-managed accounts retain the current credit-request route.
+their assigned USD price per credit, defaulting to $3.00. Parent-managed accounts retain the current credit-request route.
 The backend creates a durable local order at a server-controlled price and returns
 an allowlisted PayPal approval URL. After buyer approval, browser capture or the
 verified `CHECKOUT.ORDER.APPROVED` webhook can capture the order. A completed
@@ -163,3 +163,36 @@ Confirm one `credited` order, one receipt, one credit addition, one sale and the
 reported fee. Check PayPal's completed webhook delivery and repeat the existing
 order status check to establish no additional credit grant. If the UI reports an
 uncertain result, inspect that order instead of submitting another payment.
+
+## Individual reseller pricing — October 12, 2026
+
+V1 at `reseller.eztvclub.com` is the active application. Future changes should
+extend V1; do not publish the separate V2 frontend over it.
+
+In **Admin → Resellers → select a reseller → Credit purchase pricing**, enter a
+USD price per credit and save. Blank restores the standard $3.00 rate. The price
+applies to direct PayPal checkout and manual PayPal payment requests; parent-managed
+sub-reseller rates remain separate. No existing reseller override is assigned by
+the migration. Admin changes are recorded in `reseller_credit_price_history`.
+
+The dashboard and both purchase forms load `get_my_credit_pricing()`, keyed by the
+signed-in account and refreshed every 30 seconds/on focus. Checkout snapshots the
+server price under the same profile lock used by admin rate changes. An outdated
+quote receives `409 price_changed` before any PayPal request; the browser refreshes
+and requires another click. Durable retries preserve and display the original quote.
+Old clients continue to use the $3.00 quote and cannot buy at that price after a
+custom rate is assigned. Manual requests snapshot their unit price for later approval.
+
+Deploy only `20261012005556_individual_reseller_pricing.sql`, the `paypal-credits`
+function with its shared dependencies, and this frontend. The existing webhook
+validates each order's stored amount and needs no code change. Do not change PayPal
+credentials, environment, enablement gates, or provider settings. Keep all payment,
+receipt, rate history and financial records on rollback. A frontend rollback can
+safely leave the schema in place; custom-rate buyers on an older client must refresh
+to the updated UI before a new purchase.
+
+Validation covers distinct reseller prices, fallback/reset, RLS/write permissions,
+audit history, stale quotes, concurrent changes, idempotent fulfillment and finance
+amounts. Browser checks at 1280px and 390px cover admin save/reset, custom totals,
+manual requests, saved checkout quotes and stale-price refresh. No real payment or
+provider operation is part of these tests.

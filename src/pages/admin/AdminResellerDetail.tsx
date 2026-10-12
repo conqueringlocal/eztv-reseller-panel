@@ -1,3 +1,4 @@
+import { ResellerCreditPricing } from '@/components/resellers/ResellerCreditPricing';
 import { LoginAsReseller } from '@/components/support/LoginAsReseller';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -366,6 +367,8 @@ export default function AdminResellerDetail() {
           </CardContent>
         </Card>
       </div>
+
+      <ResellerCreditPricing key={id} resellerId={id!} />
 
       <div className="mb-6">
         <AdminApiKeyManager resellerId={id!} resellerName={reseller.name} />
