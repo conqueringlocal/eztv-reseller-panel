@@ -1,3 +1,4 @@
+import { useCreditPricing, pricingDb, priceLabel } from '@/hooks/useCreditPricing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,6 +13,8 @@ type CreditRequest = Database['public']['Tables']['manual_credit_requests']['Row
 
 export function ManualCreditRequests({ admin = false }: { admin?: boolean }) {
  const { user } = useAuth();
+ const pricing = useCreditPricing(!admin);
+ const unitPrice = pricing.data?.unit_price_cents;
  const { resellers, refreshData } = useApp();
  const [requests,setRequests]=useState<CreditRequest[]>([]);
  const [credits,setCredits]=useState(10);
@@ -34,9 +37,10 @@ export function ManualCreditRequests({ admin = false }: { admin?: boolean }) {
  },[admin,user?.id]);
  useEffect(()=>{ if(!user?.id)return; void load(); const timer=window.setInterval(()=>void load(),30000); const onFocus=()=>void load(); window.addEventListener('focus',onFocus);return()=>{clearInterval(timer);window.removeEventListener('focus',onFocus);}; },[load,user?.id]);
  const submit=async()=>{
-  if(busy)return;setBusy('submit');
+  if(busy || !unitPrice || pricing.isError)return;setBusy('submit');
   try{
-   const {error}=await supabase.rpc('request_manual_credits',{p_id:requestId.current,p_credits:credits,p_reference:reference.trim()});
+   const {error}=await pricingDb.rpc('request_manual_credits_priced',{p_id:requestId.current,p_credits:credits,p_reference:reference.trim(),p_expected_unit_price_cents:unitPrice});
+   if(error?.message === 'price_changed'){await pricing.refetch();toast.error('Your price changed. If you already paid, contact the administrator with your payment reference; do not pay again.');return;}
    if(error)throw error;
    toast.success('Request submitted. Your credits will be added after payment is verified.');setReference('');requestId.current=crypto.randomUUID();await load();
   }catch(error){toast.error(error instanceof Error?error.message:(error as {message?:string})?.message||'Submission could not be confirmed. Refresh your requests before retrying.');}finally{setBusy(null);}
@@ -53,12 +57,13 @@ export function ManualCreditRequests({ admin = false }: { admin?: boolean }) {
  return <Card className="mb-6"><CardHeader><CardTitle>{admin?'Manual credit requests':'Request credits'}</CardTitle></CardHeader><CardContent className="space-y-5">
   {loadError&&<p role="alert" className="text-destructive">{loadError}</p>}
   {!admin&&<>
-   <p>Pay with PayPal to <strong>@eztvclub</strong>. Credits cost <strong>$3 USD each</strong>. Include your reseller name in the payment note, then submit the PayPal transaction reference below.</p>
+   <p>Pay with PayPal to <strong>@eztvclub</strong>. Credits cost <strong>{unitPrice && !pricing.isError ? `${priceLabel(unitPrice)} USD each` : 'currently unavailable'}</strong>. Include your reseller name in the payment note, then submit the PayPal transaction reference below.</p>
    <p className="text-sm text-muted-foreground">Credits are added after the administrator verifies payment. If you already paid, submit that reference—do not send another payment.</p>
    {pending?<p role="status">Your request is awaiting review. You can check its status below.</p>:<form onSubmit={e=>{e.preventDefault();void submit();}} className="space-y-4">
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{[5,10,20,50].map(n=><Button key={n} type="button" variant={credits===n?'default':'outline'} disabled={!!busy} onClick={()=>setCredits(n)}>{n} credits · ${n*3}</Button>)}</div>
+    {pricing.isError && <p role="alert">Unable to load your price. <Button type="button" variant="outline" onClick={()=>void pricing.refetch()}>Retry</Button></p>}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{[5,10,20,50].map(n=><Button key={n} type="button" variant={credits===n?'default':'outline'} disabled={!!busy||!unitPrice||pricing.isError} onClick={()=>setCredits(n)}>{n} credits · {unitPrice && !pricing.isError ? priceLabel(n*unitPrice) : '—'}</Button>)}</div>
     <div><Label htmlFor="paypal-reference">PayPal transaction reference</Label><Input id="paypal-reference" value={reference} onChange={e=>setReference(e.target.value)} minLength={3} maxLength={200} required disabled={!!busy} autoComplete="off" /></div>
-    <Button type="submit" disabled={!!busy||!loaded||!!loadError||reference.trim().length<3}>{busy?'Submitting…':`Submit request for ${credits} credits ($${credits*3} USD)`}</Button>
+    <Button type="submit" disabled={!!busy||!loaded||!!loadError||!unitPrice||pricing.isError||reference.trim().length<3}>{busy?'Submitting…':`Submit request for ${credits} credits (${unitPrice ? priceLabel(credits*unitPrice) : "—"} USD)`}</Button>
    </form>}
   </>}
   {admin&&<p className="text-sm text-muted-foreground">Verify payment in the @eztvclub PayPal account before approval. Check the amount, currency, payer and transaction reference. Each verified payment can be credited once.</p>}

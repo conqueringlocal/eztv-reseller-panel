@@ -1,3 +1,4 @@
+import { useCreditPricing, priceLabel } from '@/hooks/useCreditPricing';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +15,11 @@ const labels: Record<string, string> = { created: 'Awaiting payment confirmation
 
 export function PayPalCredits({ admin = false }: { admin?: boolean }) {
   const { user } = useAuth();
+  return <PayPalCreditsForUser key={`${user?.id}:${admin}`} admin={admin} />;
+}
+function PayPalCreditsForUser({ admin }: { admin: boolean }) {
+  const pricing = useCreditPricing(!admin);
+  const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [environment, setEnvironment] = useState('');
   const [credits, setCredits] = useState(10);
@@ -23,6 +29,14 @@ export function PayPalCredits({ admin = false }: { admin?: boolean }) {
   const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
   const returned = useRef(false);
   const storageKey = `eztv-paypal-purchase:${user?.id}`;
+  const [pending, setPending] = useState<{requestId: string; credits: number; expectedUnitPriceCents: number} | null>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+      return saved ? { ...saved, expectedUnitPriceCents: saved.expectedUnitPriceCents ?? 300 } : null;
+    } catch { return null; }
+  });
+  const unitPrice = pricing.data?.unit_price_cents;
+  const checkoutPrice = pending?.credits === credits ? pending.expectedUnitPriceCents : unitPrice;
   const load = useCallback(async () => {
     if (!user?.id) return;
     let query = paymentsDb.from('paypal_credit_orders').select('id,reseller_id,credits,amount_cents,status,paypal_order_id,capture_id,review_reason,review_note,created_at').order('created_at', { ascending: false }).limit(admin ? 100 : 20);
@@ -37,7 +51,7 @@ export function PayPalCredits({ admin = false }: { admin?: boolean }) {
       const { data, error } = await supabase.functions.invoke('paypal-credits', { body: { action: capture ? 'capture' : 'status', paypalOrderId } });
       if (error || data?.error) throw new Error('Payment is not confirmed yet. Check again before paying again.');
       setMessage(data.status === 'credited' ? 'Payment confirmed—your credits have been added.' : data.status === 'review_required' ? 'This payment needs administrator review. Please do not pay again.' : 'PayPal has not confirmed completion yet. Please check again shortly.');
-      if (['credited', 'reviewed'].includes(data.status)) localStorage.removeItem(storageKey);
+      if (['credited', 'reviewed'].includes(data.status)) { localStorage.removeItem(storageKey); setPending(null); }
       await load();
     } catch { setMessage('Payment could not be confirmed. Check again before paying again.'); }
     finally { setBusy(false); }
@@ -58,22 +72,29 @@ export function PayPalCredits({ admin = false }: { admin?: boolean }) {
     if (result.kind === 'none') return;
     returned.current = true;
     if (result.kind === 'return') void confirm(result.paypalOrderId, true);
-    else { localStorage.removeItem(storageKey); setMessage('Checkout cancelled. If PayPal shows a charge, check your purchase status before paying again.'); }
+    else { localStorage.removeItem(storageKey); setPending(null); setMessage('Checkout cancelled. If PayPal shows a charge, check your purchase status before paying again.'); }
     const url = new URL(window.location.href);
     for (const key of ['paypal', 'token', 'PayerID']) url.searchParams.delete(key);
     window.history.replaceState(null, '', url.pathname + url.search);
   }, [admin, confirm, storageKey, user?.id]);
   async function buy() {
-    if (busy || !enabled) return;
+    if (busy || !enabled || pricing.isError || !unitPrice) return;
     setBusy(true); setMessage('');
     try {
       const saved = localStorage.getItem(storageKey);
-      const request = saved ? JSON.parse(saved) : { requestId: crypto.randomUUID(), credits };
+      const request = saved ? { expectedUnitPriceCents: 300, ...JSON.parse(saved) } : { requestId: crypto.randomUUID(), credits, expectedUnitPriceCents: unitPrice };
       if (request.credits !== credits) { setMessage(`An earlier ${request.credits}-credit checkout is unfinished. Select that package to resume it, or contact support.`); return; }
-      localStorage.setItem(storageKey, JSON.stringify(request));
+      localStorage.setItem(storageKey, JSON.stringify(request)); setPending(request);
       const { data, error } = await supabase.functions.invoke('paypal-credits', { body: { action: 'create', ...request } });
-      if (error || data?.error) throw new Error('Checkout unavailable');
-      if (data.status) { setMessage(labels[data.status] || 'Check your purchase status.'); if (['credited', 'reviewed'].includes(data.status)) localStorage.removeItem(storageKey); await load(); return; }
+      let code = data?.error;
+      if (!code && error?.context instanceof Response) code = (await error.context.json()).error;
+      if (code === 'price_changed') {
+        localStorage.removeItem(storageKey); setPending(null);
+        await pricing.refetch(); setMessage('Your price changed. Review the updated price before continuing.'); return;
+      }
+      if (code === 'existing_order_price_changed') { setMessage('Your earlier checkout has a different saved price. Check its payment history or contact support before paying again.'); return; }
+      if (error || code) throw new Error('Checkout unavailable');
+      if (data.status) { setMessage(labels[data.status] || 'Check your purchase status.'); if (['credited', 'reviewed'].includes(data.status)) { localStorage.removeItem(storageKey); setPending(null); } await load(); return; }
       const url = new URL(data.approve_url);
       const host = environment === 'live' ? 'www.paypal.com' : 'www.sandbox.paypal.com';
       if (url.protocol !== 'https:' || url.hostname !== host || url.username || url.password || url.port) throw new Error('Invalid checkout destination');
@@ -96,12 +117,13 @@ export function PayPalCredits({ admin = false }: { admin?: boolean }) {
     {message && <p role="status" className="text-sm">{message}</p>}
     {!admin && enabled && <>
       {environment === 'sandbox' && <p className="font-semibold">Test checkout—no real payment.</p>}
-      <p>Credits cost $3 USD each and are added automatically after PayPal confirms payment.</p>
+      {pricing.isError ? <p role="alert">Unable to load your price. <Button variant="outline" onClick={() => void pricing.refetch()}>Retry</Button></p> : !unitPrice ? <p>Loading your price…</p> : <p>Credits cost {priceLabel(unitPrice)} USD each and are added automatically after PayPal confirms payment.</p>}
+      {pending && <p className="text-sm">Your unfinished {pending.credits}-credit checkout keeps its original total of {priceLabel(pending.credits * pending.expectedUnitPriceCents)} USD. Select that package to resume it.</p>}
       <Label htmlFor="paypal-package">Credit package</Label>
-      <select id="paypal-package" className="w-full rounded border bg-background p-2" value={credits} disabled={busy} onChange={e => setCredits(Number(e.target.value))}>
-        {[5,10,20,50].map(n => <option key={n} value={n}>{n} credits · ${(n * 3).toFixed(2)} USD</option>)}
+      <select id="paypal-package" className="w-full rounded border bg-background p-2" value={credits} disabled={busy || !unitPrice || pricing.isError} onChange={e => setCredits(Number(e.target.value))}>
+        {[5,10,20,50].map(n => <option key={n} value={n}>{n} credits · {unitPrice && !pricing.isError ? `${priceLabel(n * (pending?.credits === n ? pending.expectedUnitPriceCents : unitPrice))} USD${pending?.credits === n ? ' (saved checkout)' : ''}` : 'Price unavailable'}</option>)}
       </select>
-      <Button disabled={busy} onClick={() => void buy()}>{busy ? 'Checking payment…' : `Pay $${(credits * 3).toFixed(2)} with PayPal`}</Button>
+      <Button disabled={busy || !unitPrice || pricing.isError} onClick={() => void buy()}>{busy ? 'Checking payment…' : checkoutPrice ? `Pay ${priceLabel(credits * checkoutPrice)} with PayPal` : 'Loading price…'}</Button>
       <p className="text-sm text-muted-foreground">Use one payment method per purchase. A payment awaiting confirmation does not need another payment.</p>
     </>}
     {admin && <p className="text-sm">Refunds, reversals and disputes require review. Check PayPal, then record any refund and credit adjustment using the existing finance and credit tools. No automatic credit clawback is applied.</p>}
