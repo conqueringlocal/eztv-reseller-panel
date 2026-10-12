@@ -200,7 +200,7 @@ export function CreateTrialForm({ onSuccess }: CreateTrialFormProps) {
             <li>• No credits will be consumed</li>
             <li>• Credentials will be automatically generated</li>
             <li>• Uses premium EZTV streaming service</li>
-            <li>• Customer will receive login details via CRM (if configured)</li>
+            <li>• Copy login details from the customer dashboard to share with your customer</li>
             <li>• Daily trial limits apply per account</li>
           </ul>
         </div>

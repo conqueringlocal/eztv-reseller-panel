@@ -31,7 +31,6 @@ interface SportsUpdate {
     time: string;
     channel: string;
   }>;
-  posted_to_highlevel: boolean;
   created_at: string;
 }
 

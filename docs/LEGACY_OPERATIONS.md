@@ -1,26 +1,25 @@
 # Legacy dashboard operations
 
-## Private reseller help desk pilot (October 9, 2026)
+## Private reseller help desk pilot (October 12, 2026)
 
-Self-hosted Zammad is running privately on the VPS at loopback port 8093, with its
-own database and synthetic identities. This is infrastructure testing, not a live
-support launch. No reseller invitations, emails, provider calls or credit changes
-were made. Dashboard support integration and distributor reporting are not enabled.
-The owner confirmed support@eztvclub.com already exists in Mailbux. A dedicated
-app password and controlled test-folder connection are still needed.
-
-See [support pilot operations, test results and launch requirements](../services/support/README.md)
-for reproducible deployment, secrets locations, verification and recovery procedures.
+Self-hosted Zammad runs privately on the VPS at loopback port 8093, with its own
+database and synthetic identities. The support@eztvclub.com Mailbux app password
+is saved and verified; live email and dashboard access are still being tested.
+See [support pilot operations and launch requirements](../services/support/README.md).
 
 ## Credit purchasing
 
-Manual credit purchases are active until automated payments are rebuilt for V2.
+Automatic PayPal checkout is live with a 10-credit minimum. Manual purchases are
+hidden behind a backup feature flag; existing requests remain accessible to admins.
+See [PayPal setup, validation and rollback](PAYPAL_AUTOMATIC_CREDITS.md).
 
-1. Reseller opens Credits & Usage, pays PayPal **@eztvclub** in **USD** at **$3 per credit**, and submits the payment transaction reference. Packages: 5, 10, 20 or 50 credits.
+The following workflow applies when the manual backup is enabled:
+
+1. Reseller opens Credits & Usage, pays PayPal **@eztvclub** in **USD** at **$3 per credit**, and submits the payment transaction reference. Packages: 10, 20 or 50 credits (10-credit minimum).
 2. Administrator opens Credit Management, verifies receipt, amount, currency and payer directly in PayPal, then enters the verified transaction reference and approves. Denials require a note in the interface.
 3. Approval, balance change, revenue entry and credit log commit together. Repeated approvals and reusing the same verified PayPal reference cannot grant twice. Pending requests prevent another submission. The page refreshes status and balance every 30 seconds and on focus.
 
-Automated checkout and capture endpoints are paused with HTTP 503. Stripe webhook events are deliberately not acknowledged or fulfilled while paused; check the merchant dashboard for any historical charge requiring manual reconciliation. Do not instruct a reseller who already paid to pay again. Re-enable automation only after an order/event ledger and verified fulfillment are implemented.
+Stripe endpoints remain paused. PayPal uses an order/event ledger and verified fulfillment. Do not instruct a reseller who already paid to pay again; reconcile the existing purchase first.
 
 ## Paid Trex operations
 
@@ -32,7 +31,7 @@ New customer creation retains its existing guarded receipt workflow. Renewals an
 - Store each paid receipt before fetching the provider expiry or starting the next paid line. Expiry comes from Trex `device_info.expire`.
 - Finalize customer records atomically. A timeout, partial response or storage failure leaves a hold; it does not buy again or refund automatically.
 - Browser operation references survive refreshes and ambiguous failures. Recent overlapping changes are also blocked for 24 hours. A successful response clears the browser reference so a later intentional renewal can be requested.
-- Legacy direct renewal workers are retired (410). CRM renewals use the same coordinator and real service authentication.
+- Legacy direct renewal workers are retired (410). The CRM webhook is also retired (410); dashboard renewals use the coordinator and authenticated requests.
 
 Credit Management includes a review queue for incomplete operations, historical pending renewals, provider records that could not be verified, and historical duplicate accounts. Receipts containing credentials are service-only. The browser sees references and outcomes, never those receipts.
 

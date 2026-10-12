@@ -32,7 +32,6 @@ interface CustomerImportData {
   deviceType: string;
   planDuration: number;
   maxConnections?: number;
-  highlevelContactId?: string;
 }
 
 export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
@@ -54,7 +53,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       'deviceType',
       'planDuration',
       'maxConnections',
-      'highlevelContactId'
     ];
     
     const sampleData = [
@@ -66,7 +64,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
       'Smart TV',
       '12',
       '2',
-      'contact_abc123'
     ];
 
     const csvContent = [
@@ -112,7 +109,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         deviceType: cleanValues[5] || 'Smart TV',
         planDuration: parseInt(cleanValues[6]) || 1,
         maxConnections: parseInt(cleanValues[7]) || 1,
-        highlevelContactId: cleanValues[8] || undefined
       };
       
       customers.push(customer);
@@ -248,7 +244,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
             connection_sequence: 1,
             status: 'active',
             is_trial: false,
-            highlevel_contact_id: customer.highlevelContactId?.trim() || null,
             provider: user?.provider || 'trex'
           })
           .select()
@@ -260,32 +255,6 @@ export function BulkImportForm({ onSuccess }: { onSuccess: () => void }) {
         }
 
         console.log(`✅ Successfully created customer: ${customer.name}`);
-
-        // If HighLevel contact ID provided, sync to CRM
-        if (customer.highlevelContactId?.trim()) {
-          console.log(`🔄 Syncing ${customer.name} to CRM with contact ID: ${customer.highlevelContactId}`);
-          try {
-            const { data: crmData, error: crmError } = await supabase.functions.invoke('update-highlevel-contact-credentials', {
-              body: {
-                contactId: customer.highlevelContactId.trim(),
-                resellerId: user?.id,
-                credentials: {
-                  username: customer.username.trim(),
-                  password: customer.password.trim(),
-                  macAddress: customer.macAddress?.trim()
-                }
-              }
-            });
-
-            if (crmError) {
-              console.warn(`⚠️ CRM sync failed for ${customer.name}:`, crmError);
-            } else {
-              console.log(`✅ CRM sync successful for ${customer.name}`);
-            }
-          } catch (crmError) {
-            console.warn(`⚠️ CRM sync failed for ${customer.name}:`, crmError);
-          }
-        }
 
         const maxConnectionsText = customer.maxConnections && customer.maxConnections > 1 
           ? ` (${customer.maxConnections} max connections)` 

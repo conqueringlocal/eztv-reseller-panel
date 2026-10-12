@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.7";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -51,7 +51,7 @@ serve(async (req) => {
   if (creationOverride !== undefined && creationOverride !== 'true') return paused();
 
   let requestId: string | undefined;
-  let client: ReturnType<typeof createClient> | undefined;
+  let client: SupabaseClient | undefined;
   try {
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -102,6 +102,7 @@ serve(async (req) => {
       || typeof customerData.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerData.email) || customerData.email.length > 320
       || typeof customerData.packageId !== 'string' || !/^\d+$/.test(customerData.packageId)
       || typeof customerData.deviceType !== 'string' || !customerData.deviceType.trim()
+      || (customerData.sendSetupEmail !== undefined && typeof customerData.sendSetupEmail !== 'boolean')
       || customerData.macAddress || (customerData.accountType && customerData.accountType !== 'm3u')
       || customerData.isTrial) {
       return reply({ success: false, code: 'invalid_request', error: 'Check the customer details, numeric package, duration, and connection count. This endpoint creates paid M3U accounts only.' }, 400);
@@ -124,6 +125,9 @@ serve(async (req) => {
       planDuration: months, connections,
       operationKey: isInternal ? input.operationKey || 'create' : 'create',
       skipCredits: isInternal && input.skipCredits === true,
+      // Durable opt-in belongs to the original request. Replays never enqueue a
+      // second email, and mail delivery never runs in this paid operation.
+      sendSetupEmail: customerData.sendSetupEmail === true,
     };
     const { data: claim, error: claimError } = await client.rpc('claim_trex_provisioning', {
       p_reseller_id: resellerId, p_customer: customer, p_charge_credits: !isAdmin && !customer.skipCredits,
@@ -160,7 +164,7 @@ serve(async (req) => {
         receipts.push({ ...receipt, connectionNumber: connection });
         // Persist each successful receipt before attempting another paid line.
         const { data: saved, error: receiptError } = await client.from('trex_provisioning_requests')
-          .update({ receipts, updated_at: new Date().toISOString() }).eq('id', requestId).eq('state', 'processing').select('id').single();
+          .update({ receipts, updated_at: new Date().toISOString() }).eq('id', requestId!).eq('state', 'processing').select('id').single();
         if (receiptError || !saved) {
           // Leave the durable claim locked: provider success + storage failure must never trigger a new purchase.
           return reply({ success: false, needsReview: true, requestId, code: 'receipt_storage_failed', error: reviewMessage }, 503);

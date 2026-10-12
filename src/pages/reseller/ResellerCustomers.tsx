@@ -25,7 +25,6 @@ export default function ResellerCustomers() {
   // Dialog states
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
   const [isRenewCustomerOpen, setIsRenewCustomerOpen] = useState(false);
-  const [isCrmManagerOpen, setIsCrmManagerOpen] = useState(false);
   const [isCreateTrialOpen, setIsCreateTrialOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -43,32 +42,16 @@ export default function ResellerCustomers() {
   // Use custom hook for customer operations
   const {
     customerToRenew,
-    selectedCustomerForCrm,
     setCustomerToRenew,
-    setSelectedCustomerForCrm,
     handleCancelCustomer,
     handleDeactivateCustomer,
     handleRenewCustomer,
-    handleManageCrmContact,
-    handleSyncToCrm
-  } = useCustomerOperations(user, cancelCustomer, deactivateCustomer, refreshData, setIsRenewCustomerOpen, setIsCrmManagerOpen);
+  } = useCustomerOperations(cancelCustomer, deactivateCustomer, setIsRenewCustomerOpen);
 
   // Handle status filter change
   const handleStatusFilterChange = (filter: string) => {
     setStatusFilter(filter as StatusFilter);
   };
-  
-  // Parse token from query string for HighLevel integration
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const resellerId = params.get('reseller_id');
-    const contactId = params.get('contact_id');
-    
-    if (resellerId || contactId) {
-      console.log('Detected external embed params:', { resellerId, contactId });
-      // In a real implementation, this would validate the token and set up the session
-    }
-  }, []);
   
   return (
     <DashboardLayout>
@@ -156,7 +139,6 @@ export default function ResellerCustomers() {
       <CustomerDialogsManager
         isAddCustomerOpen={isAddCustomerOpen}
         isRenewCustomerOpen={isRenewCustomerOpen}
-        isCrmManagerOpen={isCrmManagerOpen}
         isCreateTrialOpen={isCreateTrialOpen}
         isBulkImportOpen={isBulkImportOpen}
         onAddCustomerClose={() => setIsAddCustomerOpen(false)}
@@ -164,14 +146,9 @@ export default function ResellerCustomers() {
           setIsRenewCustomerOpen(false);
           setCustomerToRenew(null);
         }}
-        onCrmManagerClose={() => {
-          setIsCrmManagerOpen(false);
-          setSelectedCustomerForCrm(null);
-        }}
         onCreateTrialClose={() => setIsCreateTrialOpen(false)}
         onBulkImportClose={() => setIsBulkImportOpen(false)}
         customerToRenew={customerToRenew}
-        selectedCustomerForCrm={selectedCustomerForCrm}
         canCreateTrials={canCreateTrials}
         userId={user?.id || ''}
         onRefreshData={refreshData}

@@ -1,12 +1,10 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
 import { Customer } from '@/contexts/AppContext';
 
-export function useCustomerOperations(user: any, cancelCustomer: any, deactivateCustomer: any, refreshData: any, setIsRenewCustomerOpen?: (open: boolean) => void, setIsCrmManagerOpen?: (open: boolean) => void) {
+export function useCustomerOperations(cancelCustomer: (id: string) => Promise<boolean>, deactivateCustomer: (id: string) => Promise<boolean>, setIsRenewCustomerOpen?: (open: boolean) => void) {
   const [customerToRenew, setCustomerToRenew] = useState<Customer | null>(null);
-  const [selectedCustomerForCrm, setSelectedCustomerForCrm] = useState<Customer | null>(null);
 
   // Handle customer cancel
   const handleCancelCustomer = async (customerId: string) => {
@@ -56,69 +54,11 @@ export function useCustomerOperations(user: any, cancelCustomer: any, deactivate
     }
   };
 
-  // Handle CRM contact management
-  const handleManageCrmContact = (customer: Customer) => {
-    if (!customer.highlevelContactId) {
-      toast.error('This customer does not have a CRM contact ID');
-      return;
-    }
-    
-    console.log('🔧 handleManageCrmContact called for customer:', customer.name);
-    setSelectedCustomerForCrm(customer);
-    if (setIsCrmManagerOpen) {
-      setIsCrmManagerOpen(true);
-      console.log('✅ CRM dialog state set to open');
-    } else {
-      console.warn('⚠️ setIsCrmManagerOpen not provided to useCustomerOperations');
-    }
-  };
-
-  // Handle sync to CRM
-  const handleSyncToCrm = async (customer: Customer) => {
-    console.log('🔄 Syncing customer to CRM:', customer.name);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('sync-customer-to-crm', {
-        body: {
-          customerId: customer.id,
-          resellerId: user?.id
-        }
-      });
-
-      if (error) {
-        console.error('❌ Error syncing customer to CRM:', error);
-        toast.error('Failed to sync customer to CRM');
-        return;
-      }
-
-      if (!data.success) {
-        console.error('❌ CRM sync failed:', data.error);
-        toast.error(data.error || 'Failed to sync customer to CRM');
-        return;
-      }
-
-      if (data.skipped) {
-        toast.info('Customer is already synced to CRM');
-      } else {
-        toast.success('Customer successfully synced to CRM');
-        await refreshData();
-      }
-      
-    } catch (error) {
-      console.error('💥 Unexpected error during CRM sync:', error);
-      toast.error('An error occurred while syncing to CRM');
-    }
-  };
-
   return {
     customerToRenew,
-    selectedCustomerForCrm,
     setCustomerToRenew,
-    setSelectedCustomerForCrm,
     handleCancelCustomer,
     handleDeactivateCustomer,
     handleRenewCustomer,
-    handleManageCrmContact,
-    handleSyncToCrm
   };
 }

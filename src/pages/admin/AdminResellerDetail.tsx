@@ -1,3 +1,4 @@
+import { ResellerCreditPricing } from '@/components/resellers/ResellerCreditPricing';
 import { LoginAsReseller } from '@/components/support/LoginAsReseller';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -10,12 +11,9 @@ import { useApp } from '@/contexts/AppContext';
 import { CreditManageForm } from '@/components/credits/CreditManageForm';
 import { CreditLogTable } from '@/components/credits/CreditLogTable';
 import { CustomerTable } from '@/components/customers/CustomerTable';
-import { HighLevelSettings } from '@/components/resellers/HighLevelSettings';
 import { M3UDomainSettings } from '@/components/resellers/M3UDomainSettings';
-import { ResellerAlertSettings } from '@/components/resellers/ResellerAlertSettings';
-import { AdminApiKeyManager } from '@/components/api-keys/AdminApiKeyManager';
 import { SingleResellerSsoManager } from '@/components/sso/SingleResellerSsoManager';
-import { ArrowLeft, Users, DollarSign, Activity, Calendar, Key, Trash2, ArrowRight, Upload, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, DollarSign, Activity, Calendar, Key, Trash2, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { Label } from '@/components/ui/label';
@@ -47,8 +45,6 @@ export default function AdminResellerDetail() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteAction, setDeleteAction] = useState<'transfer' | 'delete'>('transfer');
   const [targetResellerId, setTargetResellerId] = useState<string>('');
-  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
 
   const reseller = resellers.find(r => r.id === id);
   const resellerCustomers = customers.filter(c => c.resellerId === id);
@@ -196,36 +192,6 @@ export default function AdminResellerDetail() {
     }
   };
 
-  const handleImportToHighLevel = async () => {
-    if (!id) return;
-    
-    setIsImporting(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('import-customers-to-highlevel', {
-        body: { reseller_id: id }
-      });
-
-      if (error) throw error;
-
-      if (data?.success) {
-        toast.success(
-          `Import complete! Processed: ${data.processed}, ` +
-          `New contacts: ${data.createdContacts}, ` +
-          `Synced: ${data.hlSynced}, ` +
-          `Failed: ${data.hlFailed}`
-        );
-        setIsImportDialogOpen(false);
-      } else {
-        toast.error(data?.error || 'Import failed');
-      }
-    } catch (error: any) {
-      console.error('Import error:', error);
-      toast.error(error.message || 'Failed to import customers to HighLevel');
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
   if (!reseller) {
     return (
       <DashboardLayout>
@@ -319,57 +285,10 @@ export default function AdminResellerDetail() {
       </div>
 
       <div className="mb-6">
-        <HighLevelSettings resellerId={id!} />
-      </div>
-
-      <div className="mb-6">
         <M3UDomainSettings resellerId={id!} />
       </div>
 
-      <div className="mb-6">
-        <ResellerAlertSettings resellerId={id!} currentCredits={reseller.credits} />
-      </div>
-
-      <div className="mb-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="h-5 w-5" />
-              Import Customers to HighLevel
-            </CardTitle>
-            <CardDescription>
-              Sync existing customers to HighLevel CRM with their credentials
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              onClick={() => setIsImportDialogOpen(true)}
-              disabled={isImporting}
-              className="bg-eztv-700 hover:bg-eztv-800"
-            >
-              {isImporting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Importing...
-                </>
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Import Customers to HighLevel
-                </>
-              )}
-            </Button>
-            <p className="text-sm text-muted-foreground mt-2">
-              Creates contacts in HighLevel for customers without a contact ID 
-              and syncs their credentials. Safe to re-run (uses email-based upsert).
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="mb-6">
-        <AdminApiKeyManager resellerId={id!} resellerName={reseller.name} />
-      </div>
+      <ResellerCreditPricing key={id} resellerId={id!} />
 
       <div className="mb-6">
         <Card>
@@ -379,7 +298,7 @@ export default function AdminResellerDetail() {
               SSO Login Tokens
             </CardTitle>
             <CardDescription>
-              Manage secure single sign-on tokens for HighLevel integration
+              Manage secure single sign-on tokens for your self-hosted portal
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -547,40 +466,6 @@ export default function AdminResellerDetail() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Import to HighLevel Confirmation Dialog */}
-      <AlertDialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Import Customers to HighLevel</AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-3">
-                <p>
-                  This will sync all {resellerCustomers.length} customer(s) 
-                  for <strong>{reseller.name}</strong> to HighLevel:
-                </p>
-                <ul className="list-disc list-inside text-sm space-y-1">
-                  <li>Create new contacts for customers without a HighLevel contact ID</li>
-                  <li>Update credentials and expiration dates for all customers</li>
-                  <li>Use email-based upsert to avoid duplicates</li>
-                </ul>
-                <p className="text-amber-600 font-medium">
-                  Ensure HighLevel integration is configured before proceeding.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isImporting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleImportToHighLevel}
-              disabled={isImporting}
-              className="bg-eztv-700 hover:bg-eztv-800"
-            >
-              {isImporting ? 'Importing...' : 'Start Import'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </DashboardLayout>
   );
 }

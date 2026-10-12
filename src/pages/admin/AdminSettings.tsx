@@ -3,13 +3,10 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { DashboardCard } from '@/components/dashboard/DashboardCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, EyeOff, Save, Webhook } from 'lucide-react';
+import { Eye, EyeOff, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { GlobalHighLevelSettings } from '@/components/admin/GlobalHighLevelSettings';
-import { AdminHighLevelAlertSettings } from '@/components/admin/AdminHighLevelAlertSettings';
 import { SecurityAuditLogs } from '@/components/admin/SecurityAuditLogs';
 import { RenewalAuditTool } from '@/components/admin/RenewalAuditTool';
 
@@ -37,8 +34,6 @@ export default function AdminSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   
-  // Generate webhook URL with correct Supabase edge function format
-  const webhookUrl = `https://hddnqgggjjlildufirof.supabase.co/functions/v1/webhook`;
   
   useEffect(() => {
     const fetchSettings = async () => {
@@ -223,24 +218,17 @@ export default function AdminSettings() {
     }
   };
   
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success('Copied to clipboard');
-  };
-  
   return (
     <DashboardLayout>
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-2">Settings</h1>
-        <p className="text-gray-500">Manage system settings and integrations</p>
+        <p className="text-gray-500">Manage system settings</p>
       </div>
       
       <div className="container mx-auto">
         <Tabs defaultValue="settings" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="settings">System Settings</TabsTrigger>
-            <TabsTrigger value="highlevel">HighLevel</TabsTrigger>
-            <TabsTrigger value="alerts">Alerts</TabsTrigger>
             <TabsTrigger value="security">Security Audit</TabsTrigger>
             <TabsTrigger value="audit">Renewal Audit</TabsTrigger>
           </TabsList>
@@ -330,7 +318,7 @@ export default function AdminSettings() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1.5">
-                      Default package ID used when none is specified in webhook requests
+                      Default package ID used when no package is specified
                     </p>
                   </div>
                 </div>
@@ -409,7 +397,7 @@ export default function AdminSettings() {
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1.5">
-                      Default package ID used for Trex when none is specified in webhook requests
+                      Default package ID used for Trex when no package is specified
                     </p>
                   </div>
                 </div>
@@ -451,136 +439,7 @@ export default function AdminSettings() {
                 </div>
               </DashboardCard>
               
-              {/* Webhook Settings */}
-              <DashboardCard
-                title="HighLevel Webhook Integration"
-                description="Use these settings to configure your HighLevel webhook workflow with multi-credential support"
-              >
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium mb-1.5">Webhook URL</p>
-                    <div className="flex gap-2">
-                      <Input value={webhookUrl} readOnly className="bg-gray-50" />
-                      <Button 
-                        variant="outline" 
-                        onClick={() => copyToClipboard(webhookUrl)}
-                      >
-                        Copy
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1.5">
-                      Use this URL in your HighLevel webhook settings
-                    </p>
-                  </div>
-                  
-                  <Separator />
-                  
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Enhanced Multi-Connection Webhook Format</h3>
-                    <div className="bg-gray-50 p-3 rounded-md">
-                      <pre className="text-xs overflow-x-auto">
-{`{
-  "api_key": "YOUR_API_KEY",
-  "contact_id": "{{contact.id}}",
-  "action": "create",
-  "connections": 3,
-  "customer": {
-    "name": "{{contact.first_name}} {{contact.last_name}}",
-    "email": "{{contact.email}}",
-    "mac": "00:1A:2B:3C:4D:5E",
-    "device_type": "Firestick",
-    "plan_duration_months": 3,
-    "package_id": "14826"
-  }
-}`}
-                      </pre>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1.5">
-                      This will create 3 IPTV accounts and automatically sync all credentials to HighLevel custom fields (iptv_username_1, iptv_password_1, etc.)
-                    </p>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Trial Account Webhook Format (Trex Only)</h3>
-                    <div className="bg-gray-50 p-3 rounded-md">
-                      <pre className="text-xs overflow-x-auto">
-{`{
-  "api_key": "YOUR_TREX_API_KEY",
-  "contact_id": "{{contact.id}}",
-  "action": "trial",
-  "connections": 1,
-  "trial_duration_hours": 24,
-  "customer": {
-    "name": "{{contact.first_name}} {{contact.last_name}}",
-    "email": "{{contact.email}}",
-    "device_type": "Smart TV"
-  }
-}`}
-                      </pre>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1.5">
-                      Creates a trial account with the specified duration in hours. Only available for Trex resellers. 8K provider does not support trials.
-                    </p>
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-medium mb-2">Renewal Webhook Format</h3>
-                    <div className="bg-gray-50 p-3 rounded-md">
-                      <pre className="text-xs overflow-x-auto">
-{`{
-  "api_key": "YOUR_API_KEY",
-  "contact_id": "{{contact.id}}",
-  "action": "renew",
-  "customer": {
-    "name": "{{contact.first_name}} {{contact.last_name}}",
-    "email": "{{contact.email}}",
-    "plan_duration_months": 3
-  }
-}`}
-                      </pre>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1.5">
-                      Renews existing customer accounts and sends confirmation via HighLevel
-                    </p>
-                  </div>
-
-                  <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-blue-800">
-                    <p className="text-sm font-medium">Multi-Credential HighLevel Integration</p>
-                    <p className="text-xs mt-1">
-                      The system now automatically syncs up to 3 sets of IPTV credentials to your HighLevel custom fields:
-                      <br />• iptv_username_1, iptv_password_1, iptv_m3u_url_1
-                      <br />• iptv_username_2, iptv_password_2, iptv_m3u_url_2  
-                      <br />• iptv_username_3, iptv_password_3, iptv_m3u_url_3
-                      <br />Make sure these custom fields exist in your HighLevel account.
-                    </p>
-                  </div>
-                  
-                  <div className="flex">
-                    <Button 
-                      variant="outline" 
-                      className="flex items-center"
-                      onClick={() => {
-                        window.open(`${webhookUrl}?api_key=test&contact_id=test123&action=trial&connections=1&customerName=Test+Customer&customerEmail=test@example.com&deviceType=Test+Device&trial_duration_hours=24`, '_blank');
-                      }}
-                    >
-                      <Webhook size={16} className="mr-2" />
-                      Test Trex Trial Webhook
-                    </Button>
-                    <p className="text-xs text-muted-foreground ml-3 flex items-center">
-                      This will test creating a Trex trial account
-                    </p>
-                  </div>
-                </div>
-              </DashboardCard>
             </div>
-          </TabsContent>
-          
-          <TabsContent value="highlevel">
-            <GlobalHighLevelSettings />
-          </TabsContent>
-          
-          <TabsContent value="alerts">
-            <AdminHighLevelAlertSettings />
           </TabsContent>
           
           <TabsContent value="security">

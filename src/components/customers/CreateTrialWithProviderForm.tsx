@@ -168,7 +168,7 @@ export function CreateTrialWithProviderForm({ onSuccess }: CreateTrialWithProvid
             <li>• No credits will be consumed</li>
             <li>• Credentials will be automatically generated</li>
             <li>• MAC address will be generated from customer name</li>
-            <li>• Customer will receive login details via CRM (if configured)</li>
+            <li>• Copy login details from the customer dashboard to share with your customer</li>
             <li>• Daily trial limits apply per provider</li>
           </ul>
         </div>

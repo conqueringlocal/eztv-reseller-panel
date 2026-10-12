@@ -36,7 +36,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
     name: '',
     email: '',
     password: '',
-    credits: 100,
+    credits: 20,
     creditPricePerUnit: 5.00, // Default price per credit for sub-reseller
   });
 
@@ -106,10 +106,10 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       return;
     }
 
-    if (formData.credits < 100) {
+    if (!Number.isInteger(formData.credits) || formData.credits < 20) {
       toast({
         title: "Error",
-        description: "Minimum credit requirement is 100 credits for sub-resellers",
+        description: "Minimum credit requirement is 20 credits for sub-resellers",
         variant: "destructive",
       });
       return;
@@ -127,7 +127,6 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
     setIsLoading(true);
 
     try {
-      console.log('Creating sub-reseller with data:', formData);
       
       const { data, error } = await supabase.functions.invoke('create-reseller', {
         body: {
@@ -154,11 +153,11 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
       
       toast({
         title: "Success",
-        description: `Sub-reseller created successfully! ${formData.credits} credits allocated. You have ${data.parentCreditsRemaining || 0} credits remaining.`,
+        description: `Sub-reseller created successfully! ${formData.credits} credits allocated.`,
       });
 
       // Reset form and close dialog
-      setFormData({ name: '', email: '', password: '', credits: 100, creditPricePerUnit: 5.00 });
+      setFormData({ name: '', email: '', password: '', credits: 20, creditPricePerUnit: 5.00 });
       onOpenChange(false);
       
       // Call onSuccess callback if provided
@@ -185,8 +184,8 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
   };
 
   const handleCreditsChange = (value: number) => {
-    // Ensure credits don't exceed available credits or go below minimum
-    const clampedValue = Math.max(100, Math.min(value, availableCredits));
+    // Allow editing below the minimum; validation prevents submitting it.
+    const clampedValue = Math.max(0, Math.min(value, availableCredits));
     handleInputChange('credits', clampedValue);
   };
 
@@ -256,26 +255,26 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
 
               <div className="space-y-2">
                 <Label htmlFor="credits">
-                  Credits to Allocate (Min: 100, Max: {availableCredits})
+                  Credits to Allocate (Min: 20, Max: {availableCredits})
                 </Label>
                 <Input
                   id="credits"
                   type="number"
-                  min="100"
+                  min="20"
                   max={availableCredits}
                   value={formData.credits}
-                  onChange={(e) => handleCreditsChange(parseInt(e.target.value) || 100)}
-                  placeholder={`Enter credits (100-${availableCredits})`}
+                  onChange={(e) => handleCreditsChange(Number(e.target.value))}
+                  placeholder={`Enter credits (20-${availableCredits})`}
                   required
-                  disabled={availableCredits < 100}
+                  disabled={availableCredits < 20}
                 />
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Sub-resellers require minimum 100 credits</span>
+                  <span>Sub-resellers require minimum 20 credits</span>
                   <span>Available: {availableCredits}</span>
                 </div>
-                {availableCredits < 100 && (
+                {availableCredits < 20 && (
                   <p className="text-sm text-red-600">
-                    You need at least 100 credits to create a sub-reseller.
+                    You need at least 20 credits to create a sub-reseller.
                   </p>
                 )}
                 {formData.credits > availableCredits && (
@@ -316,7 +315,7 @@ export const AddSubResellerDialog: React.FC<AddSubResellerDialogProps> = ({
                 </Button>
                 <Button 
                   type="submit" 
-                  disabled={isLoading || availableCredits < 100 || formData.credits > availableCredits}
+                  disabled={isLoading || availableCredits < 20 || formData.credits < 20 || !Number.isInteger(formData.credits) || formData.credits > availableCredits}
                 >
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Create Sub-Reseller

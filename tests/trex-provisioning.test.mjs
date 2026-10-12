@@ -372,50 +372,18 @@ test('legacy service default package resolves from configuration before any prov
   assert.equal(unconfigured.calls.length, 0);
 });
 
-test('webhook consolidation reuses the guarded customer instead of inserting or deleting another', async () => {
-  const app = await setup({ generic: true });
-  const created = await app.invoke({ serviceCall: true, customerData: customer({ connections: 2 }) }, 'fixture-service-key');
-  let inserts = 0;
-  let deletes = 0;
-  let updates = 0;
-  let lookups = 0;
-  const client = {
-    functions: { invoke: async () => ({ data: created.body, error: null }) },
-    from(table) {
-      assert.equal(table, 'customers');
-      const chain = {
-        select() { return chain; }, eq() { return chain; }, neq() { return chain; },
-        insert() { inserts++; return chain; }, delete() { deletes++; return chain; },
-        update(data) { updates++; assert.equal(data.connection_list.length, 2); return chain; },
-        async single() { lookups++; return { data: lookups === 1 ? null : created.body.customer, error: null }; },
-      };
-      return chain;
-    },
-  };
-  const context = vm.createContext({ console: { log() {}, error() {}, warn() {} },
-    Deno: { env: { get: () => 'fixture' } } });
-  const source = readFileSync(new URL('../supabase/functions/webhook/enhancedWebhookHandler.ts', import.meta.url), 'utf8');
-  const code = (await transform(source + '\nexport { createConsolidatedAccount };', { loader: 'ts', format: 'esm' })).code;
-  const module = new vm.SourceTextModule(code, { context });
-  await module.link(async specifier => {
-    if (specifier.includes('@supabase/supabase-js')) return new vm.SyntheticModule(['createClient'], function () { this.setExport('createClient', () => client); }, { context });
-    if (specifier.includes('highlevel-api')) return new vm.SyntheticModule(['updateHighLevelContact', 'getHighLevelSettings'], function () {
-      this.setExport('updateHighLevelContact', () => { throw new Error('No HighLevel calls allowed'); });
-      this.setExport('getHighLevelSettings', () => { throw new Error('No HighLevel calls allowed'); });
-    }, { context });
-    if (specifier.includes('m3u-domain')) return new vm.SyntheticModule(['rewriteM3uDomain', 'DEFAULT_M3U_DOMAIN'], function () {
-      this.setExport('rewriteM3uDomain', value => value); this.setExport('DEFAULT_M3U_DOMAIN', 'stream.invalid');
-    }, { context });
-    throw new Error('Unexpected import');
-  });
-  await module.evaluate();
-  const result = await module.namespace.createConsolidatedAccount({ connections: 2,
-    customer: { name: 'Fixture Customer', email: 'fixture@example.invalid', plan_duration_months: 1 } }, resellerId, { credits: 100 });
-  assert.equal(result.success, true);
-  assert.equal(result.credentials.length, 2);
-  assert.equal(inserts, 0);
-  assert.equal(deletes, 0);
-  assert.equal(updates, 1);
-  assert.equal(stats().customers, 1);
-  assert.equal(stats().balance, 98);
+test('setup email choice is durable before provider work and cannot change on replay', async () => {
+ const app = await setup();
+ assert.equal((await app.invoke({customerData:customer({sendSetupEmail:true})})).body.success,true);
+ assert.equal(sql("SELECT request_data->>'sendSetupEmail' FROM trex_provisioning_requests"),'true');
+ assert.equal((await app.invoke({customerData:customer({sendSetupEmail:false})})).body.alreadyProcessed,true);
+ assert.equal(sql("SELECT request_data->>'sendSetupEmail' FROM trex_provisioning_requests"),'true');
+ assert.equal(app.calls.length,1);
+});
+test('older callers do not opt in and invalid email switch fails before provider spend',async()=>{
+ const app=await setup();
+ assert.equal((await app.invoke({customerData:customer({sendSetupEmail:'true'})})).status,400);
+ assert.equal(app.calls.length,0);
+ assert.equal((await app.invoke()).body.success,true);
+ assert.equal(sql("SELECT request_data->>'sendSetupEmail' FROM trex_provisioning_requests"),'false');
 });

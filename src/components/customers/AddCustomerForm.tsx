@@ -28,6 +28,7 @@ import { RefreshCw, Loader2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { checkForExistingCustomer } from '@/utils/customerConsolidation/duplicateDetection';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Switch } from '@/components/ui/switch';
 
 // Re-enable only after the Trex backend request guard has been deployed and verified.
 const customerCreationPaused = import.meta.env.VITE_TREX_CREATION_PAUSED === 'true';
@@ -36,6 +37,7 @@ const customerCreationPaused = import.meta.env.VITE_TREX_CREATION_PAUSED === 'tr
 const formSchema = z.object({
   name: z.string().min(2, { message: 'Name must be at least 2 characters.' }),
   email: z.string().email({ message: 'Please enter a valid email address.' }),
+  sendSetupEmail: z.boolean().default(true),
   accountType: z.enum(['m3u', 'mag'], { 
     errorMap: () => ({ message: 'Please select an account type.' })
   }),
@@ -72,12 +74,22 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
   const { addCustomer, customers } = useApp();
   const { packages, isLoading: packagesLoading, error: packagesError, source, debugInfo, refetch } = useIptvPackages(undefined, false);
   
+  const [emailAvailable, setEmailAvailable] = React.useState(false);
+  React.useEffect(() => {
+    let current = true;
+    supabase.functions.invoke('customer-setup-email', { body: { action: 'config' } })
+      .then(({ data, error }) => { if (current) setEmailAvailable(!error && data?.enabled === true); })
+      .catch(() => { if (current) setEmailAvailable(false); });
+    return () => { current = false; };
+  }, []);
+
   // Initialize form with default values
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
       email: '',
+      sendSetupEmail: true,
       accountType: 'm3u',
       macAddress: '',
       deviceType: 'Smart TV',
@@ -179,6 +191,7 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
         resellerId,
         name: data.name,
         email: data.email,
+        sendSetupEmail: emailAvailable && data.accountType === 'm3u' && data.sendSetupEmail,
         username: username, // Fixed: Added missing username
         macAddress: data.macAddress || '',
         deviceType: data.deviceType,
@@ -519,6 +532,18 @@ export function AddCustomerForm({ onSuccess }: AddCustomerFormProps) {
             </p>
           </div>
           
+          <FormField control={form.control} name="sendSetupEmail" render={({ field }) => (
+            <FormItem className="flex items-start justify-between gap-4 rounded-lg border p-4">
+              <div className="space-y-1">
+                <FormLabel>Email setup details to customer</FormLabel>
+                <FormDescription>
+                  {emailAvailable ? 'Send usernames, passwords and setup instructions from EZTV after all connections are created.' : 'Automatic email is currently unavailable. Share the credentials manually or send them later.'}{' '}
+                  Turn this off to share the details yourself. You can send an email later from the customer’s credentials.
+                </FormDescription>
+              </div>
+              <FormControl><Switch checked={emailAvailable && watchAccountType === 'm3u' && field.value} onCheckedChange={field.onChange} disabled={isSubmitting || !emailAvailable || watchAccountType !== 'm3u'} /></FormControl>
+            </FormItem>
+          )} />
           <div className="pt-2">
             <Button 
               type="submit" 
