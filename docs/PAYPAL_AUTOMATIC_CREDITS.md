@@ -263,3 +263,17 @@ existing five-credit fulfillment, 19-versus-20 initial allocations, insufficient
 balances, parent transfers, stale browser drafts, and rejection before Auth/PayPal
 calls. The old PayPal linking regression remains covered. Browser commands:
 `node tests/paypal-browser.mjs` and `node tests/reseller-minimums-browser.mjs`.
+
+## Manual purchase fallback hidden — October 12, 2026
+
+The reseller Credits & Usage page now shows automated PayPal checkout only for
+accounts with direct purchasing enabled. The manual purchase form is retained
+behind the build flag `VITE_MANUAL_CREDIT_PURCHASES_ENABLED`, which defaults off.
+To restore it during an automated-checkout outage, set the flag to `true`, rebuild
+and deploy the V1 Cloudflare Pages site. Do not ask users with unconfirmed payments
+to pay again; reconcile the existing purchase first.
+
+Administrator manual-request review and existing records remain available.
+Sub-reseller requests to their parent remain available because that is their
+normal credit-allocation flow. This change hides the direct manual-payment form;
+it does not delete its backend or alter balances, payment fulfillment or prices.
