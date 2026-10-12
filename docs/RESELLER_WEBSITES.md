@@ -51,3 +51,6 @@ Live activation on October 12: database migration/configuration installed; servi
 **Outstanding acceptance:** connect an owner-designated reseller domain and verify public DNS propagation, real ACME issuance and a real browser inquiry through that hostname. No live custom-domain certificate or inquiry is claimed as tested before that happens.
 
 Implementation references: [Caddy on-demand HTTPS](https://caddyserver.com/docs/automatic-https#on-demand-tls), [Supabase RLS](https://supabase.com/docs/guides/database/postgres/row-level-security).
+
+
+Final dashboard deployment: [d6e777fa](https://d6e777fa.eztv-reseller-panel.pages.dev), built from `b0a1cf0` on top of Help Center release `14e042b`. The production custom-domain bundle matches the local build byte-for-byte. The same mobile/desktop domain flow passed against the deployed frontend with fixture Auth/API interception; no production reseller draft, claim or inquiry was created by that browser test.
