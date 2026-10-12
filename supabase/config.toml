@@ -122,3 +122,7 @@ verify_jwt = false
 
 [functions.customer-setup-email]
 verify_jwt = false
+
+# Custom authentication: dedicated worker token in Vault; no browser send endpoint.
+[functions.sales-inquiry-email]
+verify_jwt = false

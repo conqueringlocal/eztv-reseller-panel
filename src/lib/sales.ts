@@ -1,3 +1,4 @@
+import type { WebsiteContent } from "./websiteContent";
 export const stages = {
   new: "New inquiry",
   setup: "Setup needed",
@@ -38,6 +39,7 @@ export interface SalesLead {
   updated_at: string;
 }
 export interface SalesPage {
+  public_content?: Partial<WebsiteContent>;
   logo_data_url?: string | null;
   reseller_id: string;
   slug: string;
@@ -72,7 +74,25 @@ export interface Reward {
   reference: string;
   note: string;
 }
+export interface InquiryDelivery {
+  id: string;
+  lead_id: string;
+  inquiry: {
+    name: string;
+    email: string;
+    phone: string;
+    device: string;
+    message: string;
+  };
+  recipient: string | null;
+  status: "queued" | "sending" | "sent" | "failed" | "uncertain";
+  error_code: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
 export interface SalesWorkspace {
+  inquiry_email?: { enabled: boolean; recipient: string | null };
+  inquiry_deliveries?: InquiryDelivery[];
   domain?: {
     hostname: string;
     verification_token: string;

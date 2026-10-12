@@ -100,10 +100,11 @@ before(async () => {
   }
   sql(readFileSync("tests/stabilization-schema.sql", "utf8"));
   sql(readFileSync("tests/balance-scheduler-schema.sql", "utf8"));
+  sql("CREATE TABLE auth.users(id uuid PRIMARY KEY,email text,email_confirmed_at timestamptz,banned_until timestamptz)");
   const files = [
     "20261002160000_trex_provisioning_guard.sql",
     ...readdirSync("supabase/migrations").filter((x) =>
-      /_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_trex_balance_api.sql$|_reseller_sales_tools.sql$|_reseller_websites_coming_soon.sql$|_reseller_custom_domains.sql$|_reseller_website_domain_fix_logos.sql$/.test(
+      /_legacy_credit_security.sql$|_trex_paid_operations.sql$|_legacy_sso_expiry.sql$|_provider_reconciliation_checks.sql$|_business_dashboard.sql$|_trex_balance_api.sql$|_reseller_sales_tools.sql$|_reseller_websites_coming_soon.sql$|_reseller_custom_domains.sql$|_reseller_website_domain_fix_logos.sql$|_reseller_website_content_inquiry_email.sql$/.test(
         x,
       ),
     ),
@@ -115,6 +116,7 @@ after(() =>
   execFileSync("docker", ["rm", "-f", "-v", container], { stdio: "pipe" }),
 );
 beforeEach(() => {
+  sql(`TRUNCATE auth.users; INSERT INTO auth.users(id,email,email_confirmed_at) VALUES('${reseller}','verified@example.invalid',now()),('${other}','other@example.invalid',now()); UPDATE sales_inquiry_email_settings SET enabled=true;`);
   sql(
     "UPDATE reseller_website_settings SET enabled=true,ipv4='192.0.2.10',management_url='https://control.example.com/reseller-websites/manage',gateway_secret_hash=encode(sha256(convert_to(repeat('a',64),'UTF8')),'hex')",
   );
@@ -467,4 +469,38 @@ test("invalid logo URLs, active content, malformed PNGs and oversized images are
   );
   page({ logo_data_url: null }, 1);
   assert.equal(workspace().page.logo_data_url, null);
+});
+
+test('public content roundtrips, hides optional sections and preserves omitted fields for older clients',()=>{
+ const content={about:'About us',services:'Our service',devices:'Ask first',show_steps:false,faqs:[{question:'Question?',answer:'Answer.'}]};
+ page({public_content:content});assert.deepEqual(workspace().page.public_content,content);assert.deepEqual(gateway('preview',reseller).public_content,content);
+ page({},1);assert.deepEqual(workspace().page.public_content,content);
+ for(const invalid of [null,[],{private:'bad'},{about:1},{show_steps:'yes'},{faqs:[{question:'x',answer:'ok'}]},{devices:'a'.repeat(2001)},{faqs:Array(7).fill({question:'ok',answer:'ok'})}])assert.throws(()=>page({public_content:invalid},2));
+ page({public_content:{about:'',services:'',devices:'',faqs:[],show_steps:false}},2);assert.equal(workspace().page.public_content.about,'');
+});
+const submit=(key=id,message='First inquiry',email='prospect@example.invalid')=>gateway('inquiry',null,host,{id:key,inquiry:{name:'Prospect',email,phone:'1234',device:'TV',message,contact_consent:true,marketing_consent:false},ip_hash:'b'.repeat(64)});
+const claim=()=>JSON.parse(sql('SELECT claim_sales_inquiry_email()')||'null');
+const finish=(job,state,error=null)=>sql(`SELECT finish_sales_inquiry_email('${job.id}','${job.claim_id}',${q(state)},${q(error)})`);
+test('one submission creates one CRM lead and delivery; retries do not duplicate and new messages are preserved',async()=>{
+ published();submit();submit();assert.equal(workspace().leads.length,1);assert.equal(workspace().inquiry_deliveries.length,1);
+ submit(second,'Second message');const ws=workspace();assert.equal(ws.leads.length,1);assert.equal(ws.inquiry_deliveries.length,2);assert.equal(ws.inquiry_deliveries[0].inquiry.message,'Second message');assert.equal(ws.inquiry_deliveries[0].lead_id,id);
+ assert.equal(workspace(other).inquiry_deliveries.length,0);assert.equal(run('SELECT count(*) FROM sales_inquiry_deliveries',other),'0');
+ assert.equal(ws.inquiry_email.recipient,'verified@example.invalid');
+ assert.throws(()=>run("UPDATE sales_inquiry_deliveries SET status='sent'",reseller),/permission denied/);
+ assert.throws(()=>gateway('inquiry',null,host,{id,inquiry:{email:'other@example.invalid',contact_consent:true},ip_hash:'b'.repeat(64)}),/reference conflict/);
+ for(const role of ['anon','authenticated']) for(const fn of ['claim_sales_inquiry_email()','finish_sales_inquiry_email(uuid,uuid,text,text)','authorize_sales_inquiry_email_worker(text)','enqueue_sales_inquiry_email_worker()'])assert.equal(sql(`SELECT has_function_privilege('${role}','${fn}','EXECUTE')`),'f');
+});
+test('claims are exclusive, use verified auth email, and can only finish with the current claim',async()=>{
+ published();submit();const jobs=await Promise.all(Array.from({length:4},()=>concurrent('SELECT claim_sales_inquiry_email()')));assert.equal(jobs.filter(Boolean).length,1);const job=JSON.parse(jobs.find(Boolean));assert.equal(job.recipient,'verified@example.invalid');assert.equal(claim(),null);
+ assert.equal(sql(`SELECT finish_sales_inquiry_email('${id}','${second}','sent')`),'f');assert.equal(finish(job,'sent'),'t');assert.equal(claim(),null);assert.equal(workspace().inquiry_deliveries[0].status,'sent');
+});
+test('email outages preserve CRM, safe retries back off, interrupted sends never auto resend',()=>{
+ published();submit();let job=claim();finish(job,'retry','mail_temporarily_unavailable');assert.equal(claim(),null);assert.equal(workspace().leads.length,1);
+ sql("UPDATE sales_inquiry_deliveries SET next_attempt_at=now()");job=claim();finish(job,'uncertain','smtp_confirmation_unknown');assert.equal(claim(),null);
+ submit(second);job=claim();sql("UPDATE sales_inquiry_deliveries SET started_at=now()-interval '6 minutes' WHERE status='sending'");assert.equal(claim(),null);assert.equal(workspace().inquiry_deliveries.every(x=>x.status==='uncertain'),true);
+});
+test('disabled mail, unverified recipients and expired jobs do not lose inquiries or send',()=>{
+ published();submit();sql('UPDATE sales_inquiry_email_settings SET enabled=false');assert.equal(claim(),null);assert.equal(workspace().leads.length,1);
+ sql('UPDATE sales_inquiry_email_settings SET enabled=true; UPDATE auth.users SET email_confirmed_at=NULL');assert.equal(claim(),null);assert.equal(workspace().inquiry_deliveries[0].status,'failed');
+ submit(second);sql("UPDATE sales_inquiry_deliveries SET created_at=now()-interval '25 hours' WHERE id='"+second+"'");assert.equal(claim(),null);assert.equal(sql("SELECT error_code FROM sales_inquiry_deliveries WHERE id='"+second+"'"),'delivery_expired');
 });

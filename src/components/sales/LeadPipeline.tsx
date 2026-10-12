@@ -1,5 +1,9 @@
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import {
+  InquiryDeliveryStatus,
+  InquiryRoutingNotice,
+} from "./InquiryDeliveryStatus";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +37,8 @@ export function LeadPipeline({
   data: SalesWorkspace;
   today?: boolean;
 }) {
+  const [params] = useSearchParams();
+  const highlighted = params.get("lead");
   const [search, setSearch] = useState("");
   const [stage, setStage] = useState("all");
   const [limit, setLimit] = useState(15);
@@ -54,11 +60,13 @@ export function LeadPipeline({
           .toLowerCase()
           .includes(search.toLowerCase()),
     )
-    .sort((a, b) =>
-      today
-        ? (a.follow_up_at ? Date.parse(a.follow_up_at) : 0) -
-          (b.follow_up_at ? Date.parse(b.follow_up_at) : 0)
-        : Date.parse(b.updated_at) - Date.parse(a.updated_at),
+    .sort(
+      (a, b) =>
+        (a.id === highlighted ? -1 : b.id === highlighted ? 1 : 0) ||
+        (today
+          ? (a.follow_up_at ? Date.parse(a.follow_up_at) : 0) -
+            (b.follow_up_at ? Date.parse(b.follow_up_at) : 0)
+          : Date.parse(b.updated_at) - Date.parse(a.updated_at)),
     );
   const importTrial = async () => {
     if (!trial || busy) return;
@@ -111,6 +119,7 @@ export function LeadPipeline({
           <Button onClick={() => setEditing("new")}>Add lead</Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <InquiryRoutingNotice data={data} />
           <p className="text-sm text-muted-foreground">
             {today
               ? "Open leads with no follow-up scheduled, overdue follow-ups, and trials ending within 24 hours. Review the contact history before reaching out."
@@ -206,7 +215,11 @@ export function LeadPipeline({
             </div>
           )}
           {rows.slice(0, limit).map((lead) => (
-            <div key={lead.id} className="rounded border p-4 space-y-3">
+            <div
+              key={lead.id}
+              id={`lead-${lead.id}`}
+              className={`rounded border p-4 space-y-3 ${lead.id === highlighted ? "ring-2 ring-primary" : ""}`}
+            >
               <div className="flex flex-wrap gap-2 justify-between">
                 <div>
                   <p className="font-semibold">{lead.name}</p>
@@ -272,6 +285,11 @@ export function LeadPipeline({
                     </>
                   )}
               </div>
+              <InquiryDeliveryStatus
+                deliveries={(data.inquiry_deliveries || []).filter(
+                  (item) => item.lead_id === lead.id,
+                )}
+              />
               <details className="text-sm">
                 <summary className="cursor-pointer">
                   Contact history & notes

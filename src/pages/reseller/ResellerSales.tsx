@@ -10,6 +10,7 @@ import { ReferralTools } from "@/components/sales/ReferralTools";
 import { WebsiteDomainSettings } from "@/components/sales/WebsiteDomainSettings";
 import { SalesPageEditor } from "@/components/sales/SalesPageEditor";
 import { RenewalWorklist } from "@/components/business/RenewalWorklist";
+import { InquiryRoutingNotice } from "@/components/sales/InquiryDeliveryStatus";
 import { money } from "@/lib/business";
 const tabs = {
   leads: "Leads & trials",
@@ -112,6 +113,7 @@ export default function ResellerSales() {
           {tab === "page" && (
             <div className="space-y-5">
               <WebsiteDomainSettings data={data} />
+              <InquiryRoutingNotice data={data} />
               <SalesPageEditor
                 key={data.page?.revision || 0}
                 page={data.page}

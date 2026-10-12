@@ -26,6 +26,8 @@ const state = {
     paid_revenue_30d: 0,
     contact_minutes_30d: 0,
   },
+  inquiry_email: {enabled:true,recipient:"fixture@example.invalid"},
+  inquiry_deliveries: [],
   domain: null,
   website_hosting: {
     enabled: true,
@@ -167,6 +169,9 @@ try {
       .isDisabled(),
     true,
   );
+  await page.getByLabel("About your service").fill("Personal help choosing your streaming setup.");
+  await page.getByLabel("Question 1", {exact:true}).fill("Can you help with my TV?");
+  await page.getByLabel("Answer 1", {exact:true}).fill("Tell us the model and we will check your options.");
   const png = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
     canvas.width = 120;
@@ -241,7 +246,7 @@ try {
   assert.equal(state.page.published, false);
   await page
     .getByLabel(
-      "I reviewed my logo, brand, description and customer contact email for public display.",
+      "I reviewed my logo, brand, page content and customer contact email for public display.",
     )
     .check();
   await page
@@ -275,6 +280,7 @@ try {
     path: "/tmp/eztv-domains-desktop.png",
     fullPage: true,
   });
+  assert.equal(state.page.public_content.about,"Personal help choosing your streaming setup.");
   const publicView = renderPage(state.page, false);
   await context.route("https://eztv-logo-fixture.example/**", (route) =>
     route.fulfill({
@@ -291,10 +297,24 @@ try {
       .getByRole("img", { name: "Fixture Streaming logo" })
       .evaluate((img) => img.complete && img.naturalWidth > 0),
   );
+  await publicPage.getByText("Personal help choosing your streaming setup.", {exact:true}).waitFor();
+  await publicPage.getByText("Can you help with my TV?", {exact:true}).click();
+  await publicPage.getByText("Tell us the model and we will check your options.", {exact:true}).waitFor();
+  assert.ok(await publicPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
   await publicPage.screenshot({
     path: "/tmp/eztv-logo-public.png",
     fullPage: true,
   });
+  await publicPage.setViewportSize({width:1440,height:1000});
+  await publicPage.screenshot({path:"/tmp/eztv-content-public-desktop.png",fullPage:true});
+  await publicPage.setViewportSize({width:390,height:844});
+  await publicPage.screenshot({path:"/tmp/eztv-content-public-mobile.png",fullPage:true});
+  await context.route("https://eztv-logo-fixture.example/inquiry",route=>route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({success:true})}));
+  await publicPage.getByLabel("Your name",{exact:true}).fill("Fixture Prospect");
+  await publicPage.getByLabel("Email address",{exact:true}).fill("prospect@example.invalid");
+  await publicPage.getByLabel("I request a response",{exact:false}).check();
+  await publicPage.getByRole("button",{name:"Send inquiry",exact:true}).click();
+  await publicPage.getByText("Your inquiry has been received.",{exact:false}).waitFor();
   await page.getByRole("button", { name: "Remove logo", exact: true }).click();
   assert.equal(
     await page
@@ -304,7 +324,7 @@ try {
   );
   await page
     .getByLabel(
-      "I reviewed my logo, brand, description and customer contact email for public display.",
+      "I reviewed my logo, brand, page content and customer contact email for public display.",
     )
     .check();
   await page
@@ -321,9 +341,24 @@ try {
   await page.getByLabel("Your domain name").waitFor();
   assert.equal(state.page.published, false);
   assert.equal(state.domain, null);
+  state.leads=[{id,reseller_id:user.id,name:'Website delivery test',email:'prospect@example.invalid',phone:'',source:'inquiry page',stage:'new',next_action:'Respond to the new inquiry',follow_up_at:new Date().toISOString(),updated_at:new Date().toISOString(),created_at:new Date().toISOString(),notes:'',revision:1}];
+  state.lead_count=1;
+  state.inquiry_deliveries=[{id,lead_id:id,inquiry:{name:'Website delivery test',email:'prospect@example.invalid',phone:'',device:'DeviceModel'.repeat(9),message:'Please help me choose a setup.'},recipient:'long.reseller.address.'.repeat(5)+'@example.invalid',status:'failed',error_code:'mail_rejected',created_at:new Date().toISOString(),finished_at:new Date().toISOString()}];
+  await page.getByRole('button',{name:'Leads & trials',exact:true}).click();
+  await page.getByRole('button',{name:'Refresh',exact:true}).click();
+  await page.getByText('Website delivery test',{exact:true}).waitFor();
+  await page.getByText('Website inquiries · 1 · Email needs attention',{exact:true}).click();
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'long delivery data fits mobile');
+  await page.screenshot({path:'/tmp/eztv-inquiry-crm-mobile.png',fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.screenshot({path:'/tmp/eztv-inquiry-crm-desktop.png',fullPage:true});
   assert.deepEqual(errors, []);
   console.log(
     JSON.stringify({
+      editableContent: true,
+      faqExpansion: true,
+      inquiryForm: true,
       logoUpload: true,
       logoInPreview: true,
       logoInPublicPage: true,
