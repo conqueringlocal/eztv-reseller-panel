@@ -5,14 +5,20 @@
 Use **self-hosted Zammad** for support conversations, assignments, private notes,
 attachments and support operations. Build the dashboard identity/ownership adapter
 ourselves. Keep the help desk separate from Trex provisioning and credit accounting.
-This is a private infrastructure pilot, not a reseller-facing launch.
+The native help desk remains private. The dashboard support adapter now implements
+the owner-approved hierarchy; see [dashboard routing and operations](dashboard/README.md)
+for its deployed status, privacy rules, tests and rollout limits.
 
 The current owner-support model is:
 
 - Each reseller supports their own retail customers, including setup and billing.
-- The incoming distributor handles his resellers' credit purchases and his own retail customers.
-- EZTV staff handle reseller technical support and provider escalation.
-- The distributor is not automatically a support agent or global administrator.
+- Every reseller supports their immediate sub-resellers, including technical support,
+  channel issues, channel requests and VOD requests.
+- Direct resellers open tickets with EZTV; deeper resellers open tickets with their
+  immediate parent. Escalation creates a private, linked upstream conversation.
+- The incoming distributor handles his own 85-reseller support network and escalates
+  issues to EZTV. Credit purchases continue following the existing hierarchy.
+- No reseller is automatically a native Zammad agent or global administrator.
 
 Zammad's **Customer** role represents a reseller requesting help here. It does not
 mean retail subscribers are being invited to the central help desk.

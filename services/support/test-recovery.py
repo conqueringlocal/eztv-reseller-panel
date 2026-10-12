@@ -14,6 +14,9 @@ import uuid
 ROOT = Path(os.environ.get('EZTV_SUPPORT_DIR', '/opt/eztv-support-pilot'))
 NAME = 'eztv-support-restore-' + uuid.uuid4().hex[:8]
 QUERY = """SELECT json_build_object(
+  'adapter_tickets',(SELECT count(*) FROM eztv_support_tickets),
+  'adapter_identities',(SELECT count(*) FROM eztv_support_identities),
+  'adapter_requests',(SELECT count(*) FROM eztv_support_requests),
   'tickets',(SELECT count(*) FROM tickets),
   'articles',(SELECT count(*) FROM ticket_articles),
   'users',(SELECT count(*) FROM users),

@@ -1,0 +1,5 @@
+services:
+  zammad-railsserver:
+    volumes:
+      - ./local/dashboard/bridge.rb:/opt/zammad/config/initializers/eztv_support.rb:ro
+      - ./local/dashboard/signing-key:/run/secrets/eztv-support-key:ro

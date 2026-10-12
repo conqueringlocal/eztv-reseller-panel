@@ -20,7 +20,8 @@ import {
   FileText,
   UserPlus,
   Zap,
-  Tv
+  Tv,
+  LifeBuoy
 } from 'lucide-react';
 
 export function AppSidebar() {
@@ -71,6 +72,11 @@ export function AppSidebar() {
           icon: <FileText className="w-5 h-5" />,
         },
         { title: 'Sports Updates', path: '/admin/sports', icon: <Tv className="w-5 h-5" /> },
+        {
+          title: 'Support',
+          path: '/admin/support',
+          icon: <LifeBuoy className="w-5 h-5" />,
+        },
         {
           title: 'Settings',
           path: '/admin/settings',
@@ -124,6 +130,7 @@ export function AppSidebar() {
         icon: <Zap className="w-5 h-5" />,
       });
 
+      resellerItems.push({title: 'Support', path: '/reseller/support', icon: <LifeBuoy className="w-5 h-5" />});
       resellerItems.push({
         title: 'Settings',
         path: '/reseller/settings',

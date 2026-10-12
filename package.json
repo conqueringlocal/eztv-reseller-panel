@@ -18,6 +18,7 @@
     "test:sports": "node --test tests/sports-reader.test.mjs tests/sports-reader-db.test.mjs",
     "test:paypal": "node --test tests/paypal-credits.test.mjs",
     "test:crm": "node --experimental-vm-modules --test tests/crm-retirement.test.mjs",
+    "test:helpdesk": "node --test tests/helpdesk.test.mjs",
     "test:email": "node --test tests/customer-email.test.mjs"
   },
   "dependencies": {
