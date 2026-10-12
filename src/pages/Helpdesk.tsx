@@ -12,6 +12,7 @@ import {Card, CardContent, CardHeader, CardTitle} from '@/components/ui/card';
 import {Alert, AlertDescription} from '@/components/ui/alert';
 import {toast} from 'sonner';
 import {Download, RefreshCw, ArrowLeft, MessageSquare} from 'lucide-react';
+import {HelpSuggestions} from '@/components/support/HelpSuggestions';
 
 const categories={technical:'Technical support',channel_issue:'Channel issue',channel_request:'Channel request',vod_request:'VOD request'};
 type Category=keyof typeof categories;
@@ -70,6 +71,7 @@ export default function Helpdesk(){
  const composer=(mode:'create'|'reply')=><form className="space-y-4" onSubmit={event=>{event.preventDefault();submit(mode==='create'?'create':escalating?'escalate':'reply');}}>
   {mode==='create'&&<><div><Label htmlFor="ticket-title">Subject</Label><Input id="ticket-title" value={title} onChange={e=>setTitle(e.target.value)} maxLength={160} required disabled={busy||uncertain}/></div>
    <div><Label htmlFor="ticket-category">Request type</Label><select id="ticket-category" className="w-full rounded-md border p-2 bg-white" value={category} onChange={e=>setCategory(e.target.value as Category)} disabled={busy||uncertain}>{Object.entries(categories).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></div></>}
+  {mode==='create'&&<HelpSuggestions subject={title}/>}
   <div><Label htmlFor="ticket-body">{escalating?'Summary for your support provider':internal?'Private note':mode==='create'?'Details':'Reply'}</Label>
    <Textarea id="ticket-body" rows={5} value={body} onChange={e=>setBody(e.target.value)} maxLength={10000} required disabled={busy||uncertain}/></div>
   <p className="text-sm text-gray-600">Include the affected channel or title, device, error, and time where relevant. Keep passwords, playlist links, and payment details out of tickets.</p>

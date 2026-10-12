@@ -21,7 +21,8 @@ import {
   UserPlus,
   Zap,
   Tv,
-  LifeBuoy
+  LifeBuoy,
+  BookOpen
 } from 'lucide-react';
 
 export function AppSidebar() {
@@ -72,6 +73,7 @@ export function AppSidebar() {
           icon: <FileText className="w-5 h-5" />,
         },
         { title: 'Sports Updates', path: '/admin/sports', icon: <Tv className="w-5 h-5" /> },
+        { title: 'Help Center', path: '/admin/help', icon: <BookOpen className="w-5 h-5" /> },
         {
           title: 'Support',
           path: '/admin/support',
@@ -131,6 +133,7 @@ export function AppSidebar() {
       });
 
       resellerItems.push({title: 'Support', path: '/reseller/support', icon: <LifeBuoy className="w-5 h-5" />});
+      resellerItems.push({title: 'Help Center', path: '/reseller/help', icon: <BookOpen className="w-5 h-5" />});
       resellerItems.push({
         title: 'Settings',
         path: '/reseller/settings',

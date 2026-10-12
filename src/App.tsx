@@ -38,10 +38,12 @@ import SupportReseller from './pages/SupportReseller';
 import { SupportBoundary } from './components/support/SupportBoundary';
 
 const Helpdesk = lazy(() => import('./pages/Helpdesk'));
+const HelpCenter = lazy(() => import('./pages/HelpCenter'));
 const ResellerSales = lazy(() => import('./pages/reseller/ResellerSales'));
 const AdminSalesProgram = lazy(() => import('./pages/admin/AdminSalesProgram'));
 const PublicSalesInquiry = lazy(() => import('./pages/PublicSalesInquiry'));
 const salesLoading = <p className="p-6" role="status">Loading sales tools…</p>;
+const helpLoading = <p className="p-6" role="status">Loading help…</p>;
 const queryClient = new QueryClient();
 
 function App() {
@@ -56,8 +58,10 @@ function App() {
               <div className="min-h-screen bg-gray-50">
                 <SupportBoundary>
                 <Routes>
-                  <Route path="/reseller/support" element={<ProtectedRoute allowedRoles={["reseller"]}><Suspense fallback={salesLoading}><Helpdesk /></Suspense></ProtectedRoute>} />
-                  <Route path="/admin/support" element={<ProtectedRoute allowedRoles={["admin"]}><Suspense fallback={salesLoading}><Helpdesk /></Suspense></ProtectedRoute>} />
+                  <Route path="/reseller/support" element={<ProtectedRoute allowedRoles={["reseller"]}><Suspense fallback={helpLoading}><Helpdesk /></Suspense></ProtectedRoute>} />
+                  <Route path="/reseller/help" element={<ProtectedRoute allowedRoles={["reseller"]}><Suspense fallback={helpLoading}><HelpCenter /></Suspense></ProtectedRoute>} />
+                  <Route path="/admin/help" element={<ProtectedRoute allowedRoles={["admin"]}><Suspense fallback={helpLoading}><HelpCenter /></Suspense></ProtectedRoute>} />
+                  <Route path="/admin/support" element={<ProtectedRoute allowedRoles={["admin"]}><Suspense fallback={helpLoading}><Helpdesk /></Suspense></ProtectedRoute>} />
                   <Route path="/support/reseller" element={<SupportReseller />} />
                   {/* Redirect root to login */}
                   <Route path="/" element={<Navigate to="/login" replace />} />
