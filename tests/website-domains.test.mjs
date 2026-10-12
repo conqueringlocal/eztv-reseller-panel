@@ -432,3 +432,15 @@ test("logo renders in the public page and private preview with data-only image p
     );
   }
 });
+
+test('expanded public content escapes markup and respects hidden sections', () => {
+  const page={brand_name:'Brand',headline:'Headline',description:'Description',contact_email:'contact@example.invalid',public_content:{about:'<script>bad()</script>',services:'',devices:'',show_steps:false,faqs:[{question:'<img src=x>',answer:'<iframe>bad</iframe>'}]}};
+  const {html}=renderPage(page);
+  assert.ok(html.includes('&lt;script&gt;bad()&lt;/script&gt;'));
+  assert.ok(html.includes('&lt;img src=x&gt;'));
+  assert.ok(html.includes('&lt;iframe&gt;bad&lt;/iframe&gt;'));
+  assert.ok(!html.includes('id="how-it-works"'));
+  assert.ok(!html.includes('id="devices"'));
+  assert.ok(!html.includes('id="services"'));
+  assert.ok(html.includes('id="inquiry"'));
+});

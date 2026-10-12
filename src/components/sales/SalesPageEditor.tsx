@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { useRefreshSales } from "@/hooks/useSalesWorkspace";
 import type { SalesPage } from "@/lib/sales";
 import { WebsiteLogoPicker } from "./WebsiteLogoPicker";
+import { WebsiteContentEditor } from "./WebsiteContentEditor";
+import { websiteContent } from "@/lib/websiteContent";
 import { toast } from "sonner";
 export function SalesPageEditor({
   page,
@@ -16,6 +18,7 @@ export function SalesPageEditor({
   domainReady: boolean;
 }) {
   const [form, setForm] = useState(() => ({
+    public_content: websiteContent(page?.public_content),
     logo_data_url: page?.logo_data_url || "",
     slug: page?.slug || `reseller-${crypto.randomUUID().slice(0, 8)}`,
     brand_name: page?.brand_name || "",
@@ -160,6 +163,13 @@ export function SalesPageEditor({
               placeholder="Describe your setup help and how customers can ask about options. Only include claims you can support."
             />
           </div>
+          <WebsiteContentEditor
+            value={form.public_content}
+            disabled={busy}
+            onChange={(public_content) =>
+              setForm((f) => ({ ...f, public_content }))
+            }
+          />
           <div>
             <Label htmlFor="page-setup">
               Private setup instructions for your setup kit
@@ -195,7 +205,7 @@ export function SalesPageEditor({
               }
             />
             <span>
-              I reviewed my logo, brand, description and customer contact email
+              I reviewed my logo, brand, page content and customer contact email
               for public display.
             </span>
           </label>
