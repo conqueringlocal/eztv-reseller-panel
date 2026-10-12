@@ -21,6 +21,7 @@ import {
 import { RenewSingleConnectionDialog } from './RenewSingleConnectionDialog';
 import { EditConnectionCredentialsDialog } from './credentials/EditConnectionCredentialsDialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { CustomerSetupEmail } from './CustomerSetupEmail';
 
 interface CustomerCredentialsDialogProps {
   customer: any;
@@ -133,6 +134,7 @@ export function CustomerCredentialsDialog({ customer, onClose }: CustomerCredent
           </DialogDescription>
         </DialogHeader>
 
+        <CustomerSetupEmail key={customer.id} customerId={customer.id} />
         <div className="space-y-4">
           {connectionCredentials.length === 0 ? (
             <Card>

@@ -104,6 +104,7 @@ export const useCustomers = (user: any, authLoading: boolean) => {
             expirationDate: customerData.expirationDate,
             status: customerData.status,
             isDeactivated: customerData.isDeactivated,
+            sendSetupEmail: customerData.sendSetupEmail === true,
           }
         }
       });
@@ -137,6 +138,7 @@ export const useCustomers = (user: any, authLoading: boolean) => {
       }
 
       // Refresh customers to show new customer
+      if (customerData.sendSetupEmail) toast.info('Setup email requested. Open the customer’s credentials to check delivery status.');
       await fetchCustomers();
       return true;
 
