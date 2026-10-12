@@ -1022,6 +1022,8 @@ export type Database = {
       }
     }
     Functions: {
+      connect_sales_domain: { Args: {p_hostname:string}; Returns:undefined }
+      disconnect_sales_domain: { Args: Record<PropertyKey, never>; Returns:undefined }
       get_sales_workspace: { Args: Record<PropertyKey, never>; Returns: Json }
       get_sales_program_summary: { Args: Record<PropertyKey, never>; Returns: Json }
       save_sales_lead: { Args: {p_id:string;p_revision:number;p_command:string;p_data:Json}; Returns:string }

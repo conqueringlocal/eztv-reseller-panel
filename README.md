@@ -69,7 +69,7 @@ The live frontend is on Cloudflare Pages (`eztv-reseller-panel`), using the orig
 
 ## Custom Domain Setup
 
-Enterprise customers can connect custom domains to their reseller platform. Contact support for domain configuration assistance.
+Resellers can connect their own domain under **Sales tools → Website & domain**. Pages stay private until DNS ownership and HTTPS are verified and the reseller explicitly publishes. Disconnecting unpublishes the page. There are no landing-page links on the dashboard domain. See [reseller website setup and operations](docs/RESELLER_WEBSITES.md).
 
 ## CRM retirement
 

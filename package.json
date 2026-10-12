@@ -19,7 +19,8 @@
     "test:paypal": "node --test tests/paypal-credits.test.mjs",
     "test:crm": "node --experimental-vm-modules --test tests/crm-retirement.test.mjs",
     "test:helpdesk": "node --test tests/helpdesk.test.mjs",
-    "test:email": "node --test tests/customer-email.test.mjs"
+    "test:email": "node --test tests/customer-email.test.mjs",
+    "test:websites": "node --test tests/website-domains.test.mjs tests/website-domains-db.test.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

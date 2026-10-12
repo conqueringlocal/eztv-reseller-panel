@@ -7,6 +7,7 @@ import { LeadPipeline } from "@/components/sales/LeadPipeline";
 import { QuoteCalculator } from "@/components/sales/QuoteCalculator";
 import { SetupKit } from "@/components/sales/SetupKit";
 import { ReferralTools } from "@/components/sales/ReferralTools";
+import { WebsiteDomainSettings } from "@/components/sales/WebsiteDomainSettings";
 import { SalesPageEditor } from "@/components/sales/SalesPageEditor";
 import { RenewalWorklist } from "@/components/business/RenewalWorklist";
 import { money } from "@/lib/business";
@@ -16,7 +17,7 @@ const tabs = {
   quote: "Quote calculator",
   setup: "Setup kit",
   referrals: "Referrals",
-  page: "Website & setup · Coming soon",
+  page: "Website & domain",
 };
 export default function ResellerSales() {
   const [params, setParams] = useSearchParams();
@@ -109,7 +110,18 @@ export default function ResellerSales() {
           {tab === "setup" && <SetupKit page={data.page} />}
           {tab === "referrals" && <ReferralTools data={data} />}
           {tab === "page" && (
-            <SalesPageEditor key={data.page?.revision || 0} page={data.page} />
+            <div className="space-y-5">
+              <WebsiteDomainSettings data={data} />
+              <SalesPageEditor
+                key={data.page?.revision || 0}
+                page={data.page}
+                domainReady={
+                  !!data.website_hosting?.enabled &&
+                  data.domain?.status === "ready" &&
+                  Date.parse(data.domain.valid_until || "") > Date.now()
+                }
+              />
+            </div>
           )}
         </>
       )}

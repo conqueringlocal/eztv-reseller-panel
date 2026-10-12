@@ -146,3 +146,8 @@ Website publishing and public referral links are now marked Coming soon. Reselle
 Before enabling websites: choose a separate public hosting/domain arrangement, configure scoped hosting credentials, implement verified per-reseller hostname routing and certificate status, and test ownership conflicts, removal, draft/preview/publish, customer inquiries and data isolation on actual reseller-owned domains. Do not remove the database gate just to restore the former /r/ links. Custom domains provide branding separation, not anonymity or a liability guarantee.
 
 Validation: sales tests cover draft retention, cross-reseller isolation, old-client publish rejection, direct-write rejection, public read/intake closure and continued draft editing. Mobile tests exercise the Coming soon state, draft save/reload, setup-kit content, referral records and unavailable public pages.
+
+
+## Reseller-owned website domains (October 12, 2026)
+
+The Coming soon gate above is superseded by verified custom-domain publishing. Resellers save a private draft, add their own domain and the displayed DNS records, verify HTTPS, and explicitly publish. Removing or losing a domain unpublishes the page. No dashboard-domain landing pages or fallback URLs are restored. Setup details remain private. See [setup, security, deployment and acceptance status](RESELLER_WEBSITES.md).

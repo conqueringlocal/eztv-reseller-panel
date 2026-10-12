@@ -72,6 +72,19 @@ export interface Reward {
   note: string;
 }
 export interface SalesWorkspace {
+  domain?: {
+    hostname: string;
+    verification_token: string;
+    status: "pending" | "dns_verified" | "ready";
+    message: string;
+    checked_at: string | null;
+    valid_until: string | null;
+  } | null;
+  website_hosting?: {
+    enabled: boolean;
+    ipv4: string | null;
+    management_url: string | null;
+  };
   leads: SalesLead[];
   lead_count: number;
   activities: SalesActivity[];
