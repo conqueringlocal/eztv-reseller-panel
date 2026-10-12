@@ -54,7 +54,7 @@ export function M3UDomainSettings({ resellerId }: M3UDomainSettingsProps) {
 
       if (data?.success) {
         toast.success(
-          `Updated ${data.customersUpdated} customer(s). HighLevel: ${data.highLevelUpdated} synced, ${data.highLevelFailed} failed, ${data.highLevelSkipped} skipped.`
+          `Updated ${data.customersUpdated} customer(s).`
         );
       } else {
         toast.error(data?.error || 'Backfill failed');

@@ -35,7 +35,7 @@ If a channel is missing, join it in Telegram with the same account and use Refre
 - Telegram flood waits are persisted and respected, including across restarts. Revoked sessions and inaccessible sources show an administrator error.
 - Previously imported posts remain as an archive when the source changes or imports pause. Old media versions remain private; there is currently no automatic archival deletion or storage cleanup policy.
 - Dashboard status shows last heartbeat, last successful check, latest source post, and errors. There is no external outage alert yet. A quiet channel is not treated as an outage if checks still succeed.
-- The existing `sports_ppv_updates` table and legacy bot webhook/share URLs remain separate. This service does not invoke the old webhook or its HighLevel auto-post function, and new private posts are never inserted into that publicly shared legacy feed.
+- The existing `sports_ppv_updates` table and legacy bot webhook/share URLs remain separate. The legacy bot still saves updates for public sharing, but automatic CRM posting is retired. This service does not invoke the old webhook, and new private posts are never inserted into that publicly shared legacy feed.
 
 ## Operations
 

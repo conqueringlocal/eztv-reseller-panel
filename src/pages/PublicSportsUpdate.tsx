@@ -17,7 +17,6 @@ interface SportsUpdate {
     time: string;
     channel: string;
   }>;
-  posted_to_highlevel: boolean;
   created_at: string;
 }
 
@@ -68,7 +67,6 @@ export default function PublicSportsUpdate() {
                   channel: String(info.channel || '')
                 }))
               : [],
-            posted_to_highlevel: !!data.posted_to_highlevel,
           });
         }
       } catch (error) {

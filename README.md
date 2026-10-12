@@ -55,13 +55,13 @@ This platform is built with modern web technologies:
 - **Customer Management**: Add, edit, and track IPTV customers
 - **Credit System**: Manage and track credit usage for service provisioning
 - **Multi-Provider Support**: Integration with multiple IPTV service providers
-- **CRM Integration**: HighLevel CRM integration for customer relationship management
+- **Dashboard Customer Management**: Provision, renew, and manage customers directly in the reseller dashboard
 - **Reseller Hierarchy**: Support for sub-resellers and multi-level partnerships
 - **Real-time Dashboard**: Live statistics and customer status monitoring
 
 ## Deployment
 
-The platform is automatically deployed to production. Contact EZTV Club support for deployment access and configuration.
+V1 is the active production application. Deploy the frontend to Cloudflare Pages and apply scoped Supabase changes after verification.
 
 ### Current maintenance and Trex incident
 
@@ -71,6 +71,6 @@ The live frontend is on Cloudflare Pages (`eztv-reseller-panel`), using the orig
 
 Enterprise customers can connect custom domains to their reseller platform. Contact support for domain configuration assistance.
 
-## API Documentation
+## CRM retirement
 
-API documentation and integration guides are available in the platform dashboard under the "API Keys" section.
+HighLevel has been retired. Customer management runs through the dashboard; SSO login links can still be used with a self-hosted portal. See [CRM retirement](docs/CRM_RETIREMENT.md) for the retired endpoints, data handling, and verification.

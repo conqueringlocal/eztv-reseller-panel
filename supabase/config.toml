@@ -1,5 +1,6 @@
 project_id = "hddnqgggjjlildufirof"
 
+# Keep the legacy route pointed at the 410 tombstone for stale clients.
 [[routes]]
 path = "/import-customers-to-highlevel"
 function = "import-customers-to-highlevel"

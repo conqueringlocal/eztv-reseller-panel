@@ -290,35 +290,6 @@ serve(async (req) => {
       console.log("Operation event")
       console.log("Operation event")
 
-      // Create HighLevel contact with trial credentials if needed
-      let contactId = null
-      if (customerData.highlevelContactId) {
-        contactId = customerData.highlevelContactId
-      } else {
-        console.log("🔄 Creating HighLevel contact for Trex trial user...")
-        try {
-          const { data: hlData, error: hlError } = await supabase.functions.invoke('create-highlevel-contact', {
-            body: {
-              customerName: customerData.name,
-              customerEmail: customerData.email,
-              resellerId: resellerId,
-              iptvCredentials: {
-                username: finalUsername,
-                password: finalPassword,
-                m3uUrl: m3uUrl
-              }
-            }
-          })
-
-          if (!hlError && hlData?.success) {
-            contactId = hlData.contactId
-            console.log("✅ HighLevel contact created:")
-          }
-        } catch (error) {
-          console.log("⚠️ HighLevel contact creation failed:")
-        }
-      }
-
       // Insert trial customer into database with Trex provider
       const { data: customer, error: customerError } = await supabase
         .from('customers')
@@ -334,7 +305,6 @@ serve(async (req) => {
           username: finalUsername,
           password: finalPassword,
           m3u_url: m3uUrl,
-          highlevel_contact_id: contactId,
           status: 'active',
           is_trial: true,
           trial_created_at: new Date().toISOString(),
@@ -383,29 +353,6 @@ serve(async (req) => {
         console.error("⚠️ Error updating Trex trial count:")
       }
 
-      // Send trial credentials via HighLevel if contact ID is available
-      if (contactId) {
-        console.log("📨 Sending Trex trial credentials via HighLevel")
-        try {
-          await supabase.functions.invoke('send-highlevel-message', {
-            body: {
-              contactId,
-              customerName: customerData.name,
-              username: finalUsername,
-              password: finalPassword,
-              m3uUrl: m3uUrl,
-              resellerId: resellerId,
-              messageType: 'SMS'
-            }
-          })
-          console.log("✅ Trex trial credentials sent via HighLevel")
-        } catch (error) {
-          console.log("⚠️ Failed to send Trex trial credentials via HighLevel:")
-        }
-      }
-
-      console.log("🎉 Trex trial account creation completed successfully")
-
       return new Response(
         JSON.stringify({
           success: true,
@@ -431,11 +378,11 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: `Trex trial API call failed: ${error.message}`,
+          error: `Trex trial API call failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
           debug_info: {
             panel_url: PANEL_URL,
             package_id: packageId,
-            error_details: error.stack
+            error_details: error instanceof Error ? error.stack : undefined
           }
         }),
         {
@@ -450,7 +397,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error.message || 'Internal server error'
+        error: error instanceof Error ? error.message : 'Internal server error'
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
